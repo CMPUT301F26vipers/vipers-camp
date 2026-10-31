@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "341015933156",
+    "project_id": "vipers-camp",
+    "storage_bucket": "vipers-camp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:341015933156:android:1b93c0496cbe1f64133cf1",
+        "android_client_info": {
+          "package_name": "com.example.vipers"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3uJ410_qwP_r_laISAO-XRnbSJEb-MII"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

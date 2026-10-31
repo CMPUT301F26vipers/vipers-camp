@@ -1,3 +1,8 @@
+/*
+ * Type.kt
+ * Text styles for the app.
+ * Known issues: the mockups use the Figtree font; this uses the default sans-serif until it is added.
+ */
 package com.example.vipers.ui.theme
 
 import androidx.compose.material3.Typography
