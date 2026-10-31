@@ -17,10 +17,4 @@ data class AvailabilityCalendar(
     val campsiteId: String = "",
     val openNights: List<String> = emptyList(),
     val heldNights: List<String> = emptyList(),
-) {
-    /** The open nights nobody has booked yet, in date order. */
-    fun freeNights(): List<String> = (openNights - heldNights.toSet()).sorted()
-
-    /** True if [night] is open and not booked. */
-    fun isFree(night: String): Boolean = night in openNights && night !in heldNights
-}
+)

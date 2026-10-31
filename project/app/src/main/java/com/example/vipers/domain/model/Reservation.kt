@@ -7,7 +7,6 @@
 package com.example.vipers.domain.model
 
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 
 /**
  * A booking of nights at a campsite. Dates are "yyyy-MM-dd" strings.
@@ -48,7 +47,4 @@ data class Reservation(
     /** True if it is CONFIRMED and checks out on or after [today]; everything else is past. */
     fun isActive(today: LocalDate): Boolean =
         status == ReservationStatus.CONFIRMED && !LocalDate.parse(checkOut).isBefore(today)
-
-    /** Number of nights booked. */
-    fun nights(): Long = ChronoUnit.DAYS.between(LocalDate.parse(checkIn), LocalDate.parse(checkOut))
 }

@@ -26,12 +26,6 @@ data class LotteryEntry(
     val joinedAt: Long = 0,
     val status: EntryStatus = EntryStatus.WAITING,
 ) {
-    /** True if the entrant can still leave the waiting list (only before the draw). */
-    fun canLeave(): Boolean = status == EntryStatus.WAITING
-
-    /** True if the entrant won and can reserve nights. */
-    fun canReserve(): Boolean = status == EntryStatus.WON
-
     companion object {
         /** The entry ID for [userId] in [lotteryId]. */
         fun idFor(lotteryId: String, userId: String): String = "${lotteryId}_$userId"

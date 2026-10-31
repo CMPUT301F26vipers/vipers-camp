@@ -24,7 +24,7 @@ package com.example.vipers.domain.model
 data class Notification(
     val id: String = "",
     val recipientId: String = "",
-    val senderId: String = SYSTEM_SENDER,
+    val senderId: String = "system",
     val campsiteId: String? = null,
     val type: NotificationType = NotificationType.WON,
     val title: String = "",
@@ -33,9 +33,4 @@ data class Notification(
     val shownOnDevice: Boolean = false,
     val batchId: String? = null,
     val createdAt: Long = 0,
-) {
-    companion object {
-        /** Sender ID used for notifications the app sends by itself. */
-        const val SYSTEM_SENDER = "system"
-    }
-}
+)

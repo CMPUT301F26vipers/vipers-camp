@@ -46,7 +46,4 @@ data class Lottery(
         !today.isAfter(LocalDate.parse(registrationEnd)) -> LotteryStatus.OPEN
         else -> LotteryStatus.CLOSED
     }
-
-    /** Spots left on the waiting list given [entryCount] entries, or null if there is no limit. */
-    fun spotsLeft(entryCount: Int): Int? = waitlistCapacity?.let { maxOf(it - entryCount, 0) }
 }

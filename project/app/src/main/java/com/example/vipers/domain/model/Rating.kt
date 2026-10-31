@@ -9,7 +9,7 @@ package com.example.vipers.domain.model
 /**
  * A 1–5 star rating. Its ID is "campsiteId_userId", so rating again replaces the old rating.
  *
- * @property id "campsiteId_userId"; see [idFor].
+ * @property id "campsiteId_userId".
  * @property campsiteId The campsite rated.
  * @property userId Device ID of the entrant who rated it.
  * @property stars 1 to 5.
@@ -19,12 +19,4 @@ data class Rating(
     val campsiteId: String = "",
     val userId: String = "",
     val stars: Int = 5,
-) {
-    /** True if [stars] is between 1 and 5. */
-    fun isValid(): Boolean = stars in 1..5
-
-    companion object {
-        /** The rating ID for [userId] rating [campsiteId]. */
-        fun idFor(campsiteId: String, userId: String): String = "${campsiteId}_$userId"
-    }
-}
+)

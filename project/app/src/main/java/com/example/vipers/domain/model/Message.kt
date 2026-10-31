@@ -21,7 +21,4 @@ data class Message(
     val senderId: String = "",
     val text: String = "",
     val createdAt: Long = 0,
-) {
-    /** True if the message has some text; empty messages are not sent. */
-    fun hasText(): Boolean = text.isNotBlank()
-}
+)

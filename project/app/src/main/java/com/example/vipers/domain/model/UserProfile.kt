@@ -28,10 +28,4 @@ data class UserProfile(
     val notificationsEnabled: Boolean = true,
     val isAdmin: Boolean = false,
     val createdAt: Long = 0,
-) {
-    /** True if the user gave an email address. */
-    fun hasEmail(): Boolean = email.isNotBlank()
-
-    /** True if the user gave a phone number. */
-    fun hasPhone(): Boolean = phone.isNotBlank()
-}
+)
