@@ -1,3 +1,8 @@
+/*
+ * MainActivity.kt
+ * The app's only Activity. It will host the navigation graph and bottom bar (T-02).
+ * Known issues: still shows the starter "Hello Android!" screen until T-02 replaces it.
+ */
 package com.example.vipers
 
 import android.os.Bundle
