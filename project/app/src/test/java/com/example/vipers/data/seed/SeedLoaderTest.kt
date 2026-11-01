@@ -59,6 +59,38 @@ class SeedLoaderTest {
     }
 
     @Test
+    fun seed_worksOnAnotherPhoneDaysLater() = runBlocking {
+        SeedLoader(container, today).seed()
+
+        // Other phones share the same database but seed 4 and 11 days later.
+        for ((phone, daysLater) in listOf("phone-2" to 4L, "phone-3" to 11L)) {
+            val otherPhone = AppContainer(
+                deviceId = phone,
+                profileRepository = container.profileRepository,
+                campsiteRepository = container.campsiteRepository,
+                lotteryRepository = container.lotteryRepository,
+                reservationRepository = container.reservationRepository,
+                notificationRepository = container.notificationRepository,
+            )
+            SeedLoader(otherPhone, today.plusDays(daysLater)).seed()
+            assertEquals(3, container.reservationRepository.getReservationsForUser(phone).size)
+        }
+        assertEquals(4, container.campsiteRepository.getAllCampsites().size)
+    }
+
+    @Test
+    fun seed_drawnLotteriesHaveOneWinner() = runBlocking {
+        SeedLoader(container, today).seed()
+
+        val banff = container.campsiteRepository.getAllCampsites().first { it.region == Region.BANFF }
+        val lottery = container.lotteryRepository.getLotteriesForCampsite(banff.id).first()
+        assertEquals(1, lottery.winnersCount)
+        val winners = container.lotteryRepository.getEntries(lottery.id)
+            .count { it.status == EntryStatus.WON || it.status == EntryStatus.RESERVED }
+        assertEquals(1, winners)
+    }
+
+    @Test
     fun seed_twiceDoesNotAddDuplicates() = runBlocking {
         SeedLoader(container, today).seed()
         SeedLoader(container, today).seed()

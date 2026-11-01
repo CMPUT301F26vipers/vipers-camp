@@ -1,12 +1,14 @@
 /*
  * SeedLoader.kt
  * Adds demo data so the app has something to show in every stage of a lottery.
- * Shared data (made once): 3 demo users, 4 campsites (one per region) with availability, and
- * 5 lotteries (one open, three drawn, one finished) with a demo entrant's entries.
+ * Made once and shared: 3 demo users and 4 campsites (one per region) with availability.
+ * Reused if one is in the right stage, otherwise added: 5 lotteries (one open, three drawn,
+ * one finished) with a demo entrant's entries. Each lottery's winnersCount matches its winners.
  * For the current device: an entry in every lottery (waiting, won, reserved), 3 reservations
  * (2 active, 1 past) with their nights held, and 3 notifications.
- * Known issues: times are based on today so the demo never goes out of date. To reload,
- * delete the documents in the Firebase console.
+ * Known issues: times are based on the day each phone seeds, so seeding works on any day.
+ * Phones that seed on different days may each add their own lotteries. To reload, delete the
+ * documents in the Firebase console.
  */
 package com.example.vipers.data.seed
 
@@ -53,11 +55,31 @@ class SeedLoader(
         val jasper = campsites.first { it.region == Region.JASPER }
         val kananaskis = campsites.first { it.region == Region.KANANASKIS }
 
-        val hintonOpen = findLottery(hinton, LotteryStatus.OPEN)
-        val hintonFinished = findLottery(hinton, LotteryStatus.CLOSED)
-        val banffDrawn = findLottery(banff, LotteryStatus.DRAWN)
-        val kananaskisDrawn = findLottery(kananaskis, LotteryStatus.DRAWN)
-        val jasperDrawn = findLottery(jasper, LotteryStatus.DRAWN)
+        // Reuse a lottery in the right stage if there is one; otherwise add one based on today,
+        // so seeding still works days after another phone first seeded.
+        val hintonOpen = findOrAddLottery(hinton, LotteryStatus.OPEN) {
+            addLottery(hinton, registration = -3..10, booking = 12..18, firstNight = 20, nights = 6,
+                drawnDaysAgo = null, winnersCount = 3)
+                .also { addEntry(it, SAM, EntryStatus.WAITING, groupSize = 2) }
+        }
+        val banffDrawn = findOrAddLottery(banff, LotteryStatus.DRAWN) {
+            addLottery(banff, registration = -30..-10, booking = -8..5, firstNight = 7, nights = 10,
+                drawnDaysAgo = 9, winnersCount = 1)
+                .also { addEntry(it, SAM, EntryStatus.LOST, groupSize = 2) }
+        }
+        val jasperDrawn = findOrAddLottery(jasper, LotteryStatus.DRAWN) {
+            addLottery(jasper, registration = -20..-5, booking = -4..6, firstNight = 14, nights = 7,
+                drawnDaysAgo = 4, winnersCount = 1)
+                .also { addEntry(it, SAM, EntryStatus.LOST, groupSize = 5) }
+        }
+        val kananaskisDrawn = findOrAddLottery(kananaskis, LotteryStatus.DRAWN) {
+            addLottery(kananaskis, registration = -40..-20, booking = -18..3, firstNight = 25, nights = 6,
+                drawnDaysAgo = 19, winnersCount = 1)
+        }
+        val hintonFinished = findOrAddLottery(hinton, LotteryStatus.CLOSED) {
+            addLottery(hinton, registration = -90..-70, booking = -68..-50, firstNight = -40, nights = 6,
+                drawnDaysAgo = 69, winnersCount = 1)
+        }
 
         // On the waiting list for the open lottery, and won the Jasper one (can reserve now).
         addEntry(hintonOpen, userId, EntryStatus.WAITING, groupSize = 4)
@@ -82,11 +104,11 @@ class SeedLoader(
         )
     }
 
-    /** Adds the demo users, campsites, availability, lotteries and the demo entrant's entries. */
+    /** Adds the demo users, and the campsites with their availability. Returns the campsites. */
     private suspend fun addSharedData(): List<Campsite> {
         container.profileRepository.saveProfile(UserProfile(id = "seed-owner-priya", name = "Priya Sharma"))
         container.profileRepository.saveProfile(UserProfile(id = "seed-owner-daniel", name = "Daniel Okafor"))
-        container.profileRepository.saveProfile(UserProfile(id = "seed-entrant-sam", name = "Sam Patel"))
+        container.profileRepository.saveProfile(UserProfile(id = SAM, name = "Sam Patel"))
 
         val campsites = listOf(
             Campsite(
@@ -145,25 +167,22 @@ class SeedLoader(
             )
             campsite.copy(id = id)
         }
-        val (hinton, banff, jasper, kananaskis) = campsites
-
-        // Open now: people can join. Sam is on the list.
-        val hintonOpen = addLottery(
-            hinton, registration = -3..10, booking = 12..18, firstNight = 20, nights = 6, drawnDaysAgo = null,
-        )
-        addEntry(hintonOpen, "seed-entrant-sam", EntryStatus.WAITING, groupSize = 2)
-
-        // Drawn, winners are booking now. Sam lost both of these.
-        val banffDrawn = addLottery(banff, registration = -30..-10, booking = -8..5, firstNight = 7, nights = 10, drawnDaysAgo = 9)
-        addEntry(banffDrawn, "seed-entrant-sam", EntryStatus.LOST, groupSize = 2)
-        val jasperDrawn = addLottery(jasper, registration = -20..-5, booking = -4..6, firstNight = 14, nights = 7, drawnDaysAgo = 4)
-        addEntry(jasperDrawn, "seed-entrant-sam", EntryStatus.LOST, groupSize = 5)
-        addLottery(kananaskis, registration = -40..-20, booking = -18..3, firstNight = 25, nights = 6, drawnDaysAgo = 19)
-
-        // Finished: booking ended long ago.
-        addLottery(hinton, registration = -90..-70, booking = -68..-50, firstNight = -40, nights = 6, drawnDaysAgo = 69)
-
         return campsites
+    }
+
+    /**
+     * Returns a lottery for [campsite] that is in [status] right now, or runs [add] to make one.
+     * A CLOSED match must also have been drawn, so it is a finished lottery.
+     */
+    private suspend fun findOrAddLottery(
+        campsite: Campsite,
+        status: LotteryStatus,
+        add: suspend () -> Lottery,
+    ): Lottery {
+        val existing = container.lotteryRepository.getLotteriesForCampsite(campsite.id).firstOrNull {
+            it.status(now) == status && (status != LotteryStatus.CLOSED || it.drawnAt != null)
+        }
+        return existing ?: add()
     }
 
     private suspend fun addLottery(
@@ -173,6 +192,7 @@ class SeedLoader(
         firstNight: Int,
         nights: Int,
         drawnDaysAgo: Int?,
+        winnersCount: Int,
     ): Lottery {
         val lottery = Lottery(
             ownerId = campsite.ownerId,
@@ -182,16 +202,13 @@ class SeedLoader(
             registrationEnd = day(registration.last),
             bookingStart = day(booking.first),
             bookingEnd = day(booking.last),
-            winnersCount = 3,
+            winnersCount = winnersCount,
             waitlistCapacity = 20,
             drawnAt = drawnDaysAgo?.let { day(-it) },
         )
         val id = container.lotteryRepository.addLottery(lottery)
         return lottery.copy(id = id)
     }
-
-    private suspend fun findLottery(campsite: Campsite, status: LotteryStatus): Lottery =
-        container.lotteryRepository.getLotteriesForCampsite(campsite.id).first { it.status(now) == status }
 
     private suspend fun addEntry(lottery: Lottery, userId: String, status: EntryStatus, groupSize: Int) {
         container.lotteryRepository.saveEntry(
@@ -276,5 +293,8 @@ class SeedLoader(
 
     companion object {
         private const val DAY_MILLIS = 24 * 60 * 60 * 1000L
+
+        /** Device ID of the made-up entrant who joins the demo lotteries. */
+        private const val SAM = "seed-entrant-sam"
     }
 }
