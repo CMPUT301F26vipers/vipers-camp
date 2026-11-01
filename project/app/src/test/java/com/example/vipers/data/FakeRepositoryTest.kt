@@ -7,9 +7,11 @@ package com.example.vipers.data
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.UserProfile
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -40,6 +42,19 @@ class FakeRepositoryTest {
             )
         )
         assertEquals(listOf("Mine"), repo.getCampsitesByOwner("me").map { it.name })
+    }
+
+    @Test
+    fun getDisplayName_showsTheCurrentName() = runBlocking {
+        val repo = FakeProfileRepository()
+        repo.saveProfile(UserProfile(id = "me", name = "Sam"))
+        repo.saveProfile(UserProfile(id = "me", name = "Sam Patel"))
+        assertEquals("Sam Patel", repo.getDisplayName("me"))
+    }
+
+    @Test
+    fun getDisplayName_isDeletedUserWithNoProfile() = runBlocking {
+        assertEquals("Deleted user", FakeProfileRepository().getDisplayName("gone"))
     }
 
     @Test

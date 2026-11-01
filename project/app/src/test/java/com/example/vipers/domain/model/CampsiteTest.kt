@@ -29,6 +29,12 @@ class CampsiteTest {
     }
 
     @Test
+    fun priceText_showsCentsWhenThereAreSome() {
+        assertEquals("$65.50 / night", Campsite(pricePerNightCents = 6550).priceText())
+        assertEquals("$65.05 / night", Campsite(pricePerNightCents = 6505).priceText())
+    }
+
+    @Test
     fun hasLocation_needsBothCoordinates() {
         assertTrue(Campsite(lat = 53.405, lng = -117.585).hasLocation())
         assertFalse(Campsite(lat = 53.405).hasLocation())

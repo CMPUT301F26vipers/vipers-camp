@@ -1,6 +1,6 @@
 /*
  * LotteryStatus.kt
- * The stages of a lottery. Never stored; Lottery.status() works it out from the dates.
+ * The stages of a lottery. Never stored; Lottery.status() works it out from its periods.
  * Known issues: none.
  */
 package com.example.vipers.domain.model

@@ -13,6 +13,8 @@ package com.example.vipers.domain.model
  * @property recipientId Device ID of the user it is for.
  * @property senderId Device ID of the sender, or "system" for automatic ones.
  * @property campsiteId The campsite it is about, if any.
+ * @property lotteryId The lottery it is about, if any; a WON tap opens Reserve for this lottery.
+ * @property reservationId The reservation it is about, if any; tapping opens its details.
  * @property type What it is about; decides which screen a tap opens.
  * @property title Short heading, e.g. "You won the lottery!".
  * @property message Body text.
@@ -26,6 +28,8 @@ data class Notification(
     val recipientId: String = "",
     val senderId: String = "system",
     val campsiteId: String? = null,
+    val lotteryId: String? = null,
+    val reservationId: String? = null,
     val type: NotificationType = NotificationType.WON,
     val title: String = "",
     val message: String = "",

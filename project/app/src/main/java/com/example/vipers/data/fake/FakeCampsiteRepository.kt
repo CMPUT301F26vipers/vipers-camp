@@ -6,6 +6,7 @@
  */
 package com.example.vipers.data.fake
 
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.repository.CampsiteRepository
 
@@ -14,6 +15,7 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
 
     // Campsites by ID, like documents in a Firestore collection.
     private val campsites = initial.associateBy { it.id }.toMutableMap()
+    private val calendars = mutableMapOf<String, AvailabilityCalendar>()
     private var nextId = 1
 
     override suspend fun addCampsite(campsite: Campsite): String {
@@ -29,4 +31,11 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
 
     override suspend fun getAllCampsites(): List<Campsite> =
         campsites.values.filter { !it.removed }
+
+    override suspend fun getAvailability(campsiteId: String): AvailabilityCalendar =
+        calendars[campsiteId] ?: AvailabilityCalendar(campsiteId = campsiteId)
+
+    override suspend fun saveAvailability(calendar: AvailabilityCalendar) {
+        calendars[calendar.campsiteId] = calendar
+    }
 }

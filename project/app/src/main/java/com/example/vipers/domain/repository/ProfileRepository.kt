@@ -16,4 +16,10 @@ interface ProfileRepository {
 
     /** Creates or updates [profile], using its ID as the document ID. */
     suspend fun saveProfile(profile: UserProfile)
+
+    /**
+     * The current name of the user with this [id], or "Deleted user" if they have no profile.
+     * Waiting lists and reservations use this instead of keeping their own copy of the name.
+     */
+    suspend fun getDisplayName(id: String): String = getProfile(id)?.name ?: "Deleted user"
 }

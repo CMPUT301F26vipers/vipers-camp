@@ -7,8 +7,12 @@ your story needs a field or method that isn't here.
 ## Rules for every collection
 
 - **Money** is a whole number of **cents** (`5000` = $50.00).
-- **Dates** (check-in, registration start…) are `"yyyy-MM-dd"` strings, e.g. `"2027-05-08"`.
-- **Times** (createdAt, joinedAt…) are **milliseconds since 1970** (`System.currentTimeMillis()`).
+- **Nights** (check-in, check-out, nights offered, availability) are `"yyyy-MM-dd"` strings, e.g. `"2027-05-08"`.
+- **Times** (lottery periods, createdAt, joinedAt…) are **milliseconds since 1970** (`System.currentTimeMillis()`).
+- **Names are not copied.** Look a user's name up with `ProfileRepository.getDisplayName(userId)`,
+  so a renamed user shows their new name everywhere (US 01.07.03).
+- **Checks go in the model**, not the screen. Each story adds the checks it needs (required
+  fields, date order, canLeave, canCancel…) to the model class, with unit tests.
 - **Enums** are saved as their name, e.g. `"HINTON"`, `"CONFIRMED"`.
 - **Removed** items stay in Firestore with `removed = true`, and lists skip them.
 - **Computed, never stored:** lottery status (Upcoming / Open / Drawn / Closed), a reservation being
@@ -60,8 +64,8 @@ Document ID = **device ID**.
 | ratingSum, ratingCount | number | average = sum / count |
 | removed | bool | |
 
-### `availability`: `AvailabilityCalendar`
-Document ID = **campsite ID**. Not used by a repository yet (added by the availability story).
+### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
+Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -75,8 +79,8 @@ Document ID = **campsite ID**. Not used by a repository yet (added by the availa
 | ownerId | string | |
 | campsiteIds | string[] | one lottery can cover several campsites |
 | nightsOffered | string[] | dates |
-| registrationStart, registrationEnd | string | joining period |
-| bookingStart, bookingEnd | string | reserving period |
+| registrationStart, registrationEnd | number | ms; joining period (date **and** time) |
+| bookingStart, bookingEnd | number | ms; reserving period |
 | winnersCount | number | ≥ 1 |
 | waitlistCapacity | number? | `null` = no limit |
 | drawnAt | number? | ms, `null` until the draw runs |
@@ -88,8 +92,7 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | Field | Type | Notes |
 |---|---|---|
 | lotteryId | string | |
-| userId | string | |
-| userName | string | copied for the owner's waiting list |
+| userId | string | name comes from `getDisplayName(userId)` |
 | groupSize | number | |
 | joinedAt | number | ms |
 | status | string | `WAITING`, `WON`, `LOST`, `DECLINED`, `RESERVED`, `EXPIRED`, `REMOVED` |
@@ -120,6 +123,8 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | recipientId | string | |
 | senderId | string | device ID, or `"system"` |
 | campsiteId | string? | |
+| lotteryId | string? | a WON tap opens Reserve for this lottery |
+| reservationId | string? | reservation notifications open this reservation |
 | type | string | `WON`, `NOT_SELECTED`, `RESERVATION_CONFIRMED`, `RESERVATION_CANCELLED`, `RESERVATION_REJECTED`, `OWNER_BROADCAST`, `NEW_MESSAGE`, `CAMPSITE_REMOVED` |
 | title, message | string | |
 | read | bool | |
@@ -165,7 +170,16 @@ same PR, and add a unit test with the fake.
 
 ## Seed data
 
-`SeedLoader.seed()` adds 4 campsites (one per region), 2 lotteries (one open, one drawn), a
-waiting-list entry and 3 reservations for **your** device (2 active, 1 past). Running it again does
-nothing if your device already has reservations. To reload it, delete the documents in the
-Firebase console.
+`SeedLoader.seed()` adds, once for everyone:
+- 2 owners (Priya Sharma, Daniel Okafor) and a demo entrant (Sam Patel)
+- 4 campsites, one per region, each open from 45 days ago to 60 days ahead
+- 5 lotteries: Hinton **open**; Banff, Jasper and Kananaskis **drawn** (booking now); an older Hinton one **closed**
+- Sam is waiting on the open lottery and **lost** the Banff and Jasper draws
+
+And for **your** device:
+- waiting on the open lottery, **won** Jasper (can reserve), reserved Banff, Kananaskis and the old Hinton one
+- 3 reservations (2 active, 1 past), with their nights in `heldNights`
+- 3 notifications (a win, a confirmed reservation, an owner message)
+
+Running it again does nothing if your device already has reservations. It isn't hooked up to a
+button yet (that comes with T-02). To reload, delete the documents in the Firebase console.

@@ -1,3 +1,8 @@
+/*
+ * MainActivity.kt
+ * The app's only Activity. It will host the navigation graph and bottom bar (T-02).
+ * Known issues: still shows the starter "Hello Android!" screen until T-02 replaces it.
+ */
 package com.example.vipers
 
 import android.os.Bundle
@@ -11,18 +16,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.lifecycle.lifecycleScope
-import com.example.vipers.data.seed.SeedLoader
 import com.example.vipers.ui.theme.VipersTheme
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // TEMPORARY: load demo data once. Delete before committing.
-        lifecycleScope.launch {
-            SeedLoader((application as CampApp).container).seed()
-        }
         enableEdgeToEdge()
         setContent {
             VipersTheme {

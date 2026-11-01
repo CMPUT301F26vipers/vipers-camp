@@ -56,11 +56,12 @@ data class Campsite(
         return ratingSum.toDouble() / ratingCount
     }
 
-    /** The nightly price as text for the UI, e.g. "$50 / night". */
+    /** The nightly price as text for the UI, e.g. "$50 / night" or "$65.50 / night". */
     fun priceText(): String {
-        // get dollar value
-        val dollarValue = pricePerNightCents / 100
-        return "$${dollarValue} / night"
+        val dollars = pricePerNightCents / 100
+        val cents = pricePerNightCents % 100
+        // only show cents when there are some
+        return if (cents == 0L) "$$dollars / night" else "$$dollars.%02d / night".format(cents)
     }
 
     /** True if the campsite has map coordinates (both [lat] and [lng] are set). */

@@ -8,6 +8,7 @@
  */
 package com.example.vipers.domain.repository
 
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 
 /** Saves and loads [Campsite]s. */
@@ -24,4 +25,10 @@ interface CampsiteRepository {
 
     /** Loads every campsite that hasn't been removed (Home search). */
     suspend fun getAllCampsites(): List<Campsite>
+
+    /** Loads the open and booked nights of [campsiteId], or an empty calendar if none are set. */
+    suspend fun getAvailability(campsiteId: String): AvailabilityCalendar
+
+    /** Saves [calendar] for its campsite, replacing the old one. */
+    suspend fun saveAvailability(calendar: AvailabilityCalendar)
 }

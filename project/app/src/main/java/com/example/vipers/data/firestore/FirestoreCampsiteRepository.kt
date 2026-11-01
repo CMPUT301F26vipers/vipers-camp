@@ -1,11 +1,12 @@
 /*
  * FirestoreCampsiteRepository.kt
- * The real CampsiteRepository: saves and loads campsites in the Firestore "campsites" collection
- * (Repository pattern).
+ * The real CampsiteRepository: saves and loads campsites in the Firestore "campsites" collection,
+ * and their open and booked nights in "availability" (Repository pattern).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  */
 package com.example.vipers.data.firestore
 
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.repository.CampsiteRepository
@@ -18,6 +19,7 @@ class FirestoreCampsiteRepository(
 ) : CampsiteRepository {
 
     private val collection = db.collection("campsites")
+    private val availability = db.collection("availability")
 
     override suspend fun addCampsite(campsite: Campsite): String {
         val doc = collection.document() // Firestore makes a new random ID
@@ -42,6 +44,25 @@ class FirestoreCampsiteRepository(
             .whereEqualTo("removed", false)
             .get().await()
             .documents.map { it.toCampsite() }
+
+    override suspend fun getAvailability(campsiteId: String): AvailabilityCalendar {
+        val snapshot = availability.document(campsiteId).get().await()
+        return AvailabilityCalendar(
+            campsiteId = campsiteId,
+            openNights = snapshot.getStringList("openNights"),
+            heldNights = snapshot.getStringList("heldNights"),
+        )
+    }
+
+    override suspend fun saveAvailability(calendar: AvailabilityCalendar) {
+        availability.document(calendar.campsiteId).set(
+            mapOf(
+                "campsiteId" to calendar.campsiteId,
+                "openNights" to calendar.openNights,
+                "heldNights" to calendar.heldNights,
+            )
+        ).await()
+    }
 }
 
 /** Turns a campsite into the fields saved in its Firestore document. */
