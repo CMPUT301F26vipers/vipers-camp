@@ -34,11 +34,12 @@ private val tabRoutes = listOf(
 )
 
 /**
- * The whole app's navigation. [isAdmin] shows the Admin tab, and [onLoadDemoData] is called
+ * The whole app's navigation. [isAdmin] shows the Admin tab, [userId] is the ID of current user
+ * to be used when trying to load user's campsites, and [onLoadDemoData] is called
  * by the button on Settings.
  */
 @Composable
-fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
+fun AppNavigation(isAdmin: Boolean, userId: String, onLoadDemoData: () -> Unit) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -56,7 +57,7 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
             composable(Routes.HOME) { HomeScreen() }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
             composable(Routes.CAMPSITES) {
-                MyCampsitesScreen(onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) })
+                MyCampsitesScreen(onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) }, ownerID = userId)
             }
             composable(Routes.ADD_CAMPSITE) {
                 CampsiteFormScreen(onBack = { navController.popBackStack() })

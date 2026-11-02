@@ -1,16 +1,14 @@
-package com.example.vipers.campsites
+package com.example.vipers.ui.campsites
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.domain.model.Campsite
-import com.example.vipers.ui.campsites.MyCampsitesViewModel
-import junit.framework.TestCase.assertEquals
+import junit.framework.TestCase
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
 
 class MyCampsitesViewModelTest {
 
@@ -37,7 +35,7 @@ class MyCampsitesViewModelTest {
 
         // 3. ASSERT: The list should be perfectly empty
         val actualList = viewModel.campsites.value
-        assertEquals(0, actualList.size)
+        TestCase.assertEquals(0, actualList.size)
     }
 
     @Test
@@ -57,8 +55,8 @@ class MyCampsitesViewModelTest {
 
         // 3. ASSERT: The list should contain our 2 items
         val actualList = viewModel.campsites.value
-        assertEquals(2, actualList.size)
-        assertEquals("My First Camp", actualList[0].name)
+        TestCase.assertEquals(2, actualList.size)
+        TestCase.assertEquals("My First Camp", actualList[0].name)
     }
 
     @Test
@@ -79,7 +77,7 @@ class MyCampsitesViewModelTest {
 
         // 3. ASSERT: The list should contain our 2 items
         val actualList = viewModel.campsites.value
-        assertEquals(0, actualList.size)
+        TestCase.assertEquals(0, actualList.size)
     }
 
     @After

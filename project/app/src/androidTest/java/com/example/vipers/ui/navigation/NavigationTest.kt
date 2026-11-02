@@ -22,9 +22,9 @@ class NavigationTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private fun startApp(isAdmin: Boolean = false) {
+    private fun startApp(isAdmin: Boolean = false, userId: String = "user123") {
         composeRule.setContent {
-            VipersTheme { AppNavigation(isAdmin = isAdmin, onLoadDemoData = {}) }
+            VipersTheme { AppNavigation(isAdmin = isAdmin, onLoadDemoData = {}, userId = userId) }
         }
     }
 
