@@ -42,6 +42,34 @@ class CampsiteTest {
     }
 
     @Test
+    fun ratingText_saysNoRatingsYetWithNoRatings() {
+        assertEquals("No ratings yet", Campsite(ratingSum = 0, ratingCount = 0).ratingText())
+    }
+
+    @Test
+    fun ratingText_showsTheAverageWithOneDecimal() {
+        // 46 stars over 10 ratings is 4.6
+        assertEquals("★ 4.6", Campsite(ratingSum = 46, ratingCount = 10).ratingText())
+        assertEquals("★ 5.0", Campsite(ratingSum = 5, ratingCount = 1).ratingText())
+    }
+
+    @Test
+    fun ratingText_roundsToOneDecimal() {
+        // 13 stars over 3 ratings is 4.333...
+        assertEquals("★ 4.3", Campsite(ratingSum = 13, ratingCount = 3).ratingText())
+    }
+
+    @Test
+    fun guestsText_showsTheMaximumOccupancy() {
+        assertEquals("8 guests", Campsite(maxOccupancy = 8).guestsText())
+    }
+
+    @Test
+    fun guestsText_usesSingularForOneGuest() {
+        assertEquals("1 guest", Campsite(maxOccupancy = 1).guestsText())
+    }
+
+    @Test
     fun matchesSearch_matchesTheStartOfTheName() {
         val campsite = Campsite(name = "Hinton Ridge Campground")
         assertTrue(campsite.matchesSearch("Hin"))

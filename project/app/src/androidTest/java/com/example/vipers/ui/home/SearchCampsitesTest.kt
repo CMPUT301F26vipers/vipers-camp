@@ -1,7 +1,7 @@
 /*
  * SearchCampsitesTest.kt
  * Intent tests for US 01.01.01: searching campsites by name on Home, one test per acceptance
- * criterion. Uses the fake campsite repository, so it doesn't touch Firestore.
+ * criterion. Uses the fake campsite and lottery repositories, so it doesn't touch Firestore.
  * Known issues: none.
  */
 package com.example.vipers.ui.home
@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Region
 import com.example.vipers.ui.theme.VipersTheme
@@ -36,7 +37,10 @@ class SearchCampsitesTest {
 
     @Before
     fun openHome() {
-        val controller = CampsiteSearchController(FakeCampsiteRepository(campsites))
+        val controller = CampsiteSearchController(
+            FakeCampsiteRepository(campsites),
+            FakeLotteryRepository(),
+        )
         composeRule.setContent { VipersTheme { HomeScreen(controller) } }
     }
 
