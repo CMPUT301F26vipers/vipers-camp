@@ -1,3 +1,10 @@
+/*
+ * CampsiteDetailsScreen.kt
+ *
+ * Displays the details of a specific campsite and provides management options for the owner.
+ *
+ * Known issues: None.
+ */
 package com.example.vipers.ui.campsites
 
 import androidx.compose.foundation.layout.Column

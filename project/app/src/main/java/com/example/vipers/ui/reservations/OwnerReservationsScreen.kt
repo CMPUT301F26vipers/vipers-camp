@@ -1,3 +1,10 @@
+/*
+ * OwnerReservationsScreen.kt
+ *
+ * Displays the list of reservations made at the owner's campsites.
+ *
+ * Known issues: UI is currently a placeholder.
+ */
 package com.example.vipers.ui.reservations
 
 import androidx.compose.foundation.background

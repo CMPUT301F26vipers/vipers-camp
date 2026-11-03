@@ -18,9 +18,9 @@ class MyCampsitesViewModelTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
     }
 
-
     @Test
-    fun loadCampsites_withNoCampsites_returnsEmptyList(){
+    fun init_withNoCampsites_returnsEmptyList() {
+        // 1. ARRANGE
         val myUserId = "user12"
         val someoneElseId = "user999"
 
@@ -28,19 +28,18 @@ class MyCampsitesViewModelTest {
             Campsite(id = "3", ownerId = someoneElseId, name = "Not My Camp")
         )
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
-        val viewModel = MyCampsitesViewModel(fakeRepo)
 
-        // 2. ACT: Fetch the campsites
-        viewModel.loadCampsites(myUserId)
+        // 2. ACT: Create ViewModel. It automatically fetches in the init block now.
+        val viewModel = MyCampsitesViewModel(fakeRepo, myUserId)
 
-        // 3. ASSERT: The list should be perfectly empty
-        val actualList = viewModel.campsites.value
+        // 3. ASSERT: No longer uses .value because we switched to mutableStateOf
+        val actualList = viewModel.campsites
         TestCase.assertEquals(0, actualList.size)
     }
 
     @Test
-    fun loadCampsites_withCampsites_returnsPopulatedList() {
-        // 1. ARRANGE: Create a repo WITH campsites for our user
+    fun init_withCampsites_returnsPopulatedList() {
+        // 1. ARRANGE
         val myUserId = "user12"
 
         val dummyData = listOf(
@@ -48,20 +47,19 @@ class MyCampsitesViewModelTest {
             Campsite(id = "2", ownerId = myUserId, name = "My Second Camp")
         )
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
-        val viewModel = MyCampsitesViewModel(fakeRepo)
 
-        // 2. ACT: Fetch the campsites
-        viewModel.loadCampsites(myUserId)
+        // 2. ACT: Create ViewModel
+        val viewModel = MyCampsitesViewModel(fakeRepo, myUserId)
 
-        // 3. ASSERT: The list should contain our 2 items
-        val actualList = viewModel.campsites.value
+        // 3. ASSERT
+        val actualList = viewModel.campsites
         TestCase.assertEquals(2, actualList.size)
         TestCase.assertEquals("My First Camp", actualList[0].name)
     }
 
     @Test
-    fun loadCampsites_withCampsitesButNothingUnderUser_returnsEmptyList() {
-        // 1. ARRANGE: Create a repo WITH campsites for our user
+    fun init_withCampsitesButNothingUnderUser_returnsEmptyList() {
+        // 1. ARRANGE
         val myUserId = "user12"
         val otherID = "other12"
 
@@ -70,13 +68,12 @@ class MyCampsitesViewModelTest {
             Campsite(id = "2", ownerId = otherID, name = "My Second Camp")
         )
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
-        val viewModel = MyCampsitesViewModel(fakeRepo)
 
-        // 2. ACT: Fetch the campsites
-        viewModel.loadCampsites(myUserId)
+        // 2. ACT: Create ViewModel
+        val viewModel = MyCampsitesViewModel(fakeRepo, myUserId)
 
-        // 3. ASSERT: The list should contain our 2 items
-        val actualList = viewModel.campsites.value
+        // 3. ASSERT
+        val actualList = viewModel.campsites
         TestCase.assertEquals(0, actualList.size)
     }
 

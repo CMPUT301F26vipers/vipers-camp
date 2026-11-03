@@ -20,15 +20,14 @@ class MyCampsitesScreenTest {
     fun emptyCampsites_showsPlaceholderText() {
         // 1. ARRANGE: Create an empty fake repository
         val fakeRepo = FakeCampsiteRepository(initial = emptyList())
-        val viewModel = MyCampsitesViewModel(fakeRepo)
+        val viewModel = MyCampsitesViewModel(fakeRepo, "user12")
 
         // 2. ACT: Launch the screen with the empty ViewModel
         composeTestRule.setContent {
             MyCampsitesScreen(
                 onAddCampsite = {},
-                ownerID = "user12",
                 viewModel = viewModel,
-                onCampsiteDesc = {},
+                onOpenCampsite = {},
                 onOpenSent = {},
                 onOpenReservations = {}
             )
@@ -45,15 +44,14 @@ class MyCampsitesScreenTest {
             Campsite(id = "1", ownerId = "user12", name = "Test Camp Alpha")
         )
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
-        val viewModel = MyCampsitesViewModel(fakeRepo)
+        val viewModel = MyCampsitesViewModel(fakeRepo, "user12")
 
         // 2. ACT: Launch the screen
         composeTestRule.setContent {
             MyCampsitesScreen(
                 onAddCampsite = {},
-                ownerID = "user12",
                 viewModel = viewModel,
-                onCampsiteDesc = {},
+                onOpenCampsite = {},
                 onOpenSent = {},
                 onOpenReservations = {}
             )
@@ -70,15 +68,14 @@ class MyCampsitesScreenTest {
             Campsite(id = "1", ownerId = "user123", name = "Test Camp Alpha")
         )
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
-        val viewModel = MyCampsitesViewModel(fakeRepo)
+        val viewModel = MyCampsitesViewModel(fakeRepo, "user12")
 
         // 2. ACT: Launch the screen
         composeTestRule.setContent {
             MyCampsitesScreen(
                 onAddCampsite = {},
-                ownerID = "user12",
                 viewModel = viewModel,
-                onCampsiteDesc = {},
+                onOpenCampsite = {},
                 onOpenSent = {},
                 onOpenReservations = {}
             )

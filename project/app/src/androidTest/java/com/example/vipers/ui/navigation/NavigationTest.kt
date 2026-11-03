@@ -53,7 +53,7 @@ class NavigationTest {
 
     private fun startApp(isAdmin: Boolean = false, userId: String = "user123") {
         composeRule.setContent {
-            VipersTheme { AppNavigation(isAdmin = isAdmin, onLoadDemoData = {}, userId = userId) }
+            VipersTheme { AppNavigation(isAdmin = isAdmin, onLoadDemoData = {}) }
         }
     }
 

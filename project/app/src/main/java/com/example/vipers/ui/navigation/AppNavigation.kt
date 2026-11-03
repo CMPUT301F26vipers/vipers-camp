@@ -14,10 +14,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
@@ -42,7 +44,7 @@ private val tabRoutes = listOf(
  * by the button on Settings.
  */
 @Composable
-fun AppNavigation(isAdmin: Boolean, userId: String, onLoadDemoData: () -> Unit) {
+fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -60,11 +62,14 @@ fun AppNavigation(isAdmin: Boolean, userId: String, onLoadDemoData: () -> Unit) 
             composable(Routes.HOME) { HomeScreen() }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
             composable(Routes.CAMPSITES) {
-                MyCampsitesScreen(onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) }, onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) }, onOpenSent = { navController.navigate(Routes.OWNER_SENT) },
-                    onCampsiteDesc = { campsiteId ->
+                MyCampsitesScreen(
+                    onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) },
+                    onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) },
+                    onOpenSent = { navController.navigate(Routes.OWNER_SENT) },
+                    onOpenCampsite = { campsiteId -> // Updated name here!
                         val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
-                    }, ownerID = userId)
+                    })
             }
             composable(Routes.ADD_CAMPSITE) {
                 CampsiteFormScreen(onBack = { navController.popBackStack() })
@@ -75,7 +80,11 @@ fun AppNavigation(isAdmin: Boolean, userId: String, onLoadDemoData: () -> Unit) 
             composable(Routes.OWNER_SENT) {
                 SentScreen(onBack = { navController.popBackStack() })
             }
-            composable(Routes.CAMPSITE_DETAILS) { backStackEntry ->
+            composable(
+                route = Routes.CAMPSITE_DETAILS,
+                // You MUST declare the argument here for Compose to extract it from the route
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
                 CampsiteDetailsScreen(
                     campsiteId = campsiteId,

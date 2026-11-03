@@ -40,15 +40,13 @@ class MainActivity : ComponentActivity() {
                 // The Admin tab only shows for admins (isAdmin is set in the Firebase console).
                 LaunchedEffect(Unit) {
                     try {
-                        val profile = container.deviceIdentityManager.currentProfile()
-                        isAdmin = profile?.isAdmin?: false
-                        currentUserId = profile?.id?: ""
+                        isAdmin = container.deviceIdentityManager.currentProfile()?.isAdmin?: false
                     } catch (e: Exception) {
                         isAdmin = false // offline: just hide the Admin tab
                     }
                 }
 
-                AppNavigation(isAdmin = isAdmin, userId = currentUserId, onLoadDemoData = { loadDemoData() })
+                AppNavigation(isAdmin = isAdmin, onLoadDemoData = { loadDemoData() })
             }
         }
     }

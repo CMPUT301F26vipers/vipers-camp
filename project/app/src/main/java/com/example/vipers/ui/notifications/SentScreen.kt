@@ -1,3 +1,10 @@
+/*
+ * SentScreen.kt
+ *
+ * Displays notifications or requests sent by the campsite owner.
+ *
+ * Known issues: UI is currently a placeholder.
+ */
 package com.example.vipers.ui.notifications
 
 import androidx.compose.foundation.background

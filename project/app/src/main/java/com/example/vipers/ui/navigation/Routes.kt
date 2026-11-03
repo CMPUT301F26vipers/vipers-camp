@@ -21,5 +21,5 @@ object Routes {
 
     const val OWNER_SENT = "owner_sent"
 
-    const val CAMPSITE_DETAILS = "campsite_details"
+    const val CAMPSITE_DETAILS = "campsite_details/{campsiteId}"
 }
