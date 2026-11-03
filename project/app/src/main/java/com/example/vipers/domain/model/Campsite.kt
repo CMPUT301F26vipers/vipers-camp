@@ -7,6 +7,8 @@
  */
 package com.example.vipers.domain.model
 
+import java.util.Locale
+
 /**
  * A campsite listed by an owner.
  *
@@ -62,6 +64,21 @@ data class Campsite(
         val cents = pricePerNightCents % 100
         // only show cents when there are some
         return if (cents == 0L) "$$dollars / night" else "$$dollars.%02d / night".format(cents)
+    }
+
+    /**
+     * The average rating as text for the UI, e.g. "★ 4.5", or "No ratings yet" if nobody has
+     * rated it (US 01.01.04).
+     */
+    fun ratingText(): String {
+        if (ratingCount == 0) return "No ratings yet"
+        // always a dot, even on phones set to a language that writes 4,5
+        return "★ %.1f".format(Locale.US, averageRating())
+    }
+
+    /** The maximum occupancy as text for the UI, e.g. "6 guests" or "1 guest". */
+    fun guestsText(): String {
+        return if (maxOccupancy == 1) "1 guest" else "$maxOccupancy guests"
     }
 
     /** True if the campsite has map coordinates (both [lat] and [lng] are set). */

@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 class CampsiteTest {
 
@@ -39,6 +40,46 @@ class CampsiteTest {
         assertTrue(Campsite(lat = 53.405, lng = -117.585).hasLocation())
         assertFalse(Campsite(lat = 53.405).hasLocation())
         assertFalse(Campsite().hasLocation())
+    }
+
+    @Test
+    fun ratingText_saysNoRatingsYetWithNoRatings() {
+        assertEquals("No ratings yet", Campsite(ratingSum = 0, ratingCount = 0).ratingText())
+    }
+
+    @Test
+    fun ratingText_showsTheAverageWithOneDecimal() {
+        // 46 stars over 10 ratings is 4.6
+        assertEquals("★ 4.6", Campsite(ratingSum = 46, ratingCount = 10).ratingText())
+        assertEquals("★ 5.0", Campsite(ratingSum = 5, ratingCount = 1).ratingText())
+    }
+
+    @Test
+    fun ratingText_roundsToOneDecimal() {
+        // 13 stars over 3 ratings is 4.333...
+        assertEquals("★ 4.3", Campsite(ratingSum = 13, ratingCount = 3).ratingText())
+    }
+
+    @Test
+    fun ratingText_alwaysUsesADot() {
+        val before = Locale.getDefault()
+        // French writes 4,5, but the card should still say 4.5
+        Locale.setDefault(Locale.FRANCE)
+        try {
+            assertEquals("★ 4.5", Campsite(ratingSum = 9, ratingCount = 2).ratingText())
+        } finally {
+            Locale.setDefault(before)
+        }
+    }
+
+    @Test
+    fun guestsText_showsTheMaximumOccupancy() {
+        assertEquals("8 guests", Campsite(maxOccupancy = 8).guestsText())
+    }
+
+    @Test
+    fun guestsText_usesSingularForOneGuest() {
+        assertEquals("1 guest", Campsite(maxOccupancy = 1).guestsText())
     }
 
     @Test
