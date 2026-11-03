@@ -1,10 +1,12 @@
 /*
  * HomeScreen.kt
  * The Home tab (mockups E02, E02b, E02c), where the app opens. The entrant searches campsites by
- * name here (US 01.01.01); CampsiteSearchController does the searching.
- * Known issues: Filters (01.01.02), the result count and loading indicator (01.01.03), the full
- * summary card (01.01.04), opening a campsite's details (01.01.05) and Scan QR (01.12.01) are
- * added by those stories.
+ * name here (US 01.01.01), and each result shows a summary card (US 01.01.04);
+ * CampsiteSearchController does the searching.
+ * Known issues: Filters (01.01.02), the result count and loading indicator (01.01.03), opening a
+ * campsite's details (01.01.05) and Scan QR (01.12.01) are added by those stories. The picture on
+ * each card is a placeholder until campsites have promo images (02.01.02b), and the "% match"
+ * on the mockup is the WOW factor (W-01).
  */
 package com.example.vipers.ui.home
 
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,10 +50,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.InputHeight
 import com.example.vipers.ui.theme.InputShape
 import com.example.vipers.ui.theme.Primary
+import com.example.vipers.ui.theme.TextMuted
 
 /**
  * The Home screen. The mockup titles it "Campsites" because it's where you search for them.
@@ -85,7 +91,9 @@ fun HomeScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(results, key = { it.id }) { campsite -> CampsiteResultRow(campsite) }
+                items(results, key = { it.id }) { campsite ->
+                    CampsiteResultRow(campsite, hasOpenLottery = controller.hasOpenLottery(campsite))
+                }
             }
         }
     }
@@ -129,30 +137,70 @@ private fun SearchField(text: String, onTextChange: (String) -> Unit, modifier: 
     }
 }
 
-/** One search result: the campsite's [Campsite.name] and [Campsite.address]. */
+/**
+ * One search result, the summary card from mockup E02: the campsite's name, location, maximum
+ * occupancy and rating, and a badge saying whether it [hasOpenLottery]. Long names and locations
+ * are cut short with "…" so the card keeps its size.
+ */
 @Composable
-private fun CampsiteResultRow(campsite: Campsite) {
+private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth().testTag("campsite_result"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                campsite.name,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                campsite.address,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        Row(
+            Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // placeholder until campsites have promo images
+            Box(
+                Modifier.size(48.dp).background(GreenFill, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(R.drawable.ic_campsite), contentDescription = null, tint = Primary)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    campsite.name,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    campsite.address,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${campsite.guestsText()} · ${campsite.ratingText()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            LotteryBadge(hasOpenLottery)
         }
     }
+}
+
+/** The small "Lottery open" or "No lottery" label on a result card. */
+@Composable
+private fun LotteryBadge(hasOpenLottery: Boolean) {
+    Text(
+        if (hasOpenLottery) "Lottery open" else "No lottery",
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = if (hasOpenLottery) Primary else TextMuted,
+        maxLines = 1,
+        modifier = Modifier
+            .background(if (hasOpenLottery) GreenFill else Divider, CircleShape)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 /** The search icon, [title] and [message] shown when there are no results (mockup E02c). */
