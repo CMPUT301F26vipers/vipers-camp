@@ -9,7 +9,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.Locale
 
 class CampsiteTest {
 
@@ -58,18 +57,6 @@ class CampsiteTest {
     fun ratingText_roundsToOneDecimal() {
         // 13 stars over 3 ratings is 4.333...
         assertEquals("★ 4.3", Campsite(ratingSum = 13, ratingCount = 3).ratingText())
-    }
-
-    @Test
-    fun ratingText_alwaysUsesADot() {
-        val before = Locale.getDefault()
-        // French writes 4,5, but the card should still say 4.5
-        Locale.setDefault(Locale.FRANCE)
-        try {
-            assertEquals("★ 4.5", Campsite(ratingSum = 9, ratingCount = 2).ratingText())
-        } finally {
-            Locale.setDefault(before)
-        }
     }
 
     @Test

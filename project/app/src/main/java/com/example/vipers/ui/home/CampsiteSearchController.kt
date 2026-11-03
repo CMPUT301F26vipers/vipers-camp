@@ -28,12 +28,11 @@ import kotlinx.coroutines.launch
 /**
  * Turns the entrant's search text into the list of campsites shown on Home.
  * Takes the [campsiteRepository] and [lotteryRepository] in its constructor so tests can pass
- * fake ones, and [now] (milliseconds since 1970) so tests can pick the time.
+ * fake ones.
  */
 class CampsiteSearchController(
     private val campsiteRepository: CampsiteRepository,
     private val lotteryRepository: LotteryRepository,
-    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
 
     /** What the user typed in the search bar. */
@@ -80,18 +79,17 @@ class CampsiteSearchController(
     }
 
     /**
-     * Gets the campsites from the repository, finds which ones have an open lottery, and sets
-     * [isLoading] and [loadFailed]. [loadCampsites] runs this in the background; unit tests call
-     * it directly.
+     * Gets the campsites from the repository, finds which ones have a lottery open at time [now]
+     * (milliseconds since 1970), and sets [isLoading] and [loadFailed]. [loadCampsites] runs this
+     * in the background; unit tests call it directly and pass their own [now].
      */
-    suspend fun fetchCampsites() {
+    suspend fun fetchCampsites(now: Long = System.currentTimeMillis()) {
         isLoading = true
         try {
             val campsites = campsiteRepository.getAllCampsites()
-            val time = now()
             val withOpenLottery = campsites.filter { campsite ->
                 lotteryRepository.getLotteriesForCampsite(campsite.id)
-                    .any { it.status(time) == LotteryStatus.OPEN }
+                    .any { it.status(now) == LotteryStatus.OPEN }
             }
             allCampsites = campsites
             openLotteryCampsiteIds = withOpenLottery.map { it.id }.toSet()

@@ -66,12 +66,8 @@ class CampsiteSearchControllerTest {
     private fun loadedController(
         lotteryRepository: LotteryRepository = FakeLotteryRepository(lotteries),
     ): CampsiteSearchController = runBlocking {
-        val controller = CampsiteSearchController(
-            FakeCampsiteRepository(campsites),
-            lotteryRepository,
-            now = { now },
-        )
-        controller.fetchCampsites()
+        val controller = CampsiteSearchController(FakeCampsiteRepository(campsites), lotteryRepository)
+        controller.fetchCampsites(now)
         controller
     }
 
