@@ -13,10 +13,13 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.vipers.CampApp
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.repository.CampsiteRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /**
  * Turns the entrant's search text into the list of campsites shown on Home.
@@ -52,16 +55,31 @@ class CampsiteSearchController(
         searchText = text
     }
 
-    /** Loads the campsites from the repository. Home calls this each time it opens. */
-    suspend fun loadCampsites() {
+    /**
+     * Loads the campsites in the background. Home calls this each time it opens. The load runs in
+     * [viewModelScope], so it keeps going if the user switches tabs before it finishes.
+     */
+    fun loadCampsites() {
+        viewModelScope.launch { fetchCampsites() }
+    }
+
+    /**
+     * Gets the campsites from the repository and sets [isLoading] and [loadFailed].
+     * [loadCampsites] runs this in the background; unit tests call it directly.
+     */
+    suspend fun fetchCampsites() {
         isLoading = true
         try {
             allCampsites = campsiteRepository.getAllCampsites()
             loadFailed = false
+        } catch (e: CancellationException) {
+            // the load was stopped on purpose (the controller is gone), so it didn't fail
+            throw e
         } catch (e: Exception) {
             loadFailed = true
+        } finally {
+            isLoading = false
         }
-        isLoading = false
     }
 
     companion object {

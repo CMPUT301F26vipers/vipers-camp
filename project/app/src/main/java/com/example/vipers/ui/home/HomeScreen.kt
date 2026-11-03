@@ -10,29 +10,35 @@ package com.example.vipers.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +47,7 @@ import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.GreenFill
+import com.example.vipers.ui.theme.InputHeight
 import com.example.vipers.ui.theme.InputShape
 import com.example.vipers.ui.theme.Primary
 
@@ -58,13 +65,9 @@ fun HomeScreen(
 
     Column {
         TopBar(title = "Campsites")
-        OutlinedTextField(
-            value = controller.searchText,
-            onValueChange = controller::onSearchTextChange,
-            placeholder = { Text("Search campsites") },
-            leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
-            singleLine = true,
-            shape = InputShape,
+        SearchField(
+            text = controller.searchText,
+            onTextChange = controller::onSearchTextChange,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -85,6 +88,44 @@ fun HomeScreen(
                 items(results, key = { it.id }) { campsite -> CampsiteResultRow(campsite) }
             }
         }
+    }
+}
+
+/**
+ * The search bar, [InputHeight] tall like the mockup. OutlinedTextField can't be shorter than 56dp
+ * without cutting off its text, so this is a BasicTextField with the same outlined look.
+ */
+@Composable
+private fun SearchField(text: String, onTextChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val interactionSource = remember { MutableInteractionSource() }
+    BasicTextField(
+        value = text,
+        onValueChange = onTextChange,
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        interactionSource = interactionSource,
+        modifier = modifier.height(InputHeight),
+    ) { innerTextField ->
+        OutlinedTextFieldDefaults.DecorationBox(
+            value = text,
+            innerTextField = innerTextField,
+            enabled = true,
+            singleLine = true,
+            visualTransformation = VisualTransformation.None,
+            interactionSource = interactionSource,
+            placeholder = { Text("Search campsites") },
+            leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            container = {
+                OutlinedTextFieldDefaults.Container(
+                    enabled = true,
+                    isError = false,
+                    interactionSource = interactionSource,
+                    shape = InputShape,
+                )
+            },
+        )
     }
 }
 
