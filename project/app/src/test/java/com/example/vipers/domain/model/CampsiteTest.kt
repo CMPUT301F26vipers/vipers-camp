@@ -40,4 +40,36 @@ class CampsiteTest {
         assertFalse(Campsite(lat = 53.405).hasLocation())
         assertFalse(Campsite().hasLocation())
     }
+
+    @Test
+    fun matchesSearch_matchesTheStartOfTheName() {
+        val campsite = Campsite(name = "Hinton Ridge Campground")
+        assertTrue(campsite.matchesSearch("Hin"))
+        assertTrue(campsite.matchesSearch("Hinton Ridge Campground"))
+    }
+
+    @Test
+    fun matchesSearch_ignoresUpperAndLowerCase() {
+        val campsite = Campsite(name = "Hinton Ridge Campground")
+        assertTrue(campsite.matchesSearch("hin"))
+        assertTrue(campsite.matchesSearch("HINTON RIDGE"))
+    }
+
+    @Test
+    fun matchesSearch_doesNotMatchTheMiddleOfTheName() {
+        // "Ridge" is in the name but the name doesn't start with it
+        assertFalse(Campsite(name = "Hinton Ridge Campground").matchesSearch("Ridge"))
+        assertFalse(Campsite(name = "Hinton Ridge Campground").matchesSearch("lake louise"))
+    }
+
+    @Test
+    fun matchesSearch_emptyTextMatchesEveryCampsite() {
+        assertTrue(Campsite(name = "Bow Valley Campground").matchesSearch(""))
+        assertTrue(Campsite(name = "Bow Valley Campground").matchesSearch("   "))
+    }
+
+    @Test
+    fun matchesSearch_ignoresSpacesAroundTheText() {
+        assertTrue(Campsite(name = "Bow Valley Campground").matchesSearch("  bow "))
+    }
 }

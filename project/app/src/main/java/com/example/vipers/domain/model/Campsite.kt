@@ -68,4 +68,12 @@ data class Campsite(
     fun hasLocation(): Boolean {
         return lat != null && lng != null
     }
+
+    /**
+     * True if [name] starts with [searchText], ignoring upper/lower case and spaces around the
+     * text. An empty [searchText] matches every campsite (US 01.01.01).
+     */
+    fun matchesSearch(searchText: String): Boolean {
+        return name.startsWith(searchText.trim(), ignoreCase = true)
+    }
 }
