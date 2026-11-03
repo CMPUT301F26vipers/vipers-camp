@@ -19,14 +19,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.vipers.ui.admin.AdminHomeScreen
+import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
+import com.example.vipers.ui.notifications.SentScreen
 import com.example.vipers.ui.profile.PolicyScreen
 import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
+import com.example.vipers.ui.reservations.OwnerReservationsScreen
 
 // The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
@@ -57,10 +60,27 @@ fun AppNavigation(isAdmin: Boolean, userId: String, onLoadDemoData: () -> Unit) 
             composable(Routes.HOME) { HomeScreen() }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
             composable(Routes.CAMPSITES) {
-                MyCampsitesScreen(onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) }, ownerID = userId)
+                MyCampsitesScreen(onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) }, onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) }, onOpenSent = { navController.navigate(Routes.OWNER_SENT) },
+                    onCampsiteDesc = { campsiteId ->
+                        val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    }, ownerID = userId)
             }
             composable(Routes.ADD_CAMPSITE) {
                 CampsiteFormScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.OWNER_RESERVATIONS) {
+                OwnerReservationsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.OWNER_SENT) {
+                SentScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.CAMPSITE_DETAILS) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CampsiteDetailsScreen(
+                    campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.NOTIFICATIONS) { NotificationsScreen() }
             composable(Routes.PROFILE) {

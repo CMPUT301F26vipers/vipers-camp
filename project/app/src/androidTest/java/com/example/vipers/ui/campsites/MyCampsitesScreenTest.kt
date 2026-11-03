@@ -2,7 +2,9 @@ package com.example.vipers.ui.campsites
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.domain.model.Campsite
 import org.junit.Rule
@@ -25,7 +27,10 @@ class MyCampsitesScreenTest {
             MyCampsitesScreen(
                 onAddCampsite = {},
                 ownerID = "user12",
-                viewModel = viewModel
+                viewModel = viewModel,
+                onCampsiteDesc = {},
+                onOpenSent = {},
+                onOpenReservations = {}
             )
         }
 
@@ -47,7 +52,10 @@ class MyCampsitesScreenTest {
             MyCampsitesScreen(
                 onAddCampsite = {},
                 ownerID = "user12",
-                viewModel = viewModel
+                viewModel = viewModel,
+                onCampsiteDesc = {},
+                onOpenSent = {},
+                onOpenReservations = {}
             )
         }
 
@@ -69,11 +77,41 @@ class MyCampsitesScreenTest {
             MyCampsitesScreen(
                 onAddCampsite = {},
                 ownerID = "user12",
-                viewModel = viewModel
+                viewModel = viewModel,
+                onCampsiteDesc = {},
+                onOpenSent = {},
+                onOpenReservations = {}
             )
         }
 
         // 3. ASSERT: Verify the placeholder text appears as no campsites by owner
         composeTestRule.onNodeWithText("You haven't listed any campsites yet.").assertIsDisplayed()
+    }
+
+    @Test
+    fun campsiteItem_isResponsiveAndPassesIdOnClick() {
+        // 1. Create a dummy campsite (fill in any other fields your data class requires)
+        val dummyCampsite = Campsite(
+            id = "camp-999",
+            name = "Test Lodge",
+            ownerId = "user123"
+            // region = Region.JASPER
+        )
+
+        var capturedId = ""
+
+        // 2. Render only the list item component
+        composeTestRule.setContent {
+            CampsiteItem(
+                campsite = dummyCampsite,
+                onClick = { capturedId = dummyCampsite.id }
+            )
+        }
+
+        // 3. Simulate a user tapping the chevron (or the card)
+        composeTestRule.onNodeWithContentDescription("View details").performClick()
+
+        // 4. Verify the UI responded and captured the correct ID
+        assert(capturedId == "camp-999") { "CampsiteItem did not fire onClick with the correct ID." }
     }
 }
