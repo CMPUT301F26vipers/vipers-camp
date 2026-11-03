@@ -2,7 +2,8 @@
  * NavigationTest.kt
  * Intent tests for T-02: the app opens on Home, every tab opens its screen, Settings and Policy
  * open from Profile, Back returns to the previous screen, and the Admin tab is for admins only.
- * Known issues: tests the navigation on its own, so it doesn't touch Firestore.
+ * Known issues: tests the navigation on its own. The app's repositories are swapped for empty
+ * fakes so Home's campsite search doesn't touch Firestore.
  */
 package com.example.vipers.ui.navigation
 
@@ -19,7 +20,16 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso.pressBack
+import androidx.test.platform.app.InstrumentationRegistry
+import com.example.vipers.AppContainer
+import com.example.vipers.CampApp
+import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
+import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.ui.theme.VipersTheme
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -27,6 +37,19 @@ class NavigationTest {
 
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Before
+    fun useFakeRepositories() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(),
+            campsiteRepository = FakeCampsiteRepository(),
+            lotteryRepository = FakeLotteryRepository(),
+            reservationRepository = FakeReservationRepository(),
+            notificationRepository = FakeNotificationRepository(),
+        )
+    }
 
     private fun startApp(isAdmin: Boolean = false, userId: String = "user123") {
         composeRule.setContent {
@@ -36,13 +59,15 @@ class NavigationTest {
 
     private fun tapTab(route: String) = composeRule.onNodeWithTag("tab_$route").performClick()
 
+    private fun assertHomeShown() = composeRule.onNodeWithTag("search_field").assertIsDisplayed()
+
     private fun assertShown(text: String) =
         composeRule.onNodeWithText(text, substring = true).assertIsDisplayed()
 
     @Test
     fun opensOnHome() {
         startApp()
-        assertShown("Campsite search is added")
+        assertHomeShown()
     }
 
     @Test
@@ -57,7 +82,7 @@ class NavigationTest {
         tapTab(Routes.PROFILE)
         assertShown("Editing your name")
         tapTab(Routes.HOME)
-        assertShown("Campsite search is added")
+        assertHomeShown()
     }
 
     @Test
