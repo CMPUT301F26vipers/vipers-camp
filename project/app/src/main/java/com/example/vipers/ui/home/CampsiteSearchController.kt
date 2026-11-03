@@ -5,7 +5,8 @@
  * marks which campsites have a lottery open for registration, for the result cards (US 01.01.04).
  * Known issues: the region, date and guest filters (01.01.02) and the result count and loading
  * indicator (01.01.03) are added by those stories. Finding the open lotteries takes one Firestore
- * query per campsite, which is fine for now but slow with many campsites.
+ * query per campsite, which is fine for now but slow with many campsites. If the lotteries can't
+ * be loaded, the campsites still show, but every card says "No lottery".
  */
 package com.example.vipers.ui.home
 
@@ -80,19 +81,17 @@ class CampsiteSearchController(
 
     /**
      * Gets the campsites from the repository, finds which ones have a lottery open at time [now]
-     * (milliseconds since 1970), and sets [isLoading] and [loadFailed]. [loadCampsites] runs this
-     * in the background; unit tests call it directly and pass their own [now].
+     * (milliseconds since 1970), and sets [isLoading] and [loadFailed]. Only a failed campsite load
+     * sets [loadFailed]. [loadCampsites] runs this in the background; unit tests call it directly
+     * and pass their own [now].
      */
     suspend fun fetchCampsites(now: Long = System.currentTimeMillis()) {
         isLoading = true
         try {
             val campsites = campsiteRepository.getAllCampsites()
-            val withOpenLottery = campsites.filter { campsite ->
-                lotteryRepository.getLotteriesForCampsite(campsite.id)
-                    .any { it.status(now) == LotteryStatus.OPEN }
-            }
+            val withOpenLottery = findOpenLotteries(campsites, now)
             allCampsites = campsites
-            openLotteryCampsiteIds = withOpenLottery.map { it.id }.toSet()
+            openLotteryCampsiteIds = withOpenLottery
             loadFailed = false
         } catch (e: CancellationException) {
             // the load was stopped on purpose (the controller is gone), so it didn't fail
@@ -101,6 +100,24 @@ class CampsiteSearchController(
             loadFailed = true
         } finally {
             isLoading = false
+        }
+    }
+
+    // IDs of the campsites that have a lottery open at time now. If the lotteries can't be loaded
+    // (e.g. offline), returns none, so the campsites still show, just without the badge.
+    private suspend fun findOpenLotteries(campsites: List<Campsite>, now: Long): Set<String> {
+        return try {
+            campsites
+                .filter { campsite ->
+                    lotteryRepository.getLotteriesForCampsite(campsite.id)
+                        .any { it.status(now) == LotteryStatus.OPEN }
+                }
+                .map { it.id }
+                .toSet()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptySet()
         }
     }
 

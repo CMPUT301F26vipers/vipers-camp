@@ -181,13 +181,16 @@ class CampsiteSearchControllerTest {
     }
 
     @Test
-    fun fetchCampsites_setsLoadFailedWhenLotteriesFail() {
+    fun fetchCampsites_stillShowsCampsitesWhenLotteriesFail() {
+        // the lotteries can't be loaded, like Firestore when the phone goes offline mid-load
         val failing = object : LotteryRepository by FakeLotteryRepository() {
             override suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery> =
                 throw Exception("offline")
         }
         val controller = loadedController(failing)
-        assertTrue(controller.loadFailed)
+        assertFalse(controller.loadFailed)
         assertFalse(controller.isLoading)
+        assertEquals(3, controller.results.size)
+        assertTrue(controller.results.none { controller.hasOpenLottery(it) })
     }
 }
