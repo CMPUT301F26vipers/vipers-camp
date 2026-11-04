@@ -18,6 +18,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.vipers.CampApp
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.repository.CampsiteRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -39,7 +40,13 @@ class MyCampsitesViewModel(private val camp_repo: CampsiteRepository, private va
     /** Loads the owner's campsites again, e.g. when coming back from Add Campsite. */
     fun loadCampsites() {
         viewModelScope.launch {
-            campsites = camp_repo.getCampsitesByOwner(ownerId)
+            try {
+                campsites = camp_repo.getCampsitesByOwner(ownerId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // a failed read shouldn't crash the app; keep showing what we had
+            }
         }
     }
 

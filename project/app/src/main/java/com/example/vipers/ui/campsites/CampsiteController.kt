@@ -1,5 +1,5 @@
 /*
- * CampsiteFormController.kt
+ * CampsiteController.kt
  * The controller (a ViewModel) behind the Add Campsite form (US 02.01.01, 02.01.02a). It holds
  * what the owner has typed, checks it, and saves the campsite with the owner's device ID.
  * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * Holds the Add Campsite form and publishes the campsite for [ownerId].
  * Takes the [campsiteRepository] in its constructor so tests can pass a fake one.
  */
-class CampsiteFormController(
+class CampsiteController(
     private val campsiteRepository: CampsiteRepository,
     private val ownerId: String,
 ) : ViewModel() {
@@ -64,7 +64,7 @@ class CampsiteFormController(
     var published by mutableStateOf(false)
         private set
 
-    /** True if saving failed, e.g. because the phone is offline. */
+    /** True if saving failed. Being offline isn't a failure; Firestore uploads it later. */
     var saveFailed by mutableStateOf(false)
         private set
 
@@ -107,7 +107,9 @@ class CampsiteFormController(
         // The model can't tell a missing region or a non-number apart from a valid default,
         // so the form checks those two itself.
         if (region == null) formErrors["region"] = "Choose a region"
-        if (maxGuests.isNotBlank() && maxGuests.trim().toIntOrNull() == null) {
+        if (maxGuests.isBlank()) {
+            formErrors["maxOccupancy"] = "Enter max guests"
+        } else if (maxGuests.trim().toIntOrNull() == null) {
             formErrors["maxOccupancy"] = "Enter a whole number"
         }
         errors = formErrors
@@ -152,7 +154,7 @@ class CampsiteFormController(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as CampApp
-                CampsiteFormController(app.container.campsiteRepository, app.container.deviceId)
+                CampsiteController(app.container.campsiteRepository, app.container.deviceId)
             }
         }
     }

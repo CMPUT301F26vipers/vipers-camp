@@ -44,7 +44,7 @@ class AddCampsiteTest {
 
     /** Opens just the form, with a fake repository. */
     private fun openForm() {
-        val controller = CampsiteFormController(repo, ownerId = "my-phone")
+        val controller = CampsiteController(repo, ownerId = "my-phone")
         composeRule.setContent {
             VipersTheme {
                 CampsiteFormScreen(
@@ -88,7 +88,7 @@ class AddCampsiteTest {
         composeRule.onNodeWithText("Enter a name").assertIsDisplayed()
         composeRule.onNodeWithText("Enter a location").assertIsDisplayed()
         composeRule.onNodeWithText("Choose a region").assertIsDisplayed()
-        composeRule.onNodeWithText("Must be at least 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Enter max guests").assertIsDisplayed()
         assertTrue(runBlocking { repo.getAllCampsites() }.isEmpty())
         assertFalse(publishedCalled)
     }

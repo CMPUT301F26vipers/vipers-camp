@@ -1,7 +1,7 @@
 /*
  * CampsiteFormScreen.kt
  * The Add Campsite screen (mockup O02), opened from the "+" on My Campsites (US 02.01.01,
- * 02.01.02a). CampsiteFormController checks and saves what the owner types.
+ * 02.01.02a). CampsiteController checks and saves what the owner types.
  * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
  * cancellation policy (T-11) are added by those stories.
  */
@@ -73,7 +73,7 @@ import com.example.vipers.ui.theme.Primary
 fun CampsiteFormScreen(
     onBack: () -> Unit,
     onPublished: () -> Unit,
-    controller: CampsiteFormController = viewModel(factory = CampsiteFormController.Factory),
+    controller: CampsiteController = viewModel(factory = CampsiteController.Factory),
 ) {
     val context = LocalContext.current
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -127,7 +127,7 @@ fun CampsiteFormScreen(
                     label = "Max guests",
                     value = controller.maxGuests,
                     onValueChange = controller::onMaxGuestsChange,
-                    placeholder = "6",
+                    placeholder = "e.g. 6",
                     error = controller.errors["maxOccupancy"],
                     tag = "field_max_guests",
                     keyboardType = KeyboardType.Number,
@@ -266,7 +266,7 @@ private fun RegionDropdown(
 /** Type a tag and tap Add; tap the x on a tag to remove it. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TagsField(controller: CampsiteFormController) {
+private fun TagsField(controller: CampsiteController) {
     Column {
         FieldLabel("Tags")
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

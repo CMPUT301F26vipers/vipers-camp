@@ -23,7 +23,9 @@ class FirestoreCampsiteRepository(
 
     override suspend fun addCampsite(campsite: Campsite): String {
         val doc = collection.document() // Firestore makes a new random ID
-        doc.set(campsite.copy(id = doc.id).toMap()).await()
+        // Not awaited: offline, set() only finishes once the phone reconnects, so Publish would
+        // hang. Firestore keeps the write on the phone and sends it when it's back online.
+        doc.set(campsite.copy(id = doc.id).toMap())
         return doc.id
     }
 

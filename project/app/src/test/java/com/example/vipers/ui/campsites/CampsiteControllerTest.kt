@@ -1,6 +1,6 @@
 /*
- * CampsiteFormControllerTest.kt
- * Unit tests for CampsiteFormController (US 02.01.01, 02.01.02a), using the fake campsite repository.
+ * CampsiteControllerTest.kt
+ * Unit tests for CampsiteController (US 02.01.01, 02.01.02a), using the fake campsite repository.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -20,10 +20,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-class CampsiteFormControllerTest {
+class CampsiteControllerTest {
 
     private val repo = FakeCampsiteRepository()
-    private val controller = CampsiteFormController(repo, ownerId = "my-phone")
+    private val controller = CampsiteController(repo, ownerId = "my-phone")
 
     @Before
     fun setUp() {
@@ -51,6 +51,7 @@ class CampsiteFormControllerTest {
         controller.publish()
 
         assertEquals(setOf("name", "address", "region", "maxOccupancy"), controller.errors.keys)
+        assertEquals("Enter max guests", controller.errors["maxOccupancy"])
         assertTrue(repo.getAllCampsites().isEmpty())
         assertFalse(controller.published)
     }
@@ -134,11 +135,11 @@ class CampsiteFormControllerTest {
 
     @Test
     fun save_whenTheRepositoryFails_setsSaveFailed() = runBlocking {
-        // a repository that always fails, like Firestore when the phone is offline
+        // a repository that always fails, e.g. Firestore rejecting the write
         val failing = object : CampsiteRepository by FakeCampsiteRepository() {
             override suspend fun addCampsite(campsite: Campsite): String = throw Exception("offline")
         }
-        val offlineController = CampsiteFormController(failing, ownerId = "my-phone")
+        val offlineController = CampsiteController(failing, ownerId = "my-phone")
         offlineController.save(Campsite(name = "Bow River Sites"))
 
         assertTrue(offlineController.saveFailed)

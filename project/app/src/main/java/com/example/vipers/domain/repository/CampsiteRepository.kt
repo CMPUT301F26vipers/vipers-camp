@@ -14,7 +14,10 @@ import com.example.vipers.domain.model.Campsite
 /** Saves and loads [Campsite]s. */
 interface CampsiteRepository {
 
-    /** Saves a new [campsite] and returns the ID it was given. */
+    /**
+     * Saves a new [campsite] and returns the ID it was given. Offline, the campsite is saved on
+     * the phone first and uploaded once it reconnects.
+     */
     suspend fun addCampsite(campsite: Campsite): String
 
     /** Loads the campsite with this [id], or returns null if there is none. */
