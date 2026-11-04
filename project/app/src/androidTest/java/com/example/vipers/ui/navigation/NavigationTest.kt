@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -128,8 +129,68 @@ class NavigationTest {
     @Test
     fun adminTabShowsForAdmins() {
         startApp(isAdmin = true)
+        composeRule.onNodeWithTag("tab_${Routes.ADMIN}").assertIsDisplayed()
         tapTab(Routes.ADMIN)
-        assertShown("Browsing and removing")
+
+        composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).assertIsDisplayed()
+        assertShown("Profiles")
+        assertShown("Images")
+        assertShown("Notification Log")
+        assertShown("Message Log")
+    }
+
+    @Test
+    fun adminUsersRetainAccessToAllNormalTabs() {
+        startApp(isAdmin = true)
+        tapTab(Routes.RESERVATIONS)
+        assertShown("My Reservations")
+        tapTab(Routes.CAMPSITES)
+        assertShown("My Campsites")
+        tapTab(Routes.NOTIFICATIONS)
+        assertShown("Your notifications")
+        tapTab(Routes.PROFILE)
+        assertShown("Editing your name")
+        tapTab(Routes.HOME)
+        assertHomeShown()
+    }
+
+    @Test
+    fun adminMenuItemsOpenCorrectDestinationsAndGoBack() {
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        // Campsites
+        composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).performClick()
+        assertShown("All Campsites")
+        assertShown("Browse Campsites (03.04.01)")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+
+        // Profiles
+        composeRule.onNodeWithText("Profiles").performClick()
+        assertShown("All Profiles")
+        assertShown("Browse Profiles (03.05.01)")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+
+        // Images
+        composeRule.onNodeWithText("Images").performClick()
+        assertShown("All Images")
+        assertShown("Browse Images (03.06.01)")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+
+        // Notification Log
+        composeRule.onNodeWithText("Notification Log").performClick()
+        assertShown("Notification Log (03.08.01)")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+
+        // Message Log
+        composeRule.onNodeWithText("Message Log").performClick()
+        assertShown("Message Log (03.12.01)")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
     }
 
     @Test

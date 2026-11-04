@@ -6,16 +6,36 @@
  */
 package com.example.vipers.ui.admin
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import com.example.vipers.ui.common.Placeholder
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.example.vipers.ui.common.MenuRow
 import com.example.vipers.ui.common.TopBar
 
-/** The admin home screen. */
+/** Displays the admin menu. */
 @Composable
-fun AdminHomeScreen() {
+fun AdminHomeScreen(
+    onOpenCampsites: () -> Unit,
+    onOpenProfiles: () -> Unit,
+    onOpenImages: () -> Unit,
+    onOpenNotificationLog: () -> Unit,
+    onOpenMessageLog: () -> Unit,
+) {
     Column {
         TopBar(title = "Admin")
-        Placeholder("Browsing and removing campsites, profiles and images is added in the admin stories.")
+
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            MenuRow("Campsites", onClick = onOpenCampsites)
+            MenuRow("Profiles", onClick = onOpenProfiles)
+            MenuRow("Images", onClick = onOpenImages)
+            MenuRow("Notification Log", onClick = onOpenNotificationLog)
+            MenuRow("Message Log", onClick = onOpenMessageLog)
+        }
     }
 }
