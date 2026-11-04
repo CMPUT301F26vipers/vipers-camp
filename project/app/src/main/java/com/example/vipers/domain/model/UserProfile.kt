@@ -28,4 +28,21 @@ data class UserProfile(
     val notificationsEnabled: Boolean = true,
     val isAdmin: Boolean = false,
     val createdAt: Long = 0,
-)
+) {
+
+    /**
+     * Validates editable profile information.
+     * Returns field-specific errors, or an empty map if valid.
+     */
+    fun validateEdit(): Map<String, String> {
+        val errors = mutableMapOf<String, String>()
+
+        if (name.isBlank()) {
+            errors["name"] = "Name is required"
+        }
+
+        return errors
+    }
+}
+
+
