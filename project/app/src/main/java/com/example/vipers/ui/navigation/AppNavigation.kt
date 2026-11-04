@@ -32,35 +32,27 @@ import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
-import com.example.vipers.domain.repository.CampsiteRepository
-import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
 
-// The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
     Routes.HOME, Routes.RESERVATIONS, Routes.CAMPSITES, Routes.NOTIFICATIONS, Routes.PROFILE, Routes.ADMIN,
 )
 
 /**
- * The whole app's navigation. [isAdmin] shows the Admin tab, [userId] is the ID of current user
- * to be used when trying to load user's campsites, and [onLoadDemoData] is called
+ * The whole app's navigation. [isAdmin] shows the Admin tab, and [onLoadDemoData] is called
  * by the button on Settings.
  */
 @Composable
 fun AppNavigation(
     isAdmin: Boolean,
     onLoadDemoData: () -> Unit,
-    campsiteRepository: CampsiteRepository,
-    lotteryRepository: LotteryRepository,
-    ownerId: String,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
     Scaffold(
-        // each screen's top bar already leaves room for the status bar
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (currentRoute in tabRoutes) {
@@ -76,7 +68,7 @@ fun AppNavigation(
                     onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) },
                     onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) },
                     onOpenSent = { navController.navigate(Routes.OWNER_SENT) },
-                    onOpenCampsite = { campsiteId -> // Updated name here!
+                    onOpenCampsite = { campsiteId ->
                         val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
                     })
@@ -95,7 +87,6 @@ fun AppNavigation(
             }
             composable(
                 route = Routes.CAMPSITE_DETAILS,
-                // You MUST declare the argument here for Compose to extract it from the route
                 arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
@@ -103,15 +94,12 @@ fun AppNavigation(
                     campsiteId = campsiteId,
                     onBack = { navController.popBackStack() },
                     onCreateLottery = {
-                        val route = Routes.CREATE_LOTTERY.replace(
-                            "{campsiteId}",
-                            campsiteId
-                        )
+                        val route = Routes.CREATE_LOTTERY.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
                     },
-                    lotteryRepository = lotteryRepository,
                     onLotteryClick = { lotteryId ->
-                        navController.navigate("lottery_details/$lotteryId")
+                        val route = Routes.LOTTERY_DETAILS.replace("{lotteryId}", lotteryId)
+                        navController.navigate(route)
                     },
                 )
             }
@@ -120,33 +108,19 @@ fun AppNavigation(
                 arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
-
                 LotteryFormScreen(
                     campsiteId = campsiteId,
-                    campsiteRepository = campsiteRepository,
-                    lotteryRepository = lotteryRepository,
-                    ownerId = ownerId,
                     onBack = { navController.popBackStack() }
                 )
             }
             composable(
-                route = "lottery_details/{lotteryId}",
-                arguments = listOf(
-                    navArgument("lotteryId") {
-                        type = NavType.StringType
-                    }
-                )
+                route = Routes.LOTTERY_DETAILS,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
             ) { backStackEntry ->
-
-                val lotteryId =
-                    backStackEntry.arguments?.getString("lotteryId") ?: ""
-
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
                 LotteryDetailsScreen(
                     lotteryId = lotteryId,
-                    lotteryRepository = lotteryRepository,
-                    onBack = {
-                        navController.popBackStack()
-                    }
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable(Routes.NOTIFICATIONS) { NotificationsScreen() }
@@ -169,10 +143,6 @@ fun AppNavigation(
     }
 }
 
-/**
- * Switches to a bottom bar tab. Going back from any tab returns to Home, and tapping the tab
- * you're already on doesn't stack another copy of it.
- */
 private fun NavHostController.openTab(route: String) {
     navigate(route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }

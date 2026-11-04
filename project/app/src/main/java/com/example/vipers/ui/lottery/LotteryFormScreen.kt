@@ -1,4 +1,8 @@
-
+/*
+ * LotteryFormScreen.kt
+ * The screen to create a new lottery for a campsite.
+ * Known issues: none.
+ */
 package com.example.vipers.ui.lottery
 
 import android.app.DatePickerDialog
@@ -16,18 +20,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.example.vipers.domain.model.AvailabilityCalendar
-import com.example.vipers.domain.model.Campsite
-import com.example.vipers.domain.model.Lottery
-import com.example.vipers.domain.repository.CampsiteRepository
-import com.example.vipers.domain.repository.LotteryRepository
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.ui.common.TopBar
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -36,60 +35,23 @@ import java.util.Locale
 @Composable
 fun LotteryFormScreen(
     campsiteId: String,
-    campsiteRepository: CampsiteRepository,
-    lotteryRepository: LotteryRepository,
-    ownerId: String,
     onBack: () -> Unit,
+    controller: LotteryController = viewModel(factory = LotteryController.factory(campsiteId))
 ) {
     val context = LocalContext.current
-    val dateFormat = remember {
-        SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    }
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
-    var campsite by remember { mutableStateOf<Campsite?>(null) }
-    var availability by remember { mutableStateOf<AvailabilityCalendar?>(null) }
-    var availableNights by remember { mutableStateOf<List<String>>(emptyList()) }
-    var selectedNights by remember { mutableStateOf(setOf<String>()) }
-
-    var rangeStart by remember { mutableStateOf("") }
-    var rangeEnd by remember { mutableStateOf("") }
-
-    var loading by remember { mutableStateOf(true) }
-    var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(campsiteId) {
-        loading = true
-        try {
-            val result = campsiteRepository.getCampsite(campsiteId)
-
-            if (result == null || result.ownerId != ownerId) {
-                error = "Campsite not found or you do not own it."
-            } else {
-                campsite = result
-                val calendar = campsiteRepository.getAvailability(campsiteId)
-                availability = calendar
-
-                availableNights = calendar.openNights
-                    .filterNot { it in calendar.heldNights }
-                    .distinct()
-                    .sorted()
-
-                error = null
-            }
-        } catch (e: Exception) {
-            error = "Unable to load campsite availability."
-        } finally {
-            loading = false
+    LaunchedEffect(controller.saved) {
+        if (controller.saved) {
+            onBack()
         }
     }
 
     fun showDatePicker(isStartDate: Boolean) {
         val current = Calendar.getInstance()
-
         val startCalendar = Calendar.getInstance().apply {
-            if (rangeStart.isNotEmpty()) {
-                time = dateFormat.parse(rangeStart) ?: time
+            if (controller.rangeStart.isNotEmpty()) {
+                time = dateFormat.parse(controller.rangeStart) ?: time
             }
         }
 
@@ -99,21 +61,11 @@ fun LotteryFormScreen(
                 val selectedDate = Calendar.getInstance().apply {
                     set(year, month, day)
                 }
-
                 val formatted = dateFormat.format(selectedDate.time)
-
                 if (isStartDate) {
-                    rangeStart = formatted
-
-                    // Reset the end date if it is now before the start date.
-                    if (rangeEnd.isNotEmpty()) {
-                        val end = dateFormat.parse(rangeEnd)
-                        if (end != null && selectedDate.time.after(end)) {
-                            rangeEnd = ""
-                        }
-                    }
+                    controller.onRangeStartChange(formatted)
                 } else {
-                    rangeEnd = formatted
+                    controller.onRangeEndChange(formatted)
                 }
             },
             current.get(Calendar.YEAR),
@@ -124,98 +76,13 @@ fun LotteryFormScreen(
         picker.datePicker.minDate =
             if (isStartDate) {
                 System.currentTimeMillis()
-            } else if (rangeStart.isNotEmpty()) {
+            } else if (controller.rangeStart.isNotEmpty()) {
                 startCalendar.timeInMillis
             } else {
                 System.currentTimeMillis()
             }
 
         picker.show()
-    }
-
-    fun loadSelectedRange() {
-        try {
-            val start = dateFormat.parse(rangeStart)
-                ?: throw IllegalArgumentException()
-
-            val end = dateFormat.parse(rangeEnd)
-                ?: throw IllegalArgumentException()
-
-            if (end.before(start)) {
-                error = "End date must be on or after the start date."
-                return
-            }
-
-            val cursor = Calendar.getInstance().apply {
-                time = start
-            }
-
-            val endCalendar = Calendar.getInstance().apply {
-                time = end
-            }
-
-            val newNights = mutableListOf<String>()
-
-            while (!cursor.after(endCalendar)) {
-                val night = dateFormat.format(cursor.time)
-
-                if (night !in (availability?.heldNights ?: emptyList())) {
-                    newNights.add(night)
-                }
-
-                cursor.add(Calendar.DAY_OF_MONTH, 1)
-            }
-
-            availableNights = (availableNights + newNights)
-                .distinct()
-                .sorted()
-
-            error = if (availableNights.isEmpty()) {
-                "No available nights in this date range."
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            error = "Please select valid start and end dates."
-        }
-    }
-
-    LaunchedEffect(saving) {
-        if (saving) {
-            try {
-                val latestCalendar =
-                    campsiteRepository.getAvailability(campsiteId)
-
-                val nightsToSave = selectedNights
-                    .filterNot { it in latestCalendar.heldNights }
-
-                if (nightsToSave.isEmpty()) {
-                    throw IllegalStateException(
-                        "Your selected nights are no longer available."
-                    )
-                }
-
-                campsiteRepository.saveAvailability(
-                    latestCalendar.copy(
-                        openNights = (
-                                latestCalendar.openNights + nightsToSave
-                                ).distinct().sorted()
-                    )
-                )
-
-                val lottery = Lottery(
-                    ownerId = ownerId,
-                    campsiteIds = listOf(campsiteId),
-                    nightsOffered = nightsToSave.sorted(),
-                )
-
-                lotteryRepository.addLottery(lottery)
-                onBack()
-            } catch (e: Exception) {
-                error = e.message ?: "Unable to save lottery."
-                saving = false
-            }
-        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -231,90 +98,82 @@ fun LotteryFormScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when {
-                loading -> CircularProgressIndicator()
-
-                error != null && campsite == null -> Text(error!!)
-
-                campsite != null -> {
-                    Text("Campsite: ${campsite!!.name}")
+                controller.loading -> CircularProgressIndicator()
+                controller.error != null && controller.campsite == null -> Text(controller.error!!)
+                controller.campsite != null -> {
+                    Text("Campsite: ${controller.campsite!!.name}")
 
                     HorizontalDivider()
 
                     Text("Choose the nights available for this lottery.")
-
                     Text("Select a date range:")
 
-                    Button(
-                        onClick = { showDatePicker(true) }
-                    ) {
+                    OutlinedTextField(
+                        value = controller.rangeStart,
+                        onValueChange = { controller.onRangeStartChange(it) },
+                        label = { Text("Start Date (yyyy-MM-dd)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("tag_range_start")
+                    )
+
+                    Button(onClick = { showDatePicker(true) }) {
                         Text(
-                            if (rangeStart.isEmpty())
-                                "Choose start date"
-                            else
-                                "Start: $rangeStart"
+                            if (controller.rangeStart.isEmpty()) "Choose start date from picker"
+                            else "Start Picker: ${controller.rangeStart}"
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = controller.rangeEnd,
+                        onValueChange = { controller.onRangeEndChange(it) },
+                        label = { Text("End Date (yyyy-MM-dd)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("tag_range_end")
+                    )
+
+                    Button(onClick = { showDatePicker(false) }) {
+                        Text(
+                            if (controller.rangeEnd.isEmpty()) "Choose end date from picker"
+                            else "End Picker: ${controller.rangeEnd}"
                         )
                     }
 
                     Button(
-                        onClick = { showDatePicker(false) }
-                    ) {
-                        Text(
-                            if (rangeEnd.isEmpty())
-                                "Choose end date"
-                            else
-                                "End: $rangeEnd"
-                        )
-                    }
-
-                    Button(
-                        onClick = { loadSelectedRange() },
-                        enabled = rangeStart.isNotEmpty() &&
-                                rangeEnd.isNotEmpty()
+                        onClick = { controller.loadSelectedRange() },
+                        enabled = controller.rangeStart.isNotEmpty() && controller.rangeEnd.isNotEmpty()
                     ) {
                         Text("Load nights")
                     }
 
                     HorizontalDivider()
 
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                    Row(horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Select nights to offer:")
 
                         Button(
-                            onClick = {
-                                selectedNights =
-                                    if (selectedNights.size == availableNights.size) {
-                                        emptySet()
-                                    } else {
-                                        availableNights.toSet()
-                                    }
-                            },
-                            enabled = availableNights.isNotEmpty()
+                            onClick = { controller.toggleSelectAll() },
+                            enabled = controller.availableNights.isNotEmpty()
                         ) {
                             Text(
-                                if (availableNights.isNotEmpty() &&
-                                    selectedNights.size == availableNights.size
+                                if (controller.availableNights.isNotEmpty() &&
+                                    controller.selectedNights.size == controller.availableNights.size
                                 ) "Deselect All" else "Select All"
                             )
                         }
                     }
 
-                    if (availableNights.isEmpty()) {
+                    if (controller.availableNights.isEmpty()) {
                         Text("No available nights loaded yet.")
                     }
 
-                    availableNights.forEach { night ->
+                    controller.availableNights.forEach { night ->
                         Row {
                             Checkbox(
-                                checked = night in selectedNights,
+                                checked = night in controller.selectedNights,
                                 onCheckedChange = { checked ->
-                                    selectedNights =
-                                        if (checked) {
-                                            selectedNights + night
-                                        } else {
-                                            selectedNights - night
-                                        }
+                                    controller.toggleNight(night, checked)
                                 }
                             )
 
@@ -325,22 +184,21 @@ fun LotteryFormScreen(
                         }
                     }
 
-                    Text("${selectedNights.size} night(s) selected")
+                    Text("${controller.selectedNights.size} night(s) selected")
 
-                    if (error != null) {
-                        Text(error!!)
+                    if (controller.error != null) {
+                        Text(controller.error!!)
                     }
 
                     Button(
                         onClick = {
-                            error = null
-                            saving = true
+                            controller.clearError()
+                            controller.saveLottery()
                         },
-                        enabled = selectedNights.isNotEmpty() && !saving
+                        enabled = controller.selectedNights.isNotEmpty() && !controller.saving,
+                        modifier = Modifier.testTag("button_save_lottery")
                     ) {
-                        Text(
-                            if (saving) "Saving..." else "Create Lottery"
-                        )
+                        Text(if (controller.saving) "Saving..." else "Create Lottery")
                     }
                 }
             }

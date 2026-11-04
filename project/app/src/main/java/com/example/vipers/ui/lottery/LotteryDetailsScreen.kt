@@ -1,9 +1,12 @@
-
+/*
+ * LotteryDetailsScreen.kt
+ * The screen to view details of a lottery.
+ * Known issues: none.
+ */
 package com.example.vipers.ui.lottery
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,17 +19,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.vipers.domain.model.EntryStatus
-import com.example.vipers.domain.model.Lottery
-import com.example.vipers.domain.model.LotteryEntry
-import com.example.vipers.domain.repository.LotteryRepository
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.ui.common.TopBar
 import java.text.DateFormat
 import java.util.Date
@@ -34,99 +33,77 @@ import java.util.Date
 @Composable
 fun LotteryDetailsScreen(
     lotteryId: String,
-    lotteryRepository: LotteryRepository,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    controller: LotteryDetailsController = viewModel(factory = LotteryDetailsController.factory(lotteryId))
 ) {
-    var lottery by remember { mutableStateOf<Lottery?>(null) }
-    var waitingEntries by remember { mutableStateOf<List<LotteryEntry>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
     var showWaitingList by remember { mutableStateOf(false) }
 
-    LaunchedEffect(lotteryId) {
-        loading = true
-        error = null
-
-        try {
-            lottery = lotteryRepository.getLottery(lotteryId)
-            waitingEntries = lotteryRepository.getEntries(lotteryId)
-                .filter { it.status == EntryStatus.WAITING }
-        } catch (e: Exception) {
-            error = e.message ?: "Unable to load lottery details"
-        } finally {
-            loading = false
-        }
-    }
-
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier = Modifier.fillMaxSize()
     ) {
         TopBar(
             title = "Lottery Details",
             onBack = onBack
         )
 
-        when {
-            loading -> {
-                CircularProgressIndicator()
-            }
+        Column(modifier = Modifier.padding(16.dp)) {
+            when {
+                controller.loading -> CircularProgressIndicator()
+                controller.error != null -> Text("Error: ${controller.error}")
+                controller.lottery == null -> Text("Lottery not found.")
+                else -> {
+                    val currentLottery = controller.lottery!!
 
-            error != null -> {
-                Text("Error: $error")
-            }
-
-            lottery == null -> {
-                Text("Lottery not found.")
-            }
-
-            else -> {
-                val currentLottery = lottery!!
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    item {
-                        Text("Status: ${currentLottery.status(System.currentTimeMillis())}")
-                        HorizontalDivider()
-                    }
-
-                    item {
-                        Text("Nights Offered")
-                        currentLottery.nightsOffered.forEach { night ->
-                            Text("• $night")
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item {
+                            // Instruction: "For lotteries where registration and booking periods have not yet been configured, display: Not set up yet"
+                            if (currentLottery.registrationStart <= 0L || currentLottery.registrationEnd <= 0L ||
+                                currentLottery.bookingStart <= 0L || currentLottery.bookingEnd <= 0L) {
+                                Text("Status: Not set up yet")
+                            } else {
+                                Text("Status: ${currentLottery.status(System.currentTimeMillis())}")
+                            }
+                            HorizontalDivider()
                         }
-                    }
 
-                    item {
-                        HorizontalDivider()
-                        Text("Registration Period")
-                        Text("Start: ${formatDate(currentLottery.registrationStart)}")
-                        Text("End: ${formatDate(currentLottery.registrationEnd)}")
-                    }
+                        item {
+                            Text("Nights Offered")
+                            currentLottery.nightsOffered.forEach { night ->
+                                Text("• $night")
+                            }
+                        }
 
-                    item {
-                        HorizontalDivider()
-                        Text("Booking Period")
-                        Text("Start: ${formatDate(currentLottery.bookingStart)}")
-                        Text("End: ${formatDate(currentLottery.bookingEnd)}")
-                    }
+                        item {
+                            HorizontalDivider()
+                            Text("Registration Period")
+                            Text("Start: ${formatDate(currentLottery.registrationStart)}")
+                            Text("End: ${formatDate(currentLottery.registrationEnd)}")
+                        }
 
-                    item {
-                        HorizontalDivider()
-                        Text("Number of Winners: ${currentLottery.winnersCount}")
-                    }
+                        item {
+                            HorizontalDivider()
+                            Text("Booking Period")
+                            Text("Start: ${formatDate(currentLottery.bookingStart)}")
+                            Text("End: ${formatDate(currentLottery.bookingEnd)}")
+                        }
 
-                    item {
-                        Text("Waiting-list Count: ${waitingEntries.size}")
+                        item {
+                            HorizontalDivider()
+                            Text("Number of Winners: ${currentLottery.winnersCount}")
+                        }
 
-                        Button(
-                            onClick = { showWaitingList = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Waiting List")
+                        item {
+                            Text("Waiting-list Count: ${controller.waitingEntries.size}")
+
+                            Button(
+                                onClick = { showWaitingList = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Waiting List")
+                            }
                         }
                     }
                 }
@@ -139,13 +116,14 @@ fun LotteryDetailsScreen(
             onDismissRequest = { showWaitingList = false },
             title = { Text("Waiting List") },
             text = {
-                if (waitingEntries.isEmpty()) {
+                if (controller.waitingEntries.isEmpty()) {
                     Text("There are no entrants on the waiting list.")
                 } else {
                     LazyColumn {
-                        items(waitingEntries) { entry ->
+                        items(controller.waitingEntries) { entry ->
                             Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                                Text("User ID: ${entry.userId}")
+                                val name = controller.userNames[entry.userId] ?: "Unknown User"
+                                Text(name)
                                 Text("Group size: ${entry.groupSize}")
                                 HorizontalDivider()
                             }
