@@ -46,7 +46,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                AppNavigation(isAdmin = isAdmin, onLoadDemoData = { loadDemoData() })
+                AppNavigation(
+                    isAdmin = isAdmin,
+                    onLoadDemoData = { loadDemoData() },
+                    campsiteRepository = container.campsiteRepository,
+                    lotteryRepository = container.lotteryRepository,
+                    ownerId = container.deviceId,
+                )
             }
         }
     }

@@ -32,6 +32,10 @@ import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
+import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.ui.lottery.LotteryFormScreen
+import com.example.vipers.ui.lottery.LotteryDetailsScreen
 
 // The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
@@ -44,7 +48,13 @@ private val tabRoutes = listOf(
  * by the button on Settings.
  */
 @Composable
-fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
+fun AppNavigation(
+    isAdmin: Boolean,
+    onLoadDemoData: () -> Unit,
+    campsiteRepository: CampsiteRepository,
+    lotteryRepository: LotteryRepository,
+    ownerId: String,
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -91,7 +101,52 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
                 CampsiteDetailsScreen(
                     campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() },
+                    onCreateLottery = {
+                        val route = Routes.CREATE_LOTTERY.replace(
+                            "{campsiteId}",
+                            campsiteId
+                        )
+                        navController.navigate(route)
+                    },
+                    lotteryRepository = lotteryRepository,
+                    onLotteryClick = { lotteryId ->
+                        navController.navigate("lottery_details/$lotteryId")
+                    },
+                )
+            }
+            composable(
+                route = Routes.CREATE_LOTTERY,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+
+                LotteryFormScreen(
+                    campsiteId = campsiteId,
+                    campsiteRepository = campsiteRepository,
+                    lotteryRepository = lotteryRepository,
+                    ownerId = ownerId,
                     onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = "lottery_details/{lotteryId}",
+                arguments = listOf(
+                    navArgument("lotteryId") {
+                        type = NavType.StringType
+                    }
+                )
+            ) { backStackEntry ->
+
+                val lotteryId =
+                    backStackEntry.arguments?.getString("lotteryId") ?: ""
+
+                LotteryDetailsScreen(
+                    lotteryId = lotteryId,
+                    lotteryRepository = lotteryRepository,
+                    onBack = {
+                        navController.popBackStack()
+                    }
                 )
             }
             composable(Routes.NOTIFICATIONS) { NotificationsScreen() }

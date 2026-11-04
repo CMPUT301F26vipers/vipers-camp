@@ -11,6 +11,7 @@ object Routes {
     const val RESERVATIONS = "reservations"
     const val CAMPSITES = "campsites"
     const val ADD_CAMPSITE = "add_campsite"
+    const val CREATE_LOTTERY = "create_lottery/{campsiteId}"
     const val NOTIFICATIONS = "notifications"
     const val PROFILE = "profile"
     const val SETTINGS = "settings"

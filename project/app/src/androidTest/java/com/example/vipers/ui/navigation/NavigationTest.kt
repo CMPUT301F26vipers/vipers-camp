@@ -32,6 +32,8 @@ import com.example.vipers.ui.theme.VipersTheme
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 
 class NavigationTest {
 
@@ -60,7 +62,15 @@ class NavigationTest {
 
     private fun startApp(isAdmin: Boolean = false, userId: String = "user123") {
         composeRule.setContent {
-            VipersTheme { AppNavigation(isAdmin = isAdmin, onLoadDemoData = {}) }
+            VipersTheme {
+                AppNavigation(
+                    isAdmin = isAdmin,
+                    onLoadDemoData = {},
+                    campsiteRepository = FakeCampsiteRepository(),
+                    lotteryRepository = FakeLotteryRepository(),
+                    ownerId = "test-owner",
+                )
+            }
         }
     }
 
