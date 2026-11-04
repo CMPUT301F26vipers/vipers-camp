@@ -100,4 +100,23 @@ class CampsiteTest {
     fun matchesSearch_ignoresSpacesAroundTheText() {
         assertTrue(Campsite(name = "Bow Valley Campground").matchesSearch("  bow "))
     }
+
+    @Test
+    fun validate_validCampsiteHasNoErrors() {
+        val campsite = Campsite(name = "Hinton Ridge Campground", address = "Hinton, AB", maxOccupancy = 6)
+        assertTrue(campsite.validate().isEmpty())
+    }
+
+    @Test
+    fun validate_blankNameAndAddressAreErrors() {
+        val errors = Campsite(name = "  ", address = "", maxOccupancy = 6).validate()
+        assertEquals("Enter a name", errors["name"])
+        assertEquals("Enter a location", errors["address"])
+    }
+
+    @Test
+    fun validate_maxOccupancyMustBeAtLeastOne() {
+        val campsite = Campsite(name = "Hinton Ridge Campground", address = "Hinton, AB", maxOccupancy = 0)
+        assertEquals(mapOf("maxOccupancy" to "Must be at least 1"), campsite.validate())
+    }
 }
