@@ -72,7 +72,10 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                     })
             }
             composable(Routes.ADD_CAMPSITE) {
-                CampsiteFormScreen(onBack = { navController.popBackStack() })
+                CampsiteFormScreen(
+                    onBack = { navController.popBackStack() },
+                    onPublished = { navController.popBackStack() },
+                )
             }
             composable(Routes.OWNER_RESERVATIONS) {
                 OwnerReservationsScreen(onBack = { navController.popBackStack() })

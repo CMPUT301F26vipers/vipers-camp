@@ -36,7 +36,8 @@ class MyCampsitesViewModel(private val camp_repo: CampsiteRepository, private va
         loadCampsites()
     }
 
-    private fun loadCampsites() {
+    /** Loads the owner's campsites again, e.g. when coming back from Add Campsite. */
+    fun loadCampsites() {
         viewModelScope.launch {
             campsites = camp_repo.getCampsitesByOwner(ownerId)
         }
