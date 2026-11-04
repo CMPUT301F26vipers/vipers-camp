@@ -34,6 +34,7 @@ data class UserProfile(
      * Validates editable profile information.
      * Returns field-specific errors, or an empty map if valid.
      */
+
     fun validateEdit(): Map<String, String> {
         val errors = mutableMapOf<String, String>()
 
@@ -43,6 +44,5 @@ data class UserProfile(
 
         return errors
     }
+
 }
-
-

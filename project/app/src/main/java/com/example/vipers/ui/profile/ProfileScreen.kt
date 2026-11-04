@@ -1,7 +1,7 @@
 /*
  * ProfileScreen.kt
  * The Profile tab (mockup E18). Settings and Policy open from here.
- * Known issues: placeholder. Editing the profile is added in US 01.07.03.
+ * Known issues: requires a profile created by the first-launch flow (T-01).
  */
 package com.example.vipers.ui.profile
 
@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -33,7 +35,7 @@ fun ProfileScreen(
         TopBar(title = "Profile")
 
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (viewModel.isLoading) {
@@ -57,6 +59,7 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
 
                 OutlinedTextField(
                     value = viewModel.email,

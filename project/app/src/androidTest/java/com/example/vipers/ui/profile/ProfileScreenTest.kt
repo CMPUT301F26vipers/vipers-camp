@@ -1,4 +1,3 @@
-
 /*
  * ProfileScreenTest.kt
  * UI tests for editing profile information (US 01.07.03).
@@ -11,6 +10,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.UserProfile
@@ -69,10 +69,10 @@ class ProfileScreenTest {
         composeRule.onNodeWithText("Sam")
             .performTextReplacement("Sam Patel")
 
-        composeRule.onNodeWithText("Save Changes").performClick()
+        composeRule.onNodeWithText("Save Changes").performScrollTo().performClick()
 
         composeRule.onNodeWithText("Profile updated successfully.")
-            .assertIsDisplayed()
+            .performScrollTo().assertIsDisplayed()
 
         runBlocking {
             assertEquals("Sam Patel", fakeRepo.getProfile("user1")?.name)
@@ -99,10 +99,10 @@ class ProfileScreenTest {
         composeRule.onNodeWithText("Sam")
             .performTextReplacement("")
 
-        composeRule.onNodeWithText("Save Changes").performClick()
+        composeRule.onNodeWithText("Save Changes").performScrollTo().performClick()
 
         composeRule.onNodeWithText("Name is required")
-            .assertIsDisplayed()
+            .performScrollTo().assertIsDisplayed()
 
         runBlocking {
             assertEquals("Sam", fakeRepo.getProfile("user1")?.name)

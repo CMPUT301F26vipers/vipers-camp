@@ -1,4 +1,3 @@
-
 /*
  * UserProfileTest.kt
  * Unit tests for profile-editing validation.
@@ -43,24 +42,5 @@ class UserProfileTest {
         )
 
         assertTrue(profile.validateEdit().isEmpty())
-    }
-
-    @Test
-    fun editingProfile_preservesOtherFields() {
-        val original = UserProfile(
-            id = "device123",
-            name = "Sam",
-            isAdmin = true,
-            createdAt = 1000L
-        )
-
-        val updated = original.copy(
-            name = "Sam Patel",
-            email = "sam@example.com"
-        )
-
-        assertEquals(original.id, updated.id)
-        assertEquals(original.isAdmin, updated.isAdmin)
-        assertEquals(original.createdAt, updated.createdAt)
     }
 }

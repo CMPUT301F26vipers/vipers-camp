@@ -1,4 +1,3 @@
-
 /*
  * ProfileViewModel.kt
  * Holds the user's profile information and handles editing and saving it.
@@ -80,19 +79,27 @@ class ProfileViewModel(
         }
     }
 
+    /** Updates the name and clears its previous validation error. */
     fun onNameChange(value: String) {
         name = value
         errors = errors - "name"
+        saveFailed = false
         saved = false
     }
 
+    /** Updates the email and clears its previous validation error. */
     fun onEmailChange(value: String) {
         email = value
+        errors = errors - "email"
+        saveFailed = false
         saved = false
     }
 
+    /** Updates the phone and clears its previous validation error. */
     fun onPhoneChange(value: String) {
         phone = value
+        errors = errors - "phone"
+        saveFailed = false
         saved = false
     }
 
@@ -106,6 +113,7 @@ class ProfileViewModel(
             phone = phone.trim(),
         )
 
+        saved = false
         errors = updated.validateEdit()
         if (errors.isNotEmpty() || isSaving) return
 
@@ -117,7 +125,9 @@ class ProfileViewModel(
             try {
                 profileRepository.saveProfile(updated)
                 profile = updated
-                saved = true
+                // The form may have changed while the repository was saving.
+                saved = name.trim() == updated.name &&
+                    email.trim() == updated.email && phone.trim() == updated.phone
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
