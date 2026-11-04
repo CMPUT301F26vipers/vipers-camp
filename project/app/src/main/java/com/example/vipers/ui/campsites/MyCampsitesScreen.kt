@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -85,6 +86,8 @@ fun MyCampsitesScreen(
             }
         }
 
+        // reload each time the screen opens, so a campsite just added shows up
+        LaunchedEffect(Unit) { viewModel.loadCampsites() }
         val campsites = viewModel.campsites
 
         if (campsites.isEmpty()) {

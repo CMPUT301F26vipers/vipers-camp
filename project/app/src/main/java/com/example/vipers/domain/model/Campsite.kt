@@ -93,4 +93,16 @@ data class Campsite(
     fun matchesSearch(searchText: String): Boolean {
         return name.startsWith(searchText.trim(), ignoreCase = true)
     }
+
+    /**
+     * Checks the fields the Add Campsite form requires (US 02.01.02a) and returns an error
+     * message for each field that's wrong, keyed by field name. An empty map means it's valid.
+     */
+    fun validate(): Map<String, String> {
+        val errors = mutableMapOf<String, String>()
+        if (name.isBlank()) errors["name"] = "Enter a name"
+        if (address.isBlank()) errors["address"] = "Enter a location"
+        if (maxOccupancy < 1) errors["maxOccupancy"] = "Must be at least 1"
+        return errors
+    }
 }
