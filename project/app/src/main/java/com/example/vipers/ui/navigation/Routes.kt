@@ -16,4 +16,10 @@ object Routes {
     const val SETTINGS = "settings"
     const val POLICY = "policy"
     const val ADMIN = "admin"
+
+    const val OWNER_RESERVATIONS = "owner_reservations"
+
+    const val OWNER_SENT = "owner_sent"
+
+    const val CAMPSITE_DETAILS = "campsite_details/{campsiteId}"
 }

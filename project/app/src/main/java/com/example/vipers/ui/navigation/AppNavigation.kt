@@ -14,19 +14,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
+import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
+import com.example.vipers.ui.notifications.SentScreen
 import com.example.vipers.ui.profile.PolicyScreen
 import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
+import com.example.vipers.ui.reservations.OwnerReservationsScreen
 
 // The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
@@ -34,7 +39,8 @@ private val tabRoutes = listOf(
 )
 
 /**
- * The whole app's navigation. [isAdmin] shows the Admin tab, and [onLoadDemoData] is called
+ * The whole app's navigation. [isAdmin] shows the Admin tab, [userId] is the ID of current user
+ * to be used when trying to load user's campsites, and [onLoadDemoData] is called
  * by the button on Settings.
  */
 @Composable
@@ -56,10 +62,34 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
             composable(Routes.HOME) { HomeScreen() }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
             composable(Routes.CAMPSITES) {
-                MyCampsitesScreen(onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) })
+                MyCampsitesScreen(
+                    onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) },
+                    onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) },
+                    onOpenSent = { navController.navigate(Routes.OWNER_SENT) },
+                    onOpenCampsite = { campsiteId -> // Updated name here!
+                        val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    })
             }
             composable(Routes.ADD_CAMPSITE) {
                 CampsiteFormScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.OWNER_RESERVATIONS) {
+                OwnerReservationsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.OWNER_SENT) {
+                SentScreen(onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Routes.CAMPSITE_DETAILS,
+                // You MUST declare the argument here for Compose to extract it from the route
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CampsiteDetailsScreen(
+                    campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.NOTIFICATIONS) { NotificationsScreen() }
             composable(Routes.PROFILE) {

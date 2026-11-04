@@ -34,12 +34,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT))
         setContent {
             VipersTheme {
+                var currentUserId by remember { mutableStateOf("") }
                 var isAdmin by remember { mutableStateOf(false) }
 
                 // The Admin tab only shows for admins (isAdmin is set in the Firebase console).
                 LaunchedEffect(Unit) {
                     try {
-                        isAdmin = container.deviceIdentityManager.currentProfile()?.isAdmin ?: false
+                        isAdmin = container.deviceIdentityManager.currentProfile()?.isAdmin?: false
                     } catch (e: Exception) {
                         isAdmin = false // offline: just hide the Admin tab
                     }

@@ -7,8 +7,14 @@
  */
 package com.example.vipers.ui.navigation
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -45,7 +51,7 @@ class NavigationTest {
         )
     }
 
-    private fun startApp(isAdmin: Boolean = false) {
+    private fun startApp(isAdmin: Boolean = false, userId: String = "user123") {
         composeRule.setContent {
             VipersTheme { AppNavigation(isAdmin = isAdmin, onLoadDemoData = {}) }
         }
@@ -117,5 +123,25 @@ class NavigationTest {
         startApp(isAdmin = true)
         tapTab(Routes.ADMIN)
         assertShown("Browsing and removing")
+    }
+
+    @Test
+    fun ownerCampsiteButtonsOpenCorrectScreensAndGoBack() {
+        startApp()
+        tapTab(Routes.CAMPSITES)
+
+        // Matches the specific node that has the text "Reservations" AND the Button role
+        composeRule.onNode(hasText("Reservations") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+        assertShown("List of reservations for your campsites is added in US 02.07.01")
+
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsites")
+
+        // Test Sent navigation
+        composeRule.onNodeWithText("Sent").performClick()
+        assertShown("Sent notifications is added in US 02.10.02.")
+
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsites")
     }
 }
