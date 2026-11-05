@@ -7,8 +7,10 @@
 package com.example.vipers.ui.campsites
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Region
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.repository.CampsiteRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -147,6 +149,28 @@ class CampsiteControllerTest {
         tags = listOf("Cookhouse", "Tennis court"),
     )
 
+    // hinton with every field the form doesn't have filled in, so tests can see they're kept
+    private val hintonInFull = hinton.copy(
+        pricePerNightCents = 6500,
+        rules = "Quiet hours after 10 PM",
+        cancellationPolicy = "Free up to 7 days before",
+        imageId = "photo-1",
+        lat = 53.405,
+        lng = -117.585,
+        ratingSum = 46,
+        ratingCount = 10,
+    )
+
+    /** A controller for "my-phone" with [campsite] loaded from [campsites] for editing. */
+    private suspend fun editForm(
+        campsites: CampsiteRepository,
+        campsite: Campsite = hintonInFull,
+    ): CampsiteController {
+        val form = CampsiteController(campsites, ownerId = "my-phone")
+        form.loadForEdit(campsite.id)
+        return form
+    }
+
     private fun assertFormIsEmpty(form: CampsiteController) {
         assertEquals(FormMode.CREATE, form.mode)
         assertNull(form.loadedCampsite)
@@ -209,6 +233,179 @@ class CampsiteControllerTest {
         assertTrue(form.loadFailed)
         assertFalse(form.notAllowed)
         assertFormIsEmpty(form)
+    }
+
+    @Test
+    fun publish_editWithEmptyName_givesTheSameErrorsAsCreateAndSavesNothing() = runBlocking {
+        fillValidForm()
+        controller.onNameChange("")
+        controller.publish()
+
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = editForm(campsites)
+        form.onNameChange("")
+        form.publish()
+
+        assertEquals(mapOf("name" to "Enter a name"), form.errors)
+        assertEquals(controller.errors, form.errors)
+        assertEquals(hintonInFull, campsites.getCampsite("hinton"))
+        assertFalse(form.published)
+    }
+
+    @Test
+    fun publish_editWithEveryRequiredFieldEmpty_givesTheSameErrorsAsCreate() = runBlocking {
+        fillValidForm()
+        controller.onNameChange("")
+        controller.onAddressChange("")
+        controller.onMaxGuestsChange("")
+        controller.publish()
+
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        form.onNameChange("")
+        form.onAddressChange("")
+        form.onMaxGuestsChange("")
+        form.publish()
+
+        assertEquals(setOf("name", "address", "maxOccupancy"), form.errors.keys)
+        assertEquals(controller.errors, form.errors)
+    }
+
+    @Test
+    fun publish_validEdit_savesTheFormAndKeepsEverythingElse() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = editForm(campsites)
+        form.onNameChange("  Hinton Ridge Sites ")
+        form.onAddressChange("Jasper, AB")
+        form.onRegionChange(Region.JASPER)
+        form.onMaxGuestsChange("6")
+        form.onDescriptionChange("Tennis court")
+        form.removeTag("Cookhouse")
+        form.publish()
+
+        val expected = hintonInFull.copy(
+            name = "Hinton Ridge Sites", // spaces trimmed
+            address = "Jasper, AB",
+            region = Region.JASPER,
+            maxOccupancy = 6,
+            description = "Tennis court",
+            tags = listOf("Tennis court"),
+        )
+        // the whole campsite, so id, ownerId, ratings, rules and cancellationPolicy are all checked
+        assertEquals(expected, campsites.getCampsite("hinton"))
+        assertEquals(1, campsites.getAllCampsites().size) // updated, not added
+        assertTrue(form.published)
+        assertTrue(form.errors.isEmpty())
+    }
+
+    @Test
+    fun publish_validEdit_leavesReservationsUnchanged() = runBlocking {
+        val booked = Reservation(
+            id = "r1",
+            reservationNumber = "R-20417",
+            userId = "sam",
+            ownerId = "my-phone",
+            campsiteId = "hinton",
+            campsiteName = "Hinton Ridge Campground",
+            checkIn = "2027-05-08",
+            checkOut = "2027-05-10",
+            groupSize = 4,
+            totalPriceCents = 13000,
+        )
+        val reservations = FakeReservationRepository(listOf(booked))
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        form.onNameChange("Hinton Ridge Sites")
+        form.onMaxGuestsChange("2")
+        form.publish()
+
+        assertTrue(form.published)
+        assertEquals(booked, reservations.getReservation("r1"))
+        assertEquals(13000L, reservations.getReservation("r1")?.totalPriceCents)
+    }
+
+    @Test
+    fun saveEdits_ownerChangedSinceLoading_setsNotAllowedAndSavesNothing() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        var updated = false
+        // the first read is loadForEdit's; by the re-check it belongs to someone else
+        var reads = 0
+        val changing = object : CampsiteRepository by campsites {
+            override suspend fun getCampsite(id: String): Campsite? =
+                if (reads++ == 0) hintonInFull else hintonInFull.copy(ownerId = "someone-else")
+
+            override suspend fun updateCampsite(campsite: Campsite) {
+                updated = true
+            }
+        }
+        val form = editForm(changing)
+        form.saveEdits(form.toCampsite())
+
+        assertTrue(form.notAllowed)
+        assertFalse(updated)
+        assertFalse(form.published)
+    }
+
+    @Test
+    fun saveEdits_nothingLoaded_setsNotAllowedAndSavesNothing() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = CampsiteController(campsites, ownerId = "my-phone")
+        form.saveEdits(Campsite(id = "hinton", name = "Taken over"))
+
+        assertTrue(form.notAllowed)
+        assertEquals(hintonInFull, campsites.getCampsite("hinton"))
+        assertFalse(form.published)
+    }
+
+    @Test
+    fun saveEdits_whenTheRepositoryFails_setsSaveFailed() = runBlocking {
+        val failing = object : CampsiteRepository by FakeCampsiteRepository(listOf(hintonInFull)) {
+            override suspend fun updateCampsite(campsite: Campsite) = throw Exception("rejected")
+        }
+        val form = editForm(failing)
+        form.saveEdits(form.toCampsite())
+
+        assertTrue(form.saveFailed)
+        assertFalse(form.published)
+        assertFalse(form.isSaving)
+    }
+
+    @Test
+    fun hasUnsavedChanges_rightAfterLoadForEdit_isFalse() = runBlocking {
+        assertFalse(editForm(FakeCampsiteRepository(listOf(hintonInFull))).hasUnsavedChanges)
+    }
+
+    @Test
+    fun hasUnsavedChanges_afterChangingAnyOneField_isTrue() = runBlocking {
+        val changes = listOf<(CampsiteController) -> Unit>(
+            { it.onNameChange("Hinton Ridge Sites") },
+            { it.onAddressChange("Jasper, AB") },
+            { it.onRegionChange(Region.JASPER) },
+            { it.onMaxGuestsChange("6") },
+            { it.onDescriptionChange("Tennis court") },
+            { it.removeTag("Cookhouse") },
+        )
+        for (change in changes) {
+            val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+            change(form)
+            assertTrue(form.hasUnsavedChanges)
+        }
+    }
+
+    @Test
+    fun hasUnsavedChanges_afterChangingAFieldBack_isFalse() = runBlocking {
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        form.onNameChange("Hinton Ridge Sites")
+        form.onNameChange(hintonInFull.name)
+
+        assertFalse(form.hasUnsavedChanges)
+    }
+
+    @Test
+    fun hasUnsavedChanges_afterSavingAnEdit_isFalse() = runBlocking {
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        form.onNameChange("Hinton Ridge Sites")
+        form.publish()
+
+        assertFalse(form.hasUnsavedChanges)
     }
 
     @Test
