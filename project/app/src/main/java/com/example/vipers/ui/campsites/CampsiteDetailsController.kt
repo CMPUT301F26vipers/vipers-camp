@@ -27,11 +27,13 @@ import kotlinx.coroutines.launch
  * @param campsiteRepository Repository to fetch campsite metadata.
  * @param lotteryRepository Repository to fetch lotteries associated with this campsite.
  * @param campsiteId ID of the campsite being inspected.
+ * @param currentUserId Device ID of the user performing actions.
  */
 class CampsiteDetailsController(
     private val campsiteRepository: CampsiteRepository,
     private val lotteryRepository: LotteryRepository,
     private val campsiteId: String,
+    private val currentUserId: String = "",
 ) : ViewModel() {
 
     var campsite by mutableStateOf<Campsite?>(null)
@@ -42,6 +44,10 @@ class CampsiteDetailsController(
         private set
     var error by mutableStateOf<String?>(null)
         private set
+
+    /** Whether the current user is the verified owner of this campsite. */
+    val isOwner: Boolean
+        get() = currentUserId.isNotBlank() && campsite?.ownerId == currentUserId
 
     init {
         loadData()
@@ -72,7 +78,8 @@ class CampsiteDetailsController(
                 CampsiteDetailsController(
                     campsiteRepository = app.container.campsiteRepository,
                     lotteryRepository = app.container.lotteryRepository,
-                    campsiteId = campsiteId
+                    campsiteId = campsiteId,
+                    currentUserId = app.container.deviceId
                 )
             }
         }

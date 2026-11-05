@@ -9,12 +9,14 @@ import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.DuplicateLotteryEntryException
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.UserProfile
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class FakeRepositoryTest {
@@ -58,12 +60,16 @@ class FakeRepositoryTest {
     }
 
     @Test
-    fun saveEntry_twiceForSameUserKeepsOneEntry() = runBlocking {
+    fun saveEntry_twiceForSameUserThrowsDuplicateException() = runBlocking {
         val repo = FakeLotteryRepository()
         repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WAITING))
-        repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WON))
+        assertThrows(DuplicateLotteryEntryException::class.java) {
+            runBlocking {
+                repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WON))
+            }
+        }
         val entries = repo.getEntries("lottery-1")
         assertEquals(1, entries.size)
-        assertEquals(EntryStatus.WON, entries[0].status)
+        assertEquals(EntryStatus.WAITING, entries[0].status)
     }
 }

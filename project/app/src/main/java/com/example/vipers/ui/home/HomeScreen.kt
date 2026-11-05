@@ -12,6 +12,7 @@ package com.example.vipers.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,8 +40,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -59,11 +63,13 @@ import com.example.vipers.ui.theme.TextMuted
 
 /**
  * The Home screen. The mockup titles it "Campsites" because it's where you search for them.
+ * [onCampsiteClick] is invoked when an entrant taps a campsite summary card.
  * Tests pass their own [controller] with a fake repository.
  */
 @Composable
 fun HomeScreen(
     controller: CampsiteSearchController = viewModel(factory = CampsiteSearchController.Factory),
+    onCampsiteClick: (String) -> Unit = {},
 ) {
     // load each time Home opens, so newly added campsites show up
     LaunchedEffect(Unit) { controller.loadCampsites() }
@@ -92,7 +98,11 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(results, key = { it.id }) { campsite ->
-                    CampsiteResultRow(campsite, hasOpenLottery = controller.hasOpenLottery(campsite))
+                    CampsiteResultRow(
+                        campsite = campsite,
+                        hasOpenLottery = controller.hasOpenLottery(campsite),
+                        onClick = { onCampsiteClick(campsite.id) },
+                    )
                 }
             }
         }
@@ -143,9 +153,24 @@ private fun SearchField(text: String, onTextChange: (String) -> Unit, modifier: 
  * are cut short with "…" so the card keeps its size.
  */
 @Composable
-private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean) {
+private fun CampsiteResultRow(
+    campsite: Campsite,
+    hasOpenLottery: Boolean,
+    onClick: () -> Unit = {},
+) {
     Card(
-        modifier = Modifier.fillMaxWidth().testTag("campsite_result"),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(onClick) {
+                detectTapGestures { onClick() }
+            }
+            .semantics {
+                onClick {
+                    onClick()
+                    true
+                }
+            }
+            .testTag("campsite_result"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {

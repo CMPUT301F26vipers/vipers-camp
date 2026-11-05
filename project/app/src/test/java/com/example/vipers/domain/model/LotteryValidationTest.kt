@@ -6,6 +6,7 @@
 package com.example.vipers.domain.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -127,5 +128,38 @@ class LotteryValidationTest {
         assertTrue(errors.contains("Invalid booking period"))
         assertTrue(errors.contains("At least one winner is required"))
         assertTrue(errors.contains("Waitlist limit must be at least 1"))
+    }
+
+    @Test
+    fun validateLottery_allowsRegistrationStartAtCurrentTime() {
+        val lottery = Lottery(
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now,
+            registrationEnd = now + 1000L,
+            bookingStart = now + 1000L,
+            bookingEnd = now + 2000L,
+            winnersCount = 1,
+        )
+        val errors = validateLottery(lottery, now = now)
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun validateEntrantJoinEligibility_checksTimestamps() {
+        val lottery = Lottery(
+            registrationStart = 2000L,
+            registrationEnd = 4000L,
+        )
+        assertEquals("Registration has not started yet", validateEntrantJoinEligibility(lottery, now = 1500L))
+        assertNull(validateEntrantJoinEligibility(lottery, now = 2000L))
+        assertNull(validateEntrantJoinEligibility(lottery, now = 3000L))
+        assertNull(validateEntrantJoinEligibility(lottery, now = 4000L))
+        assertEquals("Registration has ended", validateEntrantJoinEligibility(lottery, now = 4001L))
+        assertEquals("Registration period is not configured", validateEntrantJoinEligibility(Lottery(), now = 3000L))
+
+        val reversed = Lottery(registrationStart = 5000L, registrationEnd = 3000L)
+        assertEquals("Invalid registration period", validateEntrantJoinEligibility(reversed, now = 4000L))
     }
 }

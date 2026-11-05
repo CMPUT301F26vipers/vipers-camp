@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.domain.model.LotteryStatus
@@ -63,12 +64,16 @@ fun LotteryDetailsScreen(
             onBack = onBack
         )
 
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             when {
                 controller.loading -> CircularProgressIndicator()
-                controller.error != null -> Text("Error: ${controller.error}")
-                controller.lottery == null -> Text("Lottery not found.")
-                else -> {
+                controller.error != null && controller.lottery == null -> Text(controller.error!!)
+                controller.lottery != null -> {
                     val currentLottery = controller.lottery!!
                     val now = System.currentTimeMillis()
                     val status = currentLottery.status(now)
@@ -152,6 +157,50 @@ fun LotteryDetailsScreen(
                                 fontStyle = FontStyle.Italic,
                                 color = MaterialTheme.colorScheme.secondary
                             )
+                        }
+
+                        if (controller.error != null) {
+                            item {
+                                Text(
+                                    text = controller.error!!,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+
+                        item {
+                            if (controller.userEntry != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                ) {
+                                    Text(
+                                        text = "You have joined this waiting list",
+                                        modifier = Modifier.padding(12.dp),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            } else {
+                                Button(
+                                    onClick = { controller.joinLottery() },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    enabled = currentLottery.canEntrantJoin()
+                                ) {
+                                    Text(
+                                        when {
+                                            currentLottery.status(System.currentTimeMillis()) == LotteryStatus.UPCOMING -> "Registration not started"
+                                            currentLottery.status(System.currentTimeMillis()) == LotteryStatus.CLOSED -> "Registration closed"
+                                            else -> "Join Waiting List"
+                                        }
+                                    )
+                                }
+                            }
                         }
 
                         item {

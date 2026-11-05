@@ -51,4 +51,14 @@ data class Lottery(
         now <= registrationEnd -> LotteryStatus.OPEN
         else -> LotteryStatus.CLOSED
     }
+
+    /**
+     * Checks if an entrant is eligible to join this lottery at time [now] (milliseconds since 1970).
+     * Entrants can join only between [registrationStart] and [registrationEnd] (inclusive).
+     */
+    fun canEntrantJoin(now: Long = System.currentTimeMillis()): Boolean {
+        if (registrationStart <= 0L || registrationEnd <= 0L) return false
+        if (registrationEnd <= registrationStart) return false
+        return now in registrationStart..registrationEnd
+    }
 }

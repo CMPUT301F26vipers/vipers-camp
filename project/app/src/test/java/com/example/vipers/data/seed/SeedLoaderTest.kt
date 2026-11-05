@@ -12,6 +12,8 @@ import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.EntryStatus
+import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -95,6 +97,22 @@ class SeedLoaderTest {
         SeedLoader(container, today).seed()
         SeedLoader(container, today).seed()
 
+        assertEquals(4, container.campsiteRepository.getAllCampsites().size)
+        assertEquals(3, container.reservationRepository.getReservationsForUser("my-phone").size)
+    }
+
+    @Test
+    fun seed_whenInterruptedBeforeReservationsAndRetried_completesSuccessfully() = runBlocking {
+        // Pre-populate an entry as if interrupted midway through initial seeding
+        val hintonOpen = container.lotteryRepository.addLottery(
+            Lottery(registrationStart = 1000L, registrationEnd = 2000L)
+        )
+        container.lotteryRepository.saveEntry(
+            LotteryEntry(lotteryId = hintonOpen, userId = "my-phone", status = EntryStatus.WAITING)
+        )
+
+        // Seeding should not crash on existing entry and should finish seeding all items
+        SeedLoader(container, today).seed()
         assertEquals(4, container.campsiteRepository.getAllCampsites().size)
         assertEquals(3, container.reservationRepository.getReservationsForUser("my-phone").size)
     }

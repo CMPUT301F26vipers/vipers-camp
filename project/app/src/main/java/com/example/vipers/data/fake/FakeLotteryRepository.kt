@@ -5,6 +5,7 @@
  */
 package com.example.vipers.data.fake
 
+import com.example.vipers.domain.model.DuplicateLotteryEntryException
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.LotteryRepository
@@ -32,6 +33,9 @@ class FakeLotteryRepository(
 
     override suspend fun saveEntry(entry: LotteryEntry) {
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
+        if (entries.containsKey(id)) {
+            throw DuplicateLotteryEntryException("Entry already exists for lottery ${entry.lotteryId} and user ${entry.userId}")
+        }
         entries[id] = entry.copy(id = id)
     }
 
