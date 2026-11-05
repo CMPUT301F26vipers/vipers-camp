@@ -43,6 +43,23 @@ class CampsiteMappingTest {
     }
 
     @Test
+    fun toEditableFields_always_holdsOnlyTheFieldsAnOwnerEdits() {
+        // updateCampsite writes exactly these, so nothing else can be overwritten (US 02.01.03)
+        assertEquals(
+            setOf(
+                "name", "address", "region", "description", "maxOccupancy", "tags",
+                "pricePerNightCents", "rules", "cancellationPolicy",
+            ),
+            campsite.toEditableFields().keys,
+        )
+    }
+
+    @Test
+    fun toEditableFields_region_isSavedByItsName() {
+        assertEquals("HINTON", campsite.toEditableFields()["region"])
+    }
+
+    @Test
     fun toMap_newCampsiteIsNotRemoved() {
         assertEquals(false, campsite.toMap()["removed"])
     }

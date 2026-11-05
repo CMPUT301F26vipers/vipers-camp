@@ -2,7 +2,7 @@
  * OwnerCampsiteController.kt
  * The controller (a ViewModel) behind the owner's view of one campsite (mockup O04, US 02.01.04).
  * It loads the campsite with all its saved details and its lotteries (US 02.04.01), with how many
- * entrants joined or reserved each one.
+ * entrants joined or reserved each one, and works out whether this user may edit it (US 02.01.03).
  * Known issues: the campsite's reservations are not loaded here yet (02.07.01).
  */
 package com.example.vipers.ui.campsites
@@ -28,17 +28,25 @@ import kotlinx.coroutines.launch
 /**
  * Loads one of the owner's campsites and its lotteries for the My Campsite screen.
  * Takes the [campsiteRepository] and [lotteryRepository] in its constructor so tests can pass
- * fake ones, and the [campsiteId] of the campsite to show.
+ * fake ones, the [campsiteId] of the campsite to show, and the [userId] of whoever is viewing it.
  */
 class OwnerCampsiteController(
     private val campsiteRepository: CampsiteRepository,
     private val lotteryRepository: LotteryRepository,
     private val campsiteId: String,
+    private val userId: String,
 ) : ViewModel() {
 
     /** The campsite with its latest saved details, or null until it loads or if it wasn't found. */
     var campsite by mutableStateOf<Campsite?>(null)
         private set
+
+    /**
+     * True only when the campsite has loaded and belongs to [userId] (US 02.01.03). Admins also
+     * open this screen from Browse Campsites, and they can't edit other owners' campsites.
+     */
+    val canEdit: Boolean
+        get() = campsite?.isOwnedBy(userId) == true
 
     /** The campsite's lotteries. */
     var lotteries by mutableStateOf<List<Lottery>>(emptyList())
@@ -97,14 +105,15 @@ class OwnerCampsiteController(
     }
 
     companion object {
-        /** Makes the controller for [campsiteId] with the app's real repositories. */
+        /** Makes the controller for [campsiteId] with the app's real repositories and this device's ID. */
         fun factory(campsiteId: String) = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as CampApp
                 OwnerCampsiteController(
                     campsiteRepository = app.container.campsiteRepository,
                     lotteryRepository = app.container.lotteryRepository,
-                    campsiteId = campsiteId
+                    campsiteId = campsiteId,
+                    userId = app.container.deviceId,
                 )
             }
         }

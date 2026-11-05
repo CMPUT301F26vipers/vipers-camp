@@ -34,6 +34,15 @@ class FirestoreCampsiteRepository(
         return if (snapshot.exists()) snapshot.toCampsite() else null
     }
 
+    override suspend fun updateCampsite(campsite: Campsite) {
+        val doc = collection.document(campsite.id)
+        if (!doc.get().await().exists()) {
+            throw NoSuchElementException("No campsite with ID ${campsite.id}")
+        }
+        // Not awaited, for the same reason as addCampsite: offline, Save would hang.
+        doc.update(campsite.toEditableFields())
+    }
+
     override suspend fun getCampsitesByOwner(ownerId: String): List<Campsite> =
         collection
             .whereEqualTo("ownerId", ownerId)
@@ -86,6 +95,22 @@ fun Campsite.toMap(): Map<String, Any?> = mapOf(
     "ratingSum" to ratingSum,
     "ratingCount" to ratingCount,
     "removed" to removed,
+)
+
+/**
+ * The fields an owner can edit, which are all that updateCampsite writes (US 02.01.03). Leaving out
+ * ownerId, ratingSum, ratingCount, imageId, lat, lng and removed keeps their saved values.
+ */
+fun Campsite.toEditableFields(): Map<String, Any> = mapOf(
+    "name" to name,
+    "address" to address,
+    "region" to region.name,
+    "description" to description,
+    "maxOccupancy" to maxOccupancy,
+    "tags" to tags,
+    "pricePerNightCents" to pricePerNightCents,
+    "rules" to rules,
+    "cancellationPolicy" to cancellationPolicy,
 )
 
 /** Builds a campsite from its Firestore document. Missing fields get the model's defaults. */
