@@ -80,8 +80,12 @@ class ViewMyCampsiteDetailsTest {
         campsiteId: String = "hinton",
         lotteryList: List<Lottery> = lotteries,
     ): OwnerCampsiteController {
-        val controller =
-            OwnerCampsiteController(campsites, FakeLotteryRepository(lotteryList, entries), campsiteId)
+        val controller = OwnerCampsiteController(
+            campsites,
+            FakeLotteryRepository(lotteryList, entries),
+            campsiteId,
+            userId = "test-device",
+        )
         composeRule.setContent {
             VipersTheme {
                 OwnerCampsiteScreen(

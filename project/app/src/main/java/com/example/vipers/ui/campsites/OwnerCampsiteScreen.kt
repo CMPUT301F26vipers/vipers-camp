@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -65,7 +66,7 @@ import com.example.vipers.ui.theme.TextMuted
 /**
  * The My Campsite screen (mockup O04): the owner's campsite with all its saved details, the Edit,
  * QR Code, Availability and Reservations buttons, and its lotteries. Tests pass their own
- * [controller] with fake repositories.
+ * [controller] with fake repositories. Edit only shows for the campsite's owner (US 02.01.03).
  *
  * @param campsiteId ID of the campsite being viewed.
  * @param onBack Called when pressing back.
@@ -130,7 +131,12 @@ fun OwnerCampsiteScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OwnerButton("Edit", "button_edit", onEdit, Modifier.weight(1f))
+                        // the empty space keeps QR Code in its place when Edit is hidden
+                        if (controller.canEdit) {
+                            OwnerButton("Edit", "button_edit", onEdit, Modifier.weight(1f))
+                        } else {
+                            Spacer(Modifier.weight(1f))
+                        }
                         // turned on by 02.02.01
                         OwnerButton("QR Code", "button_qr_code", {}, Modifier.weight(1f), enabled = false)
                     }
