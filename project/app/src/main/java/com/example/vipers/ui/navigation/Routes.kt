@@ -22,4 +22,9 @@ object Routes {
     const val OWNER_SENT = "owner_sent"
 
     const val CAMPSITE_DETAILS = "campsite_details/{campsiteId}"
+    const val EDIT_CAMPSITE = "edit_campsite/{campsiteId}"
+    const val CAMPSITE_QR = "campsite_qr/{campsiteId}"
+    const val CAMPSITE_AVAILABILITY = "campsite_availability/{campsiteId}"
+    const val LOTTERY_DETAILS = "lottery_details/{lotteryId}"
+    const val CREATE_LOTTERY = "create_lottery/{campsiteId}"
 }

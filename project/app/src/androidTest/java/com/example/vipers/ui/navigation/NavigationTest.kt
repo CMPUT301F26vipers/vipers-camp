@@ -13,8 +13,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -28,6 +26,9 @@ import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
+import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.Region
 import com.example.vipers.ui.theme.VipersTheme
 import org.junit.Before
 import org.junit.Rule
@@ -141,6 +142,101 @@ class NavigationTest {
         composeRule.onNodeWithText("Sent").performClick()
         assertShown("Sent notifications is added in US 02.10.02.")
 
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsites")
+    }
+
+    @Test
+    fun ownerTapsCampsiteOpensDetailsAndNavigatesToManagementOptions() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        val campsiteId = "campsite-1"
+        val campsite = Campsite(
+            id = campsiteId,
+            ownerId = "test-device",
+            name = "Pine Valley Resort",
+            address = "Banff, AB",
+            region = Region.BANFF,
+            description = "Peaceful retreat in the pines.",
+            maxOccupancy = 4,
+            tags = listOf("Fire pit"),
+            pricePerNightCents = 6000,
+            rules = "No loud music",
+            cancellationPolicy = "Free up to 3 days before"
+        )
+        val lottery = Lottery(
+            id = "lot-1",
+            ownerId = "test-device",
+            campsiteIds = listOf(campsiteId),
+            nightsOffered = listOf("July long weekend"),
+            registrationStart = 0,
+            registrationEnd = Long.MAX_VALUE,
+            bookingEnd = Long.MAX_VALUE
+        )
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(),
+            campsiteRepository = FakeCampsiteRepository(listOf(campsite)),
+            lotteryRepository = FakeLotteryRepository(listOf(lottery)),
+            reservationRepository = FakeReservationRepository(),
+            notificationRepository = FakeNotificationRepository(),
+        )
+
+        startApp()
+        tapTab(Routes.CAMPSITES)
+
+        // 1. Tapping campsite opens owner's details screen with all its fields
+        composeRule.onNodeWithText("Pine Valley Resort").performClick()
+        assertShown("My Campsite")
+        assertShown("Pine Valley Resort")
+        assertShown("Banff, AB")
+        assertShown("BANFF · Up to 4 guests · $60 / night")
+        assertShown("Peaceful retreat in the pines.")
+        assertShown("Fire pit")
+        assertShown("No loud music")
+        assertShown("Free up to 3 days before")
+
+        // 2. Links to Edit
+        composeRule.onNodeWithText("Edit").performClick()
+        assertShown("Edit Campsite")
+        assertShown("Editing campsite details is added in US 02.01.03.")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsite")
+
+        // 3. Links to QR Code (once 02.02.01 is built)
+        composeRule.onNodeWithText("QR Code").performClick()
+        assertShown("QR Code")
+        assertShown("Campsite QR code is added in US 02.02.01.")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsite")
+
+        // 4. Links to Availability
+        composeRule.onNodeWithText("Availability").performClick()
+        assertShown("Availability")
+        assertShown("Managing campsite availability is added in US 02.06.01.")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsite")
+
+        // 5. Links to Reservations
+        composeRule.onNode(hasText("Reservations") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+        assertShown("List of reservations for your campsites is added in US 02.07.01")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsite")
+
+        // 6. Links to Lottery details
+        composeRule.onNodeWithText("July long weekend").performClick()
+        assertShown("Lottery Details")
+        assertShown("Lottery details is added in US 02.04.01.")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsite")
+
+        // 7. Links to Create Lottery
+        composeRule.onNodeWithText("Create Lottery").performClick()
+        assertShown("Create Lottery")
+        assertShown("Creating a lottery is added in US 02.04.01.")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("My Campsite")
+
+        // 8. Back from Details returns to My Campsites
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("My Campsites")
     }

@@ -21,10 +21,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
+import com.example.vipers.ui.campsites.CampsiteAvailabilityScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
+import com.example.vipers.ui.campsites.CampsiteQrScreen
+import com.example.vipers.ui.campsites.EditCampsiteScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.home.HomeScreen
+import com.example.vipers.ui.lotteries.CreateLotteryScreen
+import com.example.vipers.ui.lotteries.LotteryDetailsScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SentScreen
 import com.example.vipers.ui.profile.PolicyScreen
@@ -88,8 +93,66 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
                 CampsiteDetailsScreen(
                     campsiteId = campsiteId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onEditClick = {
+                        val route = Routes.EDIT_CAMPSITE.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    },
+                    onQrCodeClick = {
+                        val route = Routes.CAMPSITE_QR.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    },
+                    onAvailabilityClick = {
+                        val route = Routes.CAMPSITE_AVAILABILITY.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    },
+                    onReservationsClick = {
+                        navController.navigate(Routes.OWNER_RESERVATIONS)
+                    },
+                    onLotteryClick = { lotteryId ->
+                        val route = Routes.LOTTERY_DETAILS.replace("{lotteryId}", lotteryId)
+                        navController.navigate(route)
+                    },
+                    onCreateLotteryClick = {
+                        val route = Routes.CREATE_LOTTERY.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    }
                 )
+            }
+            composable(
+                route = Routes.EDIT_CAMPSITE,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                EditCampsiteScreen(campsiteId = campsiteId, onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Routes.CAMPSITE_QR,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CampsiteQrScreen(campsiteId = campsiteId, onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Routes.CAMPSITE_AVAILABILITY,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CampsiteAvailabilityScreen(campsiteId = campsiteId, onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Routes.LOTTERY_DETAILS,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
+                LotteryDetailsScreen(lotteryId = lotteryId, onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Routes.CREATE_LOTTERY,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CreateLotteryScreen(campsiteId = campsiteId, onBack = { navController.popBackStack() })
             }
             composable(Routes.NOTIFICATIONS) { NotificationsScreen() }
             composable(Routes.PROFILE) {
