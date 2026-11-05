@@ -14,7 +14,8 @@ package com.example.vipers.domain.model
  * @property id Firestore document ID.
  * @property ownerId Device ID of the owner who created it.
  * @property campsiteIds The campsites it covers.
- * @property nightsOffered The nights winners can reserve.
+ * @property nightsOffered The concrete ISO "yyyy-MM-dd" nights winners can reserve.
+ * @property nightsDescription Optional human-readable description (e.g. "May 2027 weekends").
  * @property registrationStart When entrants can start joining.
  * @property registrationEnd When joining closes; the draw runs after this.
  * @property bookingStart When winners can start reserving.
@@ -29,6 +30,7 @@ data class Lottery(
     val ownerId: String = "",
     val campsiteIds: List<String> = emptyList(),
     val nightsOffered: List<String> = emptyList(),
+    val nightsDescription: String? = null,
     val registrationStart: Long = 0,
     val registrationEnd: Long = 0,
     val bookingStart: Long = 0,

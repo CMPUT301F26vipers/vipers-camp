@@ -19,7 +19,7 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
     private var nextId = 1
 
     override suspend fun addCampsite(campsite: Campsite): String {
-        val id = "campsite-${nextId++}"
+        val id = campsite.id.ifEmpty { "campsite-${nextId++}" }
         campsites[id] = campsite.copy(id = id)
         return id
     }
