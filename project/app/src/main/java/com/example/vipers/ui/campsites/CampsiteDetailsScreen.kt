@@ -188,6 +188,13 @@ fun CampsiteDetailsScreen(campsiteId: String, onBack: () -> Unit, onEditClick: (
     }
 }
 
+/**
+ * A styled outlined button used for primary actions within the campsite details grid.
+ *
+ * @param text The label displayed inside the button.
+ * @param onClick The callback triggered when the button is pressed.
+ * @param modifier The modifier to be applied to the button layout.
+ */
 @Composable
 fun ActionOutlineButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     OutlinedButton(
@@ -201,6 +208,14 @@ fun ActionOutlineButton(text: String, onClick: () -> Unit, modifier: Modifier = 
     }
 }
 
+/**
+ * A card displaying summary information for a specific lottery, including a visual status badge.
+ *
+ * @param title The main title of the lottery (e.g., "May weekends").
+ * @param subtext Additional context or metrics below the title (e.g., "36 joined").
+ * @param status The text displayed inside the status badge (e.g., "Open" or "Closed").
+ * @param isOpen Determines the color styling of the status badge (primary colors if true, gray if false).
+ */
 @Composable
 fun LotteryCard(title: String, subtext: String, status: String, isOpen: Boolean) {
     Card(
@@ -247,6 +262,11 @@ fun LotteryCard(title: String, subtext: String, status: String, isOpen: Boolean)
     }
 }
 
+/**
+ * A compact, pill-shaped chip used to display a single feature or attribute of the campsite.
+ *
+ * @param text The text label displayed inside the chip.
+ */
 @Composable
 fun TagChip(text: String) {
     Box(
