@@ -31,6 +31,7 @@ import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
+import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
 import org.junit.Before
@@ -169,6 +170,32 @@ class NavigationTest {
         assertShown("All Campsites")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
+    }
+
+    @Test
+    fun adminCanClickCampsiteRowToOpenDetailsAndGoBack() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(listOf(UserProfile(id = "test-device", name = "Sam Patel"))),
+            campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "camp-123", name = "Lakeside Camp"))),
+            lotteryRepository = FakeLotteryRepository(),
+            reservationRepository = FakeReservationRepository(),
+            notificationRepository = FakeNotificationRepository(),
+        )
+
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).performClick()
+        assertShown("All Campsites")
+
+        composeRule.onNodeWithText("Lakeside Camp").performClick()
+        assertShown("Campsite Details")
+        assertShown("Viewing details for campsite ID: camp-123")
+
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("All Campsites")
     }
 
     @Test

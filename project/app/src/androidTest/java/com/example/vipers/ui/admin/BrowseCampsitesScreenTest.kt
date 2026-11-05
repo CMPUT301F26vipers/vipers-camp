@@ -1,6 +1,6 @@
 /*
- * AdminCampsitesScreenTest.kt
- * UI tests for AdminCampsitesScreen (US 03.04.01).
+ * BrowseCampsitesScreenTest.kt
+ * UI tests for BrowseCampsitesScreen (US 03.04.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
@@ -16,11 +16,12 @@ import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-class AdminCampsitesScreenTest {
+class BrowseCampsitesScreenTest {
 
     @get:Rule
     val composeRule = createComposeRule()
@@ -42,7 +43,7 @@ class AdminCampsitesScreenTest {
 
         composeRule.setContent {
             VipersTheme {
-                AdminCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
             }
         }
 
@@ -67,17 +68,15 @@ class AdminCampsitesScreenTest {
 
         composeRule.setContent {
             VipersTheme {
-                AdminCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
             }
         }
 
         composeRule.onNodeWithText("Mountain View").assertIsDisplayed()
-        composeRule.onNodeWithText("Banff, AB").assertIsDisplayed()
-        composeRule.onNodeWithText("Owner: Alice Smith").assertIsDisplayed()
+        composeRule.onNodeWithText("Banff, AB · Alice Smith").assertIsDisplayed()
 
         composeRule.onNodeWithText("Lakeside Camp").assertIsDisplayed()
-        composeRule.onNodeWithText("Jasper, AB").assertIsDisplayed()
-        composeRule.onNodeWithText("Owner: Bob Jones").assertIsDisplayed()
+        composeRule.onNodeWithText("Jasper, AB · Bob Jones").assertIsDisplayed()
     }
 
     @Test
@@ -92,7 +91,7 @@ class AdminCampsitesScreenTest {
 
         composeRule.setContent {
             VipersTheme {
-                AdminCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
             }
         }
 
@@ -110,7 +109,7 @@ class AdminCampsitesScreenTest {
 
         composeRule.setContent {
             VipersTheme {
-                AdminCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
             }
         }
 
@@ -128,7 +127,7 @@ class AdminCampsitesScreenTest {
 
         composeRule.setContent {
             VipersTheme {
-                AdminCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
             }
         }
 
@@ -146,12 +145,37 @@ class AdminCampsitesScreenTest {
 
         composeRule.setContent {
             VipersTheme {
-                AdminCampsitesScreen(onBack = { backClicked = true }, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = { backClicked = true }, viewModel = viewModel)
             }
         }
 
         composeRule.onNodeWithContentDescription("Back").performClick()
 
         assertTrue(backClicked)
+    }
+
+    @Test
+    fun clickingCampsiteRowInvokesOnOpenCampsiteCallback() {
+        val campsites = listOf(
+            Campsite(id = "c1", ownerId = "owner1", name = "Mountain View", address = "Banff, AB")
+        )
+        val campsiteRepo = FakeCampsiteRepository(campsites)
+        val profileRepo = FakeProfileRepository()
+        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        var openedCampsiteId: String? = null
+
+        composeRule.setContent {
+            VipersTheme {
+                BrowseCampsitesScreen(
+                    onBack = {},
+                    onOpenCampsite = { openedCampsiteId = it },
+                    viewModel = viewModel
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Mountain View").performClick()
+
+        assertEquals("c1", openedCampsiteId)
     }
 }

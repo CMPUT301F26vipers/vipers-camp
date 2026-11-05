@@ -1,5 +1,5 @@
 /*
- * AdminCampsitesScreen.kt
+ * BrowseCampsitesScreen.kt
  * Shows the list of campsites for admins (US 03.04.01, mockup A02).
  * Known issues: campsite removal is added in US 03.01.01.
  */
@@ -46,8 +46,9 @@ import com.example.vipers.ui.theme.Shapes
 
 /** Displays campsites for admin browsing. */
 @Composable
-fun AdminCampsitesScreen(
+fun BrowseCampsitesScreen(
     onBack: () -> Unit,
+    onOpenCampsite: (String) -> Unit = {},
     viewModel: AdminCampsitesViewModel = viewModel(factory = AdminCampsitesViewModel.Factory)
 ) {
     var searchText by rememberSaveable { mutableStateOf("") }
@@ -63,15 +64,25 @@ fun AdminCampsitesScreen(
     ) {
         TopBar(title = "All Campsites", onBack = onBack)
 
-        OutlinedTextField(
-            value = searchText,
-            onValueChange = { searchText = it },
-            label = { Text("Search campsites") },
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            singleLine = true
-        )
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "Search",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                placeholder = { Text("Search campsites") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+        }
 
         when {
             viewModel.isLoading && viewModel.campsites.isEmpty() -> {
@@ -127,9 +138,10 @@ fun AdminCampsitesScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(filteredCampsites, key = { it.id }) { campsite ->
-                        AdminCampsiteItem(
+                        BrowseCampsiteItem(
                             campsite = campsite,
-                            ownerName = viewModel.getOwnerName(campsite.ownerId)
+                            ownerName = viewModel.getOwnerName(campsite.ownerId),
+                            onClick = { onOpenCampsite(campsite.id) }
                         )
                     }
                 }
@@ -140,12 +152,17 @@ fun AdminCampsitesScreen(
 
 /** Displays a campsite in the admin list. */
 @Composable
-private fun AdminCampsiteItem(campsite: Campsite, ownerName: String) {
+private fun BrowseCampsiteItem(
+    campsite: Campsite,
+    ownerName: String,
+    onClick: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         shape = Shapes.medium,
-        border = BorderStroke(1.dp, Border)
+        border = BorderStroke(1.dp, Border),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -167,17 +184,15 @@ private fun AdminCampsiteItem(campsite: Campsite, ownerName: String) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                val subtitle = if (campsite.address.isNotBlank() && ownerName.isNotBlank()) {
+                    "${campsite.address} · $ownerName"
+                } else {
+                    campsite.address.ifBlank { ownerName }
+                }
                 Text(
-                    text = campsite.address,
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "Owner: $ownerName",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

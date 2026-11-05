@@ -20,8 +20,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.vipers.ui.admin.AdminCampsitesScreen
 import com.example.vipers.ui.admin.AdminHomeScreen
+import com.example.vipers.ui.admin.BrowseCampsitesScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
@@ -137,7 +137,13 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                 }
 
                 composable(Routes.ADMIN_CAMPSITES) {
-                    AdminCampsitesScreen(onBack = { navController.popBackStack() })
+                    BrowseCampsitesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenCampsite = { campsiteId ->
+                            val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                            navController.navigate(route)
+                        }
+                    )
                 }
 
                 composable(Routes.ADMIN_PROFILES) {

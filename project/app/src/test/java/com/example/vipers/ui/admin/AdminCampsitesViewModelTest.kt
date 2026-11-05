@@ -52,7 +52,7 @@ class AdminCampsitesViewModelTest {
         )
         val fakeRepo = FakeCampsiteRepository(initial = campsites)
 
-g        val viewModel = AdminCampsitesViewModel(fakeRepo, FakeProfileRepository())
+        val viewModel = AdminCampsitesViewModel(fakeRepo, FakeProfileRepository())
 
         assertEquals(3, viewModel.campsites.size)
         assertEquals(listOf("c1", "c2", "c3"), viewModel.campsites.map { it.id })
