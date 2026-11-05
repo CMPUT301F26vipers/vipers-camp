@@ -1,7 +1,8 @@
 /*
  * OwnerCampsiteController.kt
- * The controller (a ViewModel) handling details fetching and creation triggers for a campsite.
- * Known issues: none.
+ * The controller (a ViewModel) behind the owner's view of one campsite (mockup O04, US 02.01.04).
+ * It loads the campsite with all its saved details and its lotteries (US 02.04.01).
+ * Known issues: the campsite's reservations are not loaded here yet (02.07.01).
  */
 package com.example.vipers.ui.campsites
 
@@ -22,11 +23,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel for viewing details of a campsite and its associated lotteries.
- *
- * @param campsiteRepository Repository to fetch campsite metadata.
- * @param lotteryRepository Repository to fetch lotteries associated with this campsite.
- * @param campsiteId ID of the campsite being inspected.
+ * Loads one of the owner's campsites and its lotteries for the My Campsite screen.
+ * Takes the [campsiteRepository] and [lotteryRepository] in its constructor so tests can pass
+ * fake ones, and the [campsiteId] of the campsite to show.
  */
 class OwnerCampsiteController(
     private val campsiteRepository: CampsiteRepository,
@@ -34,38 +33,52 @@ class OwnerCampsiteController(
     private val campsiteId: String,
 ) : ViewModel() {
 
+    /** The campsite with its latest saved details, or null until it loads or if it wasn't found. */
     var campsite by mutableStateOf<Campsite?>(null)
         private set
+
+    /** The campsite's lotteries. */
     var lotteries by mutableStateOf<List<Lottery>>(emptyList())
         private set
+
+    /** True while the campsite is loading. */
     var loading by mutableStateOf(true)
         private set
+
+    /** A message to show if the last load failed, e.g. because the phone is offline. */
     var error by mutableStateOf<String?>(null)
         private set
 
-    init {
-        loadData()
+    /**
+     * Loads the campsite and its lotteries in the background. The screen calls this each time it
+     * comes back into view, so it always shows the latest saved values (e.g. after Edit).
+     */
+    fun loadData() {
+        viewModelScope.launch { fetchData() }
     }
 
-    /** Loads campsite metadata and lotteries asynchronously. */
-    fun loadData() {
-        viewModelScope.launch {
-            loading = true
-            error = null
-            try {
-                campsite = campsiteRepository.getCampsite(campsiteId)
-                lotteries = lotteryRepository.getLotteriesForCampsite(campsiteId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = "Unable to load details."
-            } finally {
-                loading = false
-            }
+    /**
+     * Gets the campsite and its lotteries from the repositories and sets [loading] and [error].
+     * [loadData] runs this in the background; unit tests call it directly.
+     */
+    suspend fun fetchData() {
+        loading = true
+        error = null
+        try {
+            campsite = campsiteRepository.getCampsite(campsiteId)
+            lotteries = lotteryRepository.getLotteriesForCampsite(campsiteId)
+        } catch (e: CancellationException) {
+            // the load was stopped on purpose (the controller is gone), so it didn't fail
+            throw e
+        } catch (e: Exception) {
+            error = "Unable to load details."
+        } finally {
+            loading = false
         }
     }
 
     companion object {
+        /** Makes the controller for [campsiteId] with the app's real repositories. */
         fun factory(campsiteId: String) = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as CampApp
