@@ -8,18 +8,23 @@ package com.example.vipers.ui.lottery
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.domain.model.LotteryStatus
@@ -54,6 +60,8 @@ fun LotteryDetailsScreen(
     controller: LotteryDetailsController = viewModel(factory = LotteryDetailsController.factory(lotteryId))
 ) {
     var showWaitingList by remember { mutableStateOf(false) }
+    var showJoinDialog by remember { mutableStateOf(false) }
+    var groupSizeText by remember { mutableStateOf("1") }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -155,24 +163,138 @@ fun LotteryDetailsScreen(
                         }
 
                         item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { /* O10 Edit Lottery reserved for edit story */ },
-                                    modifier = Modifier.weight(1f)
+                            if (controller.isOwner) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text("Edit Lottery")
-                                }
+                                    OutlinedButton(
+                                        onClick = { /* O10 Edit Lottery reserved for edit story */ },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("Edit Lottery")
+                                    }
 
-                                Button(
-                                    onClick = { showWaitingList = true },
-                                    modifier = Modifier.weight(1f)
+                                    Button(
+                                        onClick = { showWaitingList = true },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("View Waiting List")
+                                    }
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text("View Waiting List")
+                                    if (controller.joinSuccess) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Successfully joined the waiting list!",
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.padding(12.dp)
+                                            )
+                                        }
+                                    }
+
+                                    if (controller.joinError != null) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.errorContainer,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = controller.joinError!!,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.padding(12.dp)
+                                            )
+                                        }
+                                    }
+
+                                    when {
+                                        controller.isJoined -> {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(16.dp)) {
+                                                    Text(
+                                                        text = "On Waiting List",
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                    val groupSize = controller.userEntry?.groupSize ?: 1
+                                                    Text(
+                                                        text = "Group size: $groupSize",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        status == LotteryStatus.UPCOMING -> {
+                                            Button(
+                                                onClick = {},
+                                                enabled = false,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Registration Upcoming")
+                                            }
+                                        }
+                                        status == LotteryStatus.CLOSED || status == LotteryStatus.DRAWN -> {
+                                            Button(
+                                                onClick = {},
+                                                enabled = false,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Registration Closed")
+                                            }
+                                        }
+                                        controller.isFull -> {
+                                            Button(
+                                                onClick = {},
+                                                enabled = false,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Waiting List Full")
+                                            }
+                                        }
+                                        else -> {
+                                            Button(
+                                                onClick = {
+                                                    groupSizeText = "1"
+                                                    showJoinDialog = true
+                                                },
+                                                enabled = !controller.isJoining,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                if (controller.isJoining) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(20.dp),
+                                                        color = MaterialTheme.colorScheme.onPrimary,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("Joining...")
+                                                } else {
+                                                    Text("Join Waiting List")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -180,6 +302,58 @@ fun LotteryDetailsScreen(
                 }
             }
         }
+    }
+
+    if (showJoinDialog) {
+        val groupSizeInt = groupSizeText.toIntOrNull()
+        val isValid = groupSizeInt != null && groupSizeInt > 0
+
+        AlertDialog(
+            onDismissRequest = {
+                if (!controller.isJoining) {
+                    showJoinDialog = false
+                }
+            },
+            title = { Text("Join Waiting List") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter the number of people in your group:")
+                    OutlinedTextField(
+                        value = groupSizeText,
+                        onValueChange = { groupSizeText = it },
+                        label = { Text("Group size") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = groupSizeText.isNotBlank() && !isValid,
+                        supportingText = if (groupSizeText.isNotBlank() && !isValid) {
+                            { Text("Group size must be a positive integer") }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isValid) {
+                            showJoinDialog = false
+                            controller.joinWaitingList(groupSizeInt!!)
+                        }
+                    },
+                    enabled = isValid && !controller.isJoining
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showJoinDialog = false },
+                    enabled = !controller.isJoining
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showWaitingList) {
