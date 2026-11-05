@@ -26,7 +26,9 @@ import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
@@ -61,6 +63,14 @@ class ViewMyCampsiteDetailsTest {
         Lottery(id = "may", campsiteIds = listOf("hinton"), nightsDescription = "May 2027 weekends"),
     )
 
+    // 3 groups on the May waiting list
+    private val entries = listOf("sam", "alex", "jordan").map { userId ->
+        LotteryEntry(
+            id = LotteryEntry.idFor("may", userId), lotteryId = "may", userId = userId,
+            status = EntryStatus.WAITING,
+        )
+    }
+
     // what each button was last asked to do
     private var opened = ""
 
@@ -69,7 +79,8 @@ class ViewMyCampsiteDetailsTest {
         campsites: CampsiteRepository = FakeCampsiteRepository(listOf(hinton)),
         campsiteId: String = "hinton",
     ): OwnerCampsiteController {
-        val controller = OwnerCampsiteController(campsites, FakeLotteryRepository(lotteries), campsiteId)
+        val controller =
+            OwnerCampsiteController(campsites, FakeLotteryRepository(lotteries, entries), campsiteId)
         composeRule.setContent {
             VipersTheme {
                 OwnerCampsiteScreen(
@@ -154,6 +165,12 @@ class ViewMyCampsiteDetailsTest {
         openScreen()
         composeRule.onNodeWithText("Lottery: May 2027 weekends").performScrollTo().performClick()
         assertEquals("lottery may", opened)
+    }
+
+    @Test
+    fun eachLotteryShowsHowManyJoined() {
+        openScreen()
+        assertShown("3 joined")
     }
 
     @Test

@@ -1,7 +1,8 @@
 /*
  * OwnerCampsiteController.kt
  * The controller (a ViewModel) behind the owner's view of one campsite (mockup O04, US 02.01.04).
- * It loads the campsite with all its saved details and its lotteries (US 02.04.01).
+ * It loads the campsite with all its saved details and its lotteries (US 02.04.01), with how many
+ * entrants joined or reserved each one.
  * Known issues: the campsite's reservations are not loaded here yet (02.07.01).
  */
 package com.example.vipers.ui.campsites
@@ -16,7 +17,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.vipers.CampApp
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
 import kotlinx.coroutines.CancellationException
@@ -41,6 +44,10 @@ class OwnerCampsiteController(
     var lotteries by mutableStateOf<List<Lottery>>(emptyList())
         private set
 
+    /** Each lottery's entry count as text, e.g. "36 joined" or "3 reserved", by lottery ID. */
+    var entrySummaries by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+
     /** True while the campsite is loading. */
     var loading by mutableStateOf(true)
         private set
@@ -58,7 +65,8 @@ class OwnerCampsiteController(
     }
 
     /**
-     * Gets the campsite and its lotteries from the repositories and sets [loading] and [error].
+     * Gets the campsite, its lotteries and their entry counts from the repositories, and sets
+     * [loading] and [error].
      * [loadData] runs this in the background; unit tests call it directly.
      */
     suspend fun fetchData() {
@@ -66,7 +74,11 @@ class OwnerCampsiteController(
         error = null
         try {
             campsite = campsiteRepository.getCampsite(campsiteId)
-            lotteries = lotteryRepository.getLotteriesForCampsite(campsiteId)
+            val loaded = lotteryRepository.getLotteriesForCampsite(campsiteId)
+            entrySummaries = loaded.associate { lottery ->
+                lottery.id to entrySummary(lotteryRepository.getEntries(lottery.id))
+            }
+            lotteries = loaded
         } catch (e: CancellationException) {
             // the load was stopped on purpose (the controller is gone), so it didn't fail
             throw e
@@ -75,6 +87,13 @@ class OwnerCampsiteController(
         } finally {
             loading = false
         }
+    }
+
+    // like mockup O04: "36 joined" while people sign up, "3 reserved" once winners start reserving
+    private fun entrySummary(entries: List<LotteryEntry>): String {
+        val reserved = entries.count { it.status == EntryStatus.RESERVED }
+        if (reserved > 0) return "$reserved reserved"
+        return "${entries.count { it.status != EntryStatus.REMOVED }} joined"
     }
 
     companion object {

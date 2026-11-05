@@ -144,7 +144,11 @@ fun OwnerCampsiteScreen(
                     } else {
                         Column {
                             for (lottery in controller.lotteries) {
-                                LotteryRow(lottery, onClick = { onLotteryClick(lottery.id) })
+                                LotteryRow(
+                                    lottery,
+                                    entrySummary = controller.entrySummaries[lottery.id] ?: "",
+                                    onClick = { onLotteryClick(lottery.id) },
+                                )
                                 HorizontalDivider()
                             }
                         }
@@ -212,9 +216,12 @@ private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 }
 
-/** One lottery: its nights and status. Tapping it opens the lottery's details. */
+/**
+ * One lottery: its nights, how many joined or reserved ([entrySummary]) and its status. Tapping it
+ * opens the lottery's details.
+ */
 @Composable
-private fun LotteryRow(lottery: Lottery, onClick: () -> Unit) {
+private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Unit) {
     val statusLabel = when (lottery.status(System.currentTimeMillis())) {
         LotteryStatus.OPEN -> "Registration is open"
         LotteryStatus.UPCOMING -> "Registration upcoming"
@@ -237,6 +244,11 @@ private fun LotteryRow(lottery: Lottery, onClick: () -> Unit) {
             text = "Lottery: $displayNights",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = entrySummary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
