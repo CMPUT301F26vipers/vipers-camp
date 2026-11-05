@@ -161,6 +161,17 @@ class NavigationTest {
     }
 
     @Test
+    fun adminCanOpenCampsitesAndGoBack() {
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).performClick()
+        assertShown("All Campsites")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+    }
+
+    @Test
     fun adminMenuItemsOpenCorrectDestinationsAndGoBack() {
         startApp(isAdmin = true)
         tapTab(Routes.ADMIN)
@@ -168,7 +179,6 @@ class NavigationTest {
         // Campsites
         composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).performClick()
         assertShown("All Campsites")
-        assertShown("Browse Campsites (03.04.01)")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
 
