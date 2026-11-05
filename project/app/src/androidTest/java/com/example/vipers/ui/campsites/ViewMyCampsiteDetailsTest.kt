@@ -130,7 +130,7 @@ class ViewMyCampsiteDetailsTest {
 
         // Edit and Availability open their screens, and Back comes back here
         tap("button_edit")
-        composeRule.onNodeWithText("Editing a campsite is added in US 02.01.03.").assertIsDisplayed()
+        composeRule.onNodeWithText("Edit Campsite").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Back").performClick()
         tap("button_availability")
         composeRule.onNodeWithText("Setting available nights is added in T-10.").assertIsDisplayed()
