@@ -169,6 +169,43 @@ class NavigationTest {
     }
 
     @Test
+    fun adminCanOpenCampsitesAndGoBack() {
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).performClick()
+        assertShown("All Campsites")
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+    }
+
+    @Test
+    fun adminCanClickCampsiteRowToOpenDetailsAndGoBack() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(listOf(UserProfile(id = "test-device", name = "Sam Patel"))),
+            campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "camp-123", name = "Lakeside Camp"))),
+            lotteryRepository = FakeLotteryRepository(),
+            reservationRepository = FakeReservationRepository(),
+            notificationRepository = FakeNotificationRepository(),
+        )
+
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).performClick()
+        assertShown("All Campsites")
+
+        composeRule.onNodeWithText("Lakeside Camp").performClick()
+        assertShown("My Campsite")
+        assertShown("Lakeside Camp")
+
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("All Campsites")
+    }
+
+    @Test
     fun adminMenuItemsOpenCorrectDestinationsAndGoBack() {
         startApp(isAdmin = true)
         tapTab(Routes.ADMIN)
@@ -176,7 +213,6 @@ class NavigationTest {
         // Campsites
         composeRule.onNode(hasText("Campsites") and !hasTestTag("tab_${Routes.CAMPSITES}")).performClick()
         assertShown("All Campsites")
-        assertShown("Browse Campsites (03.04.01)")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
 
