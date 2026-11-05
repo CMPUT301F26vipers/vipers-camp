@@ -35,6 +35,7 @@ import com.example.vipers.ui.reservations.OwnerReservationsScreen
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
 
+// The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
     Routes.HOME, Routes.RESERVATIONS, Routes.CAMPSITES, Routes.NOTIFICATIONS, Routes.PROFILE, Routes.ADMIN,
 )
@@ -53,6 +54,7 @@ fun AppNavigation(
     val currentRoute = backStackEntry?.destination?.route
 
     Scaffold(
+        // each screen's top bar already leaves room for the status bar
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (currentRoute in tabRoutes) {
@@ -87,6 +89,7 @@ fun AppNavigation(
             }
             composable(
                 route = Routes.CAMPSITE_DETAILS,
+                // You MUST declare the argument here for Compose to extract it from the route
                 arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
@@ -143,6 +146,10 @@ fun AppNavigation(
     }
 }
 
+/**
+ * Switches to a bottom bar tab. Going back from any tab returns to Home, and tapping the tab
+ * you're already on doesn't stack another copy of it.
+ */
 private fun NavHostController.openTab(route: String) {
     navigate(route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }

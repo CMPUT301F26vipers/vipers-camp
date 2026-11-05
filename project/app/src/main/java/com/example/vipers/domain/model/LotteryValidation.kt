@@ -5,6 +5,18 @@
  */
 package com.example.vipers.domain.model
 
+import java.text.ParsePosition
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+private fun isValidIsoDate(text: String): Boolean {
+    if (text.length != 10) return false
+    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
+    val pos = ParsePosition(0)
+    val date = sdf.parse(text, pos)
+    return date != null && pos.index == text.length
+}
+
 /**
  * Validates a [lottery] against business logic rules.
  *
@@ -17,33 +29,35 @@ fun validateLottery(lottery: Lottery, now: Long = System.currentTimeMillis()): L
 
     if (lottery.ownerId.isBlank()) errors.add("Owner is required")
     if (lottery.campsiteIds.isEmpty()) errors.add("Select a campsite")
-    if (lottery.nightsOffered.isEmpty()) errors.add("Select at least one night")
-
-    // Registration period validation: if partially set, error. If set, validate timestamps.
-    if (lottery.registrationStart > 0 || lottery.registrationEnd > 0) {
-        if (lottery.registrationStart <= 0 || lottery.registrationEnd <= 0) {
-            errors.add("Both registration start and end times must be set")
-        } else {
-            if (lottery.registrationStart < now) errors.add("Registration cannot start in the past")
-            if (lottery.registrationEnd <= lottery.registrationStart) errors.add("Invalid registration period")
-        }
+    if (lottery.nightsOffered.isEmpty() || lottery.nightsOffered.any { !isValidIsoDate(it) }) {
+        errors.add("Select at least one night")
     }
 
-    // Booking period validation: if partially set, error. If set, validate timestamps.
-    if (lottery.bookingStart > 0 || lottery.bookingEnd > 0) {
-        if (lottery.bookingStart <= 0 || lottery.bookingEnd <= 0) {
-            errors.add("Both booking start and end times must be set")
-        } else {
-            if (lottery.registrationEnd > 0 && lottery.bookingStart < lottery.registrationEnd) {
-                errors.add("Booking must start after registration")
-            } else if (lottery.bookingStart < now) {
-                errors.add("Booking cannot start in the past")
-            }
-            if (lottery.bookingEnd <= lottery.bookingStart) errors.add("Invalid booking period")
+    // Registration period validation: required timestamps
+    if (lottery.registrationStart <= 0L || lottery.registrationEnd <= 0L) {
+        errors.add("Both registration start and end times must be set")
+    } else {
+        if (lottery.registrationStart < now) errors.add("Registration cannot start in the past")
+        if (lottery.registrationEnd <= lottery.registrationStart) errors.add("Invalid registration period")
+    }
+
+    // Booking period validation: required timestamps
+    if (lottery.bookingStart <= 0L || lottery.bookingEnd <= 0L) {
+        errors.add("Both booking start and end times must be set")
+    } else {
+        if (lottery.registrationEnd > 0L && lottery.bookingStart < lottery.registrationEnd) {
+            errors.add("Booking must start after registration")
+        } else if (lottery.bookingStart < now) {
+            errors.add("Booking cannot start in the past")
         }
+        if (lottery.bookingEnd <= lottery.bookingStart) errors.add("Invalid booking period")
     }
 
     if (lottery.winnersCount < 1) errors.add("At least one winner is required")
+
+    if (lottery.waitlistCapacity != null && lottery.waitlistCapacity < 1) {
+        errors.add("Waitlist limit must be at least 1")
+    }
 
     return errors
 }

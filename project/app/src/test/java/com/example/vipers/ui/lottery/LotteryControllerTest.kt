@@ -1,9 +1,18 @@
+/*
+ * LotteryControllerTest.kt
+ * Unit tests for LotteryController creation logic, date ranges, and validation.
+ * Known issues: none.
+ */
 package com.example.vipers.ui.lottery
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.repository.LotteryRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -13,6 +22,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Before
@@ -60,7 +70,6 @@ class LotteryControllerTest {
             ownerId = ownerId,
             campsiteId = campsiteId
         )
-        // Controller's init calls loadCampsiteData which runs synchronously with UnconfinedTestDispatcher
     }
 
     @Test
@@ -195,24 +204,191 @@ class LotteryControllerTest {
     }
 
     @Test
-    fun savingLotteryStoresCorrectlyAndDoesNotModifyAvailability() = runTest {
+    fun parseStrictDate_withLenientOrPartialDates_returnsNull() = runTest {
         setupCampsiteAndController()
+
+        // Lenient rollover date
+        assertNull(controller.parseStrictDate("2027-02-30"))
+
+        // Partial string
+        assertNull(controller.parseStrictDate("2026-0"))
+
+        // Trailing unparsed text
+        assertNull(controller.parseStrictDate("2026-01-01abc"))
+
+        // Valid date
+        assertNotNull(controller.parseStrictDate("2026-01-01"))
+    }
+
+    @Test
+    fun waitlistLimitValidation_nonNumericOrLessThanOne_showsError() = runTest {
+        setupCampsiteAndController()
+
         controller.onRangeStartChange("2026-01-01")
         controller.onRangeEndChange("2026-01-02")
         controller.loadSelectedRange()
-
         controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        // Non-numeric text
+        controller.onWaitlistCapacityChange("abc")
+        controller.saveLottery()
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.error)
+        assertFalse(controller.saved)
+
+        // Zero
+        controller.onWaitlistCapacityChange("0")
+        controller.saveLottery()
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.error)
+        assertFalse(controller.saved)
+
+        // Negative
+        controller.onWaitlistCapacityChange("-5")
+        controller.saveLottery()
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.error)
+        assertFalse(controller.saved)
+
+        // Blank (valid, no limit)
+        controller.onWaitlistCapacityChange("")
+        controller.saveLottery()
+        assertTrue(controller.saved)
+        assertNull(lotteryRepository.getLotteriesForCampsite(campsiteId).first().waitlistCapacity)
+    }
+
+    @Test
+    fun saveLottery_inFlightDuplicateSubmission_ignoresSecondCall() = runTest {
+        val saveDeferred = CompletableDeferred<Unit>()
+        var addCallCount = 0
+
+        val delayedRepo = object : LotteryRepository {
+            override suspend fun addLottery(lottery: Lottery): String {
+                addCallCount++
+                saveDeferred.await()
+                return "lottery-delayed"
+            }
+            override suspend fun getLottery(id: String): Lottery? = null
+            override suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery> = emptyList()
+            override suspend fun saveEntry(entry: LotteryEntry) {}
+            override suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry? = null
+            override suspend fun getEntries(lotteryId: String): List<LotteryEntry> = emptyList()
+        }
+
+        val camp = Campsite(id = campsiteId, ownerId = ownerId, name = "Test Camp")
+        campsiteRepository.addCampsite(camp)
+
+        val customController = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = delayedRepo,
+            ownerId = ownerId,
+            campsiteId = campsiteId
+        )
+
+        customController.onRangeStartChange("2026-01-01")
+        customController.onRangeEndChange("2026-01-02")
+        customController.loadSelectedRange()
+        customController.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        customController.setRegistrationStart(now + 100_000)
+        customController.setRegistrationEnd(now + 200_000)
+        customController.setBookingStart(now + 200_000)
+        customController.setBookingEnd(now + 300_000)
+
+        // First save call suspends at delayedRepo.addLottery
+        customController.saveLottery()
+        assertTrue(customController.saving)
+        assertEquals(1, addCallCount)
+
+        // Duplicate save call while saving == true
+        customController.saveLottery()
+        assertEquals(1, addCallCount) // Call count remains 1!
+
+        // Complete delayed save
+        saveDeferred.complete(Unit)
+        assertFalse(customController.saving)
+        assertTrue(customController.saved)
+    }
+
+    @Test
+    fun saveLottery_descriptionEnteredButNoNightsSelected_showsErrorAndRejectsSave() = runTest {
+        setupCampsiteAndController()
+
+        controller.onNightsOfferedTextChange("May 2027 weekends")
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        // No calendar nights selected!
+        controller.saveLottery()
+
+        assertFalse(controller.saved)
+        assertEquals("Select at least one night", controller.error)
+    }
+
+    @Test
+    fun saveLottery_nightsSelectedWithoutDescription_savesConcreteIsoDates() = runTest {
+        setupCampsiteAndController()
+
+        controller.onNightsOfferedTextChange("") // Blank description
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        controller.saveLottery()
+
+        assertTrue(controller.saved)
+        val savedLottery = lotteryRepository.getLotteriesForCampsite(campsiteId).first()
+        assertEquals(listOf("2026-01-01"), savedLottery.nightsOffered)
+        assertNull(savedLottery.nightsDescription)
+    }
+
+    @Test
+    fun saveLottery_bothNightsAndDescriptionSelected_savesBothIndependently() = runTest {
+        setupCampsiteAndController()
+
+        controller.onNightsOfferedTextChange("May 2027 weekends")
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+        controller.onWinnersCountChange("3")
+        controller.onWaitlistCapacityChange("20")
+
         controller.saveLottery()
 
         assertTrue(controller.saved)
 
         val lotteries = lotteryRepository.getLotteriesForCampsite(campsiteId)
         assertEquals(1, lotteries.size)
-        assertEquals(listOf("2026-01-01"), lotteries.first().nightsOffered)
-        assertEquals(ownerId, lotteries.first().ownerId)
-
-        val availability = campsiteRepository.getAvailability(campsiteId)
-        assertEquals(listOf("2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"), availability.openNights)
+        val savedLottery = lotteries.first()
+        assertEquals(listOf("2026-01-01"), savedLottery.nightsOffered)
+        assertEquals("May 2027 weekends", savedLottery.nightsDescription)
+        assertEquals(3, savedLottery.winnersCount)
+        assertEquals(20, savedLottery.waitlistCapacity)
+        assertEquals(now + 100_000, savedLottery.registrationStart)
+        assertEquals(now + 200_000, savedLottery.registrationEnd)
+        assertEquals(now + 200_000, savedLottery.bookingStart)
+        assertEquals(now + 300_000, savedLottery.bookingEnd)
     }
 
     @Test
@@ -223,25 +399,5 @@ class LotteryControllerTest {
 
         assertFalse(controller.saved)
         assertEquals("Select at least one night", controller.error)
-    }
-
-    @Test
-    fun availabilityChangesBetweenSelectionAndSavingHandledCorrectly() = runTest {
-        setupCampsiteAndController()
-        controller.onRangeStartChange("2026-01-01")
-        controller.onRangeEndChange("2026-01-02")
-        controller.loadSelectedRange()
-
-        controller.toggleNight("2026-01-01", true)
-
-        // Before saving, simulate another user holding the night
-        val cal = campsiteRepository.getAvailability(campsiteId)
-        campsiteRepository.saveAvailability(cal.copy(heldNights = listOf("2026-01-01")))
-
-        controller.saveLottery()
-
-        assertFalse(controller.saved)
-        assertEquals("Your selected nights are no longer available.", controller.error)
-        assertTrue(lotteryRepository.getLotteriesForCampsite(campsiteId).isEmpty())
     }
 }

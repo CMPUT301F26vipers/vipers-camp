@@ -69,7 +69,7 @@ class LotteryDetailsController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: "Unable to load lottery details"
+                error = "Unable to load lottery details. Please check your network connection and try again."
             } finally {
                 loading = false
             }

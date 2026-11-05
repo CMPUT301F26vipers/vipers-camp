@@ -37,6 +37,8 @@ class NavigationTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    // Same as the phone's Back button, but sent through the app so it doesn't depend on the
+    // emulator window having focus (Espresso's pressBack() does).
     private fun pressBack() {
         composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
         composeRule.waitForIdle()
@@ -100,6 +102,7 @@ class NavigationTest {
         tapTab(Routes.CAMPSITES)
         composeRule.onNodeWithContentDescription("Add campsite").performClick()
         assertShown("Add Campsite")
+        // no bottom bar on the form, like the mockup
         composeRule.onNodeWithTag("tab_${Routes.HOME}").assertDoesNotExist()
 
         composeRule.onNodeWithContentDescription("Back").performClick()
@@ -138,12 +141,14 @@ class NavigationTest {
         startApp()
         tapTab(Routes.CAMPSITES)
 
+        // Matches the specific node that has the text "Reservations" AND the Button role
         composeRule.onNode(hasText("Reservations") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
         assertShown("List of reservations for your campsites is added in US 02.07.01")
 
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("My Campsites")
 
+        // Test Sent navigation
         composeRule.onNodeWithText("Sent").performClick()
         assertShown("Sent notifications is added in US 02.10.02.")
 

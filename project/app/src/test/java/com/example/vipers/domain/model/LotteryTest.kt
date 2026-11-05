@@ -16,7 +16,7 @@ class LotteryTest {
     private fun at(text: String): Long =
         LocalDateTime.parse(text).atZone(ZoneId.of("America/Edmonton")).toInstant().toEpochMilli()
 
-    // Registration May 1 9:00 to May 10 15:00, booking May 12 to May 31.
+    // Registration May 1 9:00 to May 10 15:00, booking May 12 to May 31 23:59.
     private val lottery = Lottery(
         registrationStart = at("2027-05-01T09:00"),
         registrationEnd = at("2027-05-10T15:00"),
@@ -44,11 +44,19 @@ class LotteryTest {
     @Test
     fun status_isDrawnOnceDrawnUntilBookingEnds() {
         assertEquals(LotteryStatus.DRAWN, drawn.status(at("2027-05-20T12:00")))
+        assertEquals(LotteryStatus.DRAWN, drawn.status(at("2027-05-31T23:59")))
     }
 
     @Test
     fun status_isClosedAfterBookingEnds() {
         assertEquals(LotteryStatus.CLOSED, drawn.status(at("2027-06-01T00:00")))
+        assertEquals(LotteryStatus.CLOSED, lottery.status(at("2027-06-01T00:00")))
+    }
+
+    @Test
+    fun status_drawnPrecedenceOverridesRegistrationPeriodWhenDrawnAtIsSet() {
+        // When drawnAt is not null and now <= bookingEnd, status evaluates to DRAWN
+        assertEquals(LotteryStatus.DRAWN, drawn.status(at("2027-05-01T08:00")))
     }
 
     @Test

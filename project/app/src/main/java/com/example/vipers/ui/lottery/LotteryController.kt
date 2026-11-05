@@ -22,17 +22,19 @@ import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 /**
- * ViewModel controller for managing the creation of a new lottery for a campsite.
+ * ViewModel controller for managing the creation of a new lottery for campsite(s).
  *
  * @param campsiteRepository Repository to access campsite details and availability.
  * @param lotteryRepository Repository to store new lotteries.
  * @param ownerId Device ID of the current user.
- * @param campsiteId ID of the campsite for which the lottery is created.
+ * @param campsiteId ID of the initial campsite for which the lottery is created.
  */
 class LotteryController(
     private val campsiteRepository: CampsiteRepository,
@@ -43,6 +45,11 @@ class LotteryController(
 
     var campsite by mutableStateOf<Campsite?>(null)
         private set
+    var ownedCampsites by mutableStateOf<List<Campsite>>(emptyList())
+        private set
+    var selectedCampsiteIds by mutableStateOf(setOf(campsiteId))
+        private set
+
     var availability by mutableStateOf<AvailabilityCalendar?>(null)
         private set
     var availableNights by mutableStateOf<List<String>>(emptyList())
@@ -55,6 +62,25 @@ class LotteryController(
     var rangeEnd by mutableStateOf("")
         private set
 
+    var nightsOfferedText by mutableStateOf("")
+        private set
+
+    var registrationStartMillis by mutableStateOf<Long?>(null)
+        private set
+    var registrationEndMillis by mutableStateOf<Long?>(null)
+        private set
+
+    var bookingStartMillis by mutableStateOf<Long?>(null)
+        private set
+    var bookingEndMillis by mutableStateOf<Long?>(null)
+        private set
+
+    var winnersCountText by mutableStateOf("1")
+        private set
+
+    var waitlistCapacityText by mutableStateOf("")
+        private set
+
     var loading by mutableStateOf(true)
         private set
     var saving by mutableStateOf(false)
@@ -64,10 +90,18 @@ class LotteryController(
     var error by mutableStateOf<String?>(null)
         private set
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
     init {
         loadCampsiteData()
+    }
+
+    /** Helper for strict date parsing guaranteeing complete input consumption. */
+    fun parseStrictDate(text: String, pattern: String = "yyyy-MM-dd"): Date? {
+        if (text.isBlank()) return null
+        val sdf = SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }
+        val pos = ParsePosition(0)
+        val date = sdf.parse(text, pos)
+        if (date == null || pos.index != text.length) return null
+        return date
     }
 
     /** Loads the campsite details and current availability calendar. */
@@ -77,6 +111,12 @@ class LotteryController(
             error = null
             try {
                 val result = campsiteRepository.getCampsite(campsiteId)
+                val allOwned = campsiteRepository.getCampsitesByOwner(ownerId)
+                ownedCampsites = allOwned
+                if (campsiteId.isNotEmpty() && campsiteId !in selectedCampsiteIds) {
+                    selectedCampsiteIds = selectedCampsiteIds + campsiteId
+                }
+
                 if (result == null || result.ownerId != ownerId) {
                     error = "Campsite not found or you do not own it."
                 } else {
@@ -94,12 +134,28 @@ class LotteryController(
         }
     }
 
-    /** Updates rangeStart and clears rangeEnd if invalid. */
+    /** Toggles campsite selection. */
+    fun toggleCampsite(id: String, checked: Boolean) {
+        selectedCampsiteIds = if (checked) {
+            selectedCampsiteIds + id
+        } else {
+            selectedCampsiteIds - id
+        }
+        error = null
+    }
+
+    /** Updates text for nights offered field. */
+    fun onNightsOfferedTextChange(text: String) {
+        nightsOfferedText = text
+        error = null
+    }
+
+    /** Updates rangeStart safely using strict parsing. */
     fun onRangeStartChange(date: String) {
         rangeStart = date
         if (rangeEnd.isNotEmpty()) {
-            val start = dateFormat.parse(date)
-            val end = dateFormat.parse(rangeEnd)
+            val start = parseStrictDate(date)
+            val end = parseStrictDate(rangeEnd)
             if (end != null && start != null && end.before(start)) {
                 rangeEnd = ""
             }
@@ -111,6 +167,42 @@ class LotteryController(
         rangeEnd = date
     }
 
+    /** Sets registration start timestamp. */
+    fun setRegistrationStart(millis: Long) {
+        registrationStartMillis = millis
+        error = null
+    }
+
+    /** Sets registration end timestamp. */
+    fun setRegistrationEnd(millis: Long) {
+        registrationEndMillis = millis
+        error = null
+    }
+
+    /** Sets booking start timestamp. */
+    fun setBookingStart(millis: Long) {
+        bookingStartMillis = millis
+        error = null
+    }
+
+    /** Sets booking end timestamp. */
+    fun setBookingEnd(millis: Long) {
+        bookingEndMillis = millis
+        error = null
+    }
+
+    /** Sets winner count string. */
+    fun onWinnersCountChange(text: String) {
+        winnersCountText = text
+        error = null
+    }
+
+    /** Sets waitlist capacity limit string. */
+    fun onWaitlistCapacityChange(text: String) {
+        waitlistCapacityText = text
+        error = null
+    }
+
     /** Clears any active error message. */
     fun clearError() {
         error = null
@@ -119,10 +211,10 @@ class LotteryController(
     /** Loads and accumulates open, unheld nights for the selected date range. */
     fun loadSelectedRange() {
         try {
-            val start = dateFormat.parse(rangeStart)
-                ?: throw IllegalArgumentException()
-            val end = dateFormat.parse(rangeEnd)
-                ?: throw IllegalArgumentException()
+            val start = parseStrictDate(rangeStart)
+                ?: throw IllegalArgumentException("Invalid start date")
+            val end = parseStrictDate(rangeEnd)
+                ?: throw IllegalArgumentException("Invalid end date")
 
             if (end.before(start)) {
                 error = "End date must be on or after the start date."
@@ -133,6 +225,7 @@ class LotteryController(
 
             val cursor = Calendar.getInstance().apply { time = start }
             val endCalendar = Calendar.getInstance().apply { time = end }
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
             val newNights = mutableListOf<String>()
 
@@ -180,46 +273,54 @@ class LotteryController(
     /** Validates and saves the created lottery asynchronously. */
     fun saveLottery() {
         if (saving) return
-        val nightsSnapshot = selectedNights.toSet()
-        if (nightsSnapshot.isEmpty()) {
-            error = "Select at least one night"
-            return
+        saving = true
+        error = null
+
+        val nightsList = selectedNights.sorted()
+        val nightsDesc = nightsOfferedText.takeIf { it.isNotBlank() }
+
+        val winnersCount = winnersCountText.toIntOrNull() ?: 0
+
+        val waitlistCapacity: Int? = if (waitlistCapacityText.isBlank()) {
+            null
+        } else {
+            val parsed = waitlistCapacityText.trim().toIntOrNull()
+            if (parsed == null || parsed < 1) {
+                error = "Waitlist limit must be a whole number at least 1"
+                saving = false
+                return
+            }
+            parsed
         }
 
         val lottery = Lottery(
             ownerId = ownerId,
-            campsiteIds = listOf(campsiteId),
-            nightsOffered = nightsSnapshot.sorted(),
-            winnersCount = 1
+            campsiteIds = selectedCampsiteIds.toList(),
+            nightsOffered = nightsList,
+            nightsDescription = nightsDesc,
+            registrationStart = registrationStartMillis ?: 0L,
+            registrationEnd = registrationEndMillis ?: 0L,
+            bookingStart = bookingStartMillis ?: 0L,
+            bookingEnd = bookingEndMillis ?: 0L,
+            winnersCount = winnersCount,
+            waitlistCapacity = waitlistCapacity,
         )
 
         val validationErrors = validateLottery(lottery)
         if (validationErrors.isNotEmpty()) {
             error = validationErrors.first()
+            saving = false
             return
         }
 
         viewModelScope.launch {
-            saving = true
-            error = null
             try {
-                val latestCalendar = campsiteRepository.getAvailability(campsiteId)
-                val invalidNights = nightsSnapshot.filter {
-                    it !in latestCalendar.openNights || it in latestCalendar.heldNights
-                }
-
-                if (invalidNights.isNotEmpty()) {
-                    error = "Your selected nights are no longer available."
-                    saving = false
-                    return@launch
-                }
-
                 lotteryRepository.addLottery(lottery)
                 saved = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: "Unable to save lottery."
+                error = "Unable to save lottery."
             } finally {
                 saving = false
             }

@@ -1,3 +1,8 @@
+/*
+ * LotteryIntentTest.kt
+ * Integration / Intent tests for creating and viewing campsite lotteries.
+ * Known issues: none.
+ */
 package com.example.vipers.ui.lottery
 
 import androidx.activity.ComponentActivity
@@ -107,22 +112,38 @@ class LotteryIntentTest {
         // 4. Select Create Lottery
         composeRule.onNodeWithText("Create Lottery").performClick()
         composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText("Choose the nights available for this lottery.").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("Nights Offered").fetchSemanticsNodes().isNotEmpty()
         }
 
-        // 5. Choose a date range
+        // 5. Select night range and load nights
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val today = Calendar.getInstance()
         val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, 1) }
 
         composeRule.onNodeWithTag("tag_range_start").performTextInput(dateFormat.format(today.time))
         composeRule.onNodeWithTag("tag_range_end").performTextInput(dateFormat.format(tomorrow.time))
-
-        // Load nights
         composeRule.onNodeWithText("Load nights").performClick()
-
-        // 7. Select one or more eligible nights
         composeRule.onNodeWithText("Select All").performClick()
+
+        // 6. Fill in Nights Offered description
+        composeRule.onNodeWithTag("tag_nights_offered").performTextInput("May 2027 weekends")
+
+        // 7. Fill in Registration & Booking Date/Time pickers
+        composeRule.onNodeWithTag("button_reg_start").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+
+        composeRule.onNodeWithTag("button_reg_end").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+
+        composeRule.onNodeWithTag("button_book_start").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+
+        composeRule.onNodeWithTag("button_book_end").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+        composeRule.onNodeWithText("OK").performClick()
 
         // 8. Save the lottery using the specific test tag
         composeRule.onNodeWithTag("button_save_lottery").performClick()
@@ -137,20 +158,19 @@ class LotteryIntentTest {
             composeRule.onAllNodesWithText("Lotteries").fetchSemanticsNodes().isNotEmpty()
         }
 
-        // Wait for lottery item and expected default status
+        // Wait for lottery item and expected status badge
         composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText("Status: Not set up yet").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("Registration is open", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Status: Not set up yet").assertIsDisplayed()
+        composeRule.onNodeWithText("Registration is open", substring = true).assertIsDisplayed()
 
-        // 10. Verify that the selected nights are saved correctly in the exact lottery
+        // 10. Verify that the selected nights and description are saved correctly in the exact lottery
         val lotteries = runBlocking { lotteryRepository.getLotteriesForCampsite("c-123") }
         assertEquals(1, lotteries.size)
-
-        val todayStr = dateFormat.format(Calendar.getInstance().time)
-        val tomorrowStr = dateFormat.format(Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, 1) }.time)
-
+        val todayStr = dateFormat.format(today.time)
+        val tomorrowStr = dateFormat.format(tomorrow.time)
         assertEquals(listOf(todayStr, tomorrowStr), lotteries.first().nightsOffered)
+        assertEquals("May 2027 weekends", lotteries.first().nightsDescription)
 
         // 11. Verify that the campsite availability was exactly unmodified
         val calendar = runBlocking { campsiteRepository.getAvailability("c-123") }
