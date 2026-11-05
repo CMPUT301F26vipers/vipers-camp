@@ -1,7 +1,7 @@
 /*
  * AdminHomeScreen.kt
- * The Admin tab (mockup A00). The tab only shows for profiles with isAdmin set (US 03.11.01).
- * Known issues: placeholder. Browsing and removing campsites, profiles and images, and the
+ * The Admin tab (mockup A01). The tab only shows for profiles with isAdmin set (US 03.11.01).
+ * Known issues: browsing and removing campsites, profiles and images, and the
  * logs, are added in the admin stories.
  */
 package com.example.vipers.ui.admin
@@ -31,11 +31,11 @@ fun AdminHomeScreen(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            MenuRow("Campsites", onClick = onOpenCampsites)
-            MenuRow("Profiles", onClick = onOpenProfiles)
-            MenuRow("Images", onClick = onOpenImages)
-            MenuRow("Notification Log", onClick = onOpenNotificationLog)
-            MenuRow("Message Log", onClick = onOpenMessageLog)
+            MenuRow("Campsites", onClick = onOpenCampsites, subtitle = "Browse and remove")
+            MenuRow("Profiles", onClick = onOpenProfiles, subtitle = "Browse and remove")
+            MenuRow("Images", onClick = onOpenImages, subtitle = "Browse and remove")
+            MenuRow("Notification Log", onClick = onOpenNotificationLog, subtitle = "Every notification sent")
+            MenuRow("Message Log", onClick = onOpenMessageLog, subtitle = "Owner–entrant conversations")
         }
     }
 }

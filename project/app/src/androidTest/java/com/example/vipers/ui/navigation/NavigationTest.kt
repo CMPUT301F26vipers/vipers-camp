@@ -10,12 +10,14 @@ package com.example.vipers.ui.navigation
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -137,6 +139,9 @@ class NavigationTest {
         assertShown("Images")
         assertShown("Notification Log")
         assertShown("Message Log")
+        composeRule.onAllNodesWithText("Browse and remove").assertCountEquals(3)
+        assertShown("Every notification sent")
+        assertShown("Owner–entrant conversations")
     }
 
     @Test
@@ -182,12 +187,14 @@ class NavigationTest {
 
         // Notification Log
         composeRule.onNodeWithText("Notification Log").performClick()
+        assertShown("Logs")
         assertShown("Notification Log (03.08.01)")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
 
         // Message Log
         composeRule.onNodeWithText("Message Log").performClick()
+        assertShown("Logs")
         assertShown("Message Log (03.12.01)")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")

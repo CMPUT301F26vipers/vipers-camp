@@ -161,7 +161,7 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
 
                 composable(Routes.ADMIN_NOTIFICATION_LOG) {
                     AdminPlaceholderScreen(
-                        "Notification Log",
+                        "Logs",
                         "Notification Log (03.08.01)",
                         onBack = { navController.popBackStack() }
                     )
@@ -169,7 +169,7 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
 
                 composable(Routes.ADMIN_MESSAGE_LOG) {
                     AdminPlaceholderScreen(
-                        "Message Log",
+                        "Logs",
                         "Message Log (03.12.01)",
                         onBack = { navController.popBackStack() }
                     )
