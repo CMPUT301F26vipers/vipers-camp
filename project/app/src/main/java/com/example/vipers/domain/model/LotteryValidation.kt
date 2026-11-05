@@ -61,3 +61,51 @@ fun validateLottery(lottery: Lottery, now: Long = System.currentTimeMillis()): L
 
     return errors
 }
+
+/**
+ * Validates whether an entrant can join the waiting list for a [lottery].
+ *
+ * @param lottery The lottery to join.
+ * @param existingEntry The entrant's existing entry in this lottery, if any.
+ * @param waitingCount Current number of entrants on the waiting list.
+ * @param groupSize The number of people in the entrant's group (must be at least 1).
+ * @param now Current timestamp in milliseconds (defaults to system time).
+ * @return A list of validation error message strings. Empty if valid.
+ */
+fun validateJoinLottery(
+    lottery: Lottery,
+    existingEntry: LotteryEntry? = null,
+    waitingCount: Int = 0,
+    groupSize: Int = 1,
+    now: Long = System.currentTimeMillis(),
+): List<String> {
+    val errors = mutableListOf<String>()
+
+    if (lottery.removed) {
+        errors.add("Lottery has been removed")
+    }
+
+    when (lottery.status(now)) {
+        LotteryStatus.UPCOMING -> errors.add("Registration has not started")
+        LotteryStatus.CLOSED, LotteryStatus.DRAWN -> errors.add("Registration is closed")
+        LotteryStatus.OPEN -> {}
+    }
+
+    if (lottery.waitlistCapacity != null && waitingCount >= lottery.waitlistCapacity) {
+        errors.add("Waiting list is full")
+    }
+
+    if (existingEntry != null) {
+        if (existingEntry.status == EntryStatus.WAITING) {
+            errors.add("Already on the waiting list")
+        } else {
+            errors.add("Cannot join with existing ${existingEntry.status} entry")
+        }
+    }
+
+    if (groupSize < 1) {
+        errors.add("Group size must be at least 1")
+    }
+
+    return errors
+}

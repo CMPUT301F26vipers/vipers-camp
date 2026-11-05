@@ -128,4 +128,158 @@ class LotteryValidationTest {
         assertTrue(errors.contains("At least one winner is required"))
         assertTrue(errors.contains("Waitlist limit must be at least 1"))
     }
+
+    private fun openLottery(
+        waitlistCapacity: Int? = 10,
+        removed: Boolean = false,
+    ) = Lottery(
+        id = "lottery-1",
+        ownerId = "owner-1",
+        campsiteIds = listOf("camp-1"),
+        nightsOffered = listOf("2027-06-01"),
+        registrationStart = 1000L,
+        registrationEnd = 3000L,
+        bookingStart = 4000L,
+        bookingEnd = 5000L,
+        winnersCount = 2,
+        waitlistCapacity = waitlistCapacity,
+        removed = removed,
+    )
+
+    @Test
+    fun validateJoinLottery_returnsNoErrorsForValidJoin() {
+        val lottery = openLottery()
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            existingEntry = null,
+            waitingCount = 5,
+            groupSize = 2,
+            now = 2000L
+        )
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsWhenRegistrationNotStarted() {
+        val lottery = openLottery()
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            now = 500L // before registrationStart (1000L)
+        )
+        assertTrue(errors.contains("Registration has not started"))
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsWhenRegistrationClosed() {
+        val lottery = openLottery()
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            now = 3500L // after registrationEnd (3000L)
+        )
+        assertTrue(errors.contains("Registration is closed"))
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsWhenLotteryRemoved() {
+        val lottery = openLottery(removed = true)
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            now = 2000L
+        )
+        assertTrue(errors.contains("Lottery has been removed"))
+    }
+
+    @Test
+    fun validateJoinLottery_allowsJoinWithUnlimitedCapacity() {
+        val lottery = openLottery(waitlistCapacity = null)
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            waitingCount = 500,
+            now = 2000L
+        )
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun validateJoinLottery_allowsJoinWhenCapacityAvailable() {
+        val lottery = openLottery(waitlistCapacity = 10)
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            waitingCount = 9,
+            now = 2000L
+        )
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsWhenWaitingListAtCapacity() {
+        val lottery = openLottery(waitlistCapacity = 10)
+
+        val atCapacityErrors = validateJoinLottery(
+            lottery = lottery,
+            waitingCount = 10,
+            now = 2000L
+        )
+        assertTrue(atCapacityErrors.contains("Waiting list is full"))
+
+        val overCapacityErrors = validateJoinLottery(
+            lottery = lottery,
+            waitingCount = 11,
+            now = 2000L
+        )
+        assertTrue(overCapacityErrors.contains("Waiting list is full"))
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsDuplicateWhenAlreadyOnWaitingList() {
+        val lottery = openLottery()
+        val existingEntry = LotteryEntry(
+            id = "lottery-1_user-1",
+            lotteryId = "lottery-1",
+            userId = "user-1",
+            status = EntryStatus.WAITING
+        )
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            existingEntry = existingEntry,
+            now = 2000L
+        )
+        assertTrue(errors.contains("Already on the waiting list"))
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsWhenExistingEntryHasNonWaitingStatus() {
+        val lottery = openLottery()
+        val existingEntry = LotteryEntry(
+            id = "lottery-1_user-1",
+            lotteryId = "lottery-1",
+            userId = "user-1",
+            status = EntryStatus.REMOVED
+        )
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            existingEntry = existingEntry,
+            now = 2000L
+        )
+        assertTrue(errors.contains("Cannot join with existing REMOVED entry"))
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsInvalidGroupSize() {
+        val lottery = openLottery()
+
+        val zeroErrors = validateJoinLottery(
+            lottery = lottery,
+            groupSize = 0,
+            now = 2000L
+        )
+        assertTrue(zeroErrors.contains("Group size must be at least 1"))
+
+        val negativeErrors = validateJoinLottery(
+            lottery = lottery,
+            groupSize = -3,
+            now = 2000L
+        )
+        assertTrue(negativeErrors.contains("Group size must be at least 1"))
+    }
 }
