@@ -26,6 +26,23 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
 
     override suspend fun getCampsite(id: String): Campsite? = campsites[id]
 
+    override suspend fun updateCampsite(campsite: Campsite) {
+        val saved = campsites[campsite.id]
+            ?: throw NoSuchElementException("No campsite with ID ${campsite.id}")
+        // Copies only what the owner can edit, like the Firestore version.
+        campsites[campsite.id] = saved.copy(
+            name = campsite.name,
+            address = campsite.address,
+            region = campsite.region,
+            description = campsite.description,
+            maxOccupancy = campsite.maxOccupancy,
+            tags = campsite.tags,
+            pricePerNightCents = campsite.pricePerNightCents,
+            rules = campsite.rules,
+            cancellationPolicy = campsite.cancellationPolicy,
+        )
+    }
+
     override suspend fun getCampsitesByOwner(ownerId: String): List<Campsite> =
         campsites.values.filter { it.ownerId == ownerId && !it.removed }
 
