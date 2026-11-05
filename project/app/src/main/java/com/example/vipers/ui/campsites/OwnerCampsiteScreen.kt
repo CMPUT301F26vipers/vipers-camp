@@ -1,5 +1,5 @@
 /*
- * CampsiteDetailsScreen.kt
+ * OwnerCampsiteScreen.kt
  * The screen to view details of a campsite (mockup O04).
  * Known issues: none.
  */
@@ -48,12 +48,12 @@ import com.example.vipers.ui.common.TopBar
  * @param controller ViewModel managing campsite and lottery details.
  */
 @Composable
-fun CampsiteDetailsScreen(
+fun OwnerCampsiteScreen(
     campsiteId: String,
     onBack: () -> Unit,
     onCreateLottery: () -> Unit,
     onLotteryClick: (String) -> Unit,
-    controller: CampsiteDetailsController = viewModel(factory = CampsiteDetailsController.factory(campsiteId))
+    controller: OwnerCampsiteController = viewModel(factory = OwnerCampsiteController.factory(campsiteId))
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {

@@ -21,9 +21,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
-import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
+import com.example.vipers.ui.campsites.OwnerCampsiteScreen
 import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SentScreen
@@ -75,7 +75,7 @@ fun AppNavigation(
                     onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) },
                     onOpenSent = { navController.navigate(Routes.OWNER_SENT) },
                     onOpenCampsite = { campsiteId ->
-                        val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                        val route = Routes.OWNER_CAMPSITE.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
                     })
             }
@@ -92,12 +92,12 @@ fun AppNavigation(
                 SentScreen(onBack = { navController.popBackStack() })
             }
             composable(
-                route = Routes.CAMPSITE_DETAILS,
+                route = Routes.OWNER_CAMPSITE,
                 // You MUST declare the argument here for Compose to extract it from the route
                 arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
-                CampsiteDetailsScreen(
+                OwnerCampsiteScreen(
                     campsiteId = campsiteId,
                     onBack = { navController.popBackStack() },
                     onCreateLottery = {

@@ -1,5 +1,5 @@
 /*
- * CampsiteDetailsController.kt
+ * OwnerCampsiteController.kt
  * The controller (a ViewModel) handling details fetching and creation triggers for a campsite.
  * Known issues: none.
  */
@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
  * @param lotteryRepository Repository to fetch lotteries associated with this campsite.
  * @param campsiteId ID of the campsite being inspected.
  */
-class CampsiteDetailsController(
+class OwnerCampsiteController(
     private val campsiteRepository: CampsiteRepository,
     private val lotteryRepository: LotteryRepository,
     private val campsiteId: String,
@@ -69,7 +69,7 @@ class CampsiteDetailsController(
         fun factory(campsiteId: String) = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as CampApp
-                CampsiteDetailsController(
+                OwnerCampsiteController(
                     campsiteRepository = app.container.campsiteRepository,
                     lotteryRepository = app.container.lotteryRepository,
                     campsiteId = campsiteId
