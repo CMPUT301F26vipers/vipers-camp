@@ -27,6 +27,7 @@ object Routes {
 
 
     const val OWNER_RESERVATIONS = "owner_reservations"
+    const val OWNER_RESERVATION_DETAILS = "owner_reservation/{reservationId}"
 
     const val OWNER_SENT = "owner_sent"
 

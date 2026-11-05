@@ -4,8 +4,7 @@
  * tab lists the confirmed reservations at the owner's campsites whose check-out is today or later
  * (US 02.07.01).
  * Known issues: the Past tab (US 02.07.02) and the Cancelled tab (US 02.07.03) are placeholders.
- * Rows can't be tapped yet, so they have no ">" arrow; opening a reservation's details (mockup
- * O15) isn't built.
+ * Tapping a row opens a placeholder until the reservation details screen (mockup O15) is built.
  */
 package com.example.vipers.ui.reservations
 
@@ -24,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vipers.R
 import com.example.vipers.ui.common.Placeholder
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Border
@@ -61,11 +63,13 @@ private enum class ReservationTab(val label: String) {
  * The owner's reservations, split into Active, Past and Cancelled tabs (mockup O14, US 02.07.01).
  *
  * @param onBack Called when the back arrow is tapped.
+ * @param onOpenReservation Called with the reservation's ID when its row is tapped.
  * @param controller Loads the reservations; tests can pass one built with fake repositories.
  */
 @Composable
 fun OwnerReservationsScreen(
     onBack: () -> Unit,
+    onOpenReservation: (String) -> Unit,
     controller: ReservationController = viewModel(factory = ReservationController.Factory),
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ReservationTab.ACTIVE) }
@@ -97,7 +101,7 @@ fun OwnerReservationsScreen(
         }
 
         when (selectedTab) {
-            ReservationTab.ACTIVE -> ActiveTab(controller)
+            ReservationTab.ACTIVE -> ActiveTab(controller, onOpenReservation)
             ReservationTab.PAST -> Placeholder("Past reservations are added in US 02.07.02.")
             ReservationTab.CANCELLED -> Placeholder("Cancelled reservations are added in US 02.07.03.")
         }
@@ -135,7 +139,7 @@ private fun TabPill(
 
 /** The Active tab: a loading indicator, a message, or the list of reservations (US 02.07.01). */
 @Composable
-private fun ActiveTab(controller: ReservationController) {
+private fun ActiveTab(controller: ReservationController, onOpenReservation: (String) -> Unit) {
     when {
         controller.isLoading ->
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -149,7 +153,7 @@ private fun ActiveTab(controller: ReservationController) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(controller.activeRows, key = { it.reservationId }) { row ->
-                    ReservationRowItem(row)
+                    ReservationRowItem(row, onClick = { onOpenReservation(row.reservationId) })
                 }
             }
     }
@@ -171,8 +175,9 @@ private fun TabMessage(text: String) {
 
 /** One reservation: the entrant's name, then its campsite, dates and guests, as in mockup O14. */
 @Composable
-private fun ReservationRowItem(row: ReservationRow) {
+private fun ReservationRowItem(row: ReservationRow, onClick: () -> Unit) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .testTag("reservation_row"),
@@ -190,7 +195,7 @@ private fun ReservationRowItem(row: ReservationRow) {
                     .size(40.dp)
                     .background(GreenFillStrong, CircleShape),
             )
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(row.entrantName, fontWeight = FontWeight.SemiBold)
                 Text(
                     text = "${row.campsiteName} · ${row.datesText} · ${row.guestsText}",
@@ -198,6 +203,7 @@ private fun ReservationRowItem(row: ReservationRow) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
         }
     }
 }

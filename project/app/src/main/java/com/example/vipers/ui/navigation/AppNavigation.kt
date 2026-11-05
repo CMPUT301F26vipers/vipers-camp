@@ -87,7 +87,23 @@ fun AppNavigation(
                 )
             }
             composable(Routes.OWNER_RESERVATIONS) {
-                OwnerReservationsScreen(onBack = { navController.popBackStack() })
+                OwnerReservationsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenReservation = { reservationId ->
+                        val route = Routes.OWNER_RESERVATION_DETAILS.replace("{reservationId}", reservationId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            // placeholder until the owner's reservation details screen (mockup O15) is built
+            composable(
+                route = Routes.OWNER_RESERVATION_DETAILS,
+                arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
+            ) {
+                Column {
+                    TopBar(title = "Reservation", onBack = { navController.popBackStack() })
+                    Placeholder("Reservation details are added in US 02.07.01, 02.08.01 and 02.12.01.")
+                }
             }
             composable(Routes.OWNER_SENT) {
                 SentScreen(onBack = { navController.popBackStack() })
