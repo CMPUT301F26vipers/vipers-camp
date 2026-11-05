@@ -100,6 +100,13 @@ fun AppNavigation(
                 OwnerCampsiteScreen(
                     campsiteId = campsiteId,
                     onBack = { navController.popBackStack() },
+                    onEdit = {
+                        navController.navigate(Routes.EDIT_CAMPSITE.replace("{campsiteId}", campsiteId))
+                    },
+                    onOpenAvailability = {
+                        navController.navigate(Routes.AVAILABILITY.replace("{campsiteId}", campsiteId))
+                    },
+                    onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) },
                     onCreateLottery = {
                         val route = Routes.CREATE_LOTTERY.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
@@ -109,6 +116,19 @@ fun AppNavigation(
                         navController.navigate(route)
                     },
                 )
+            }
+            // placeholders until 02.01.03 and T-10 build these screens
+            composable(Routes.EDIT_CAMPSITE) {
+                Column {
+                    TopBar(title = "Edit Campsite", onBack = { navController.popBackStack() })
+                    Placeholder("Editing a campsite is added in US 02.01.03.")
+                }
+            }
+            composable(Routes.AVAILABILITY) {
+                Column {
+                    TopBar(title = "Availability", onBack = { navController.popBackStack() })
+                    Placeholder("Setting available nights is added in T-10.")
+                }
             }
             composable(
                 route = Routes.CREATE_LOTTERY,
