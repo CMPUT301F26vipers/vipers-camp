@@ -17,6 +17,13 @@ object Routes {
     const val POLICY = "policy"
     const val ADMIN = "admin"
 
+    const val ADMIN_CAMPSITES = "admin_campsites"
+    const val ADMIN_PROFILES = "admin_profiles"
+    const val ADMIN_IMAGES = "admin_images"
+    const val ADMIN_NOTIFICATION_LOG = "admin_notification_log"
+    const val ADMIN_MESSAGE_LOG = "admin_message_log"
+
+
     const val OWNER_RESERVATIONS = "owner_reservations"
 
     const val OWNER_SENT = "owner_sent"

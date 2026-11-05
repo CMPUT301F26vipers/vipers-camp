@@ -1,6 +1,7 @@
 /*
- * ProfileViewModel.kt
- * Holds the user's profile information and handles editing and saving it.
+ * ProfileController.kt
+ * The controller (a ViewModel) behind Welcome (T-01) and Profile (US 01.07.03).
+ * Loads, creates, edits and saves the current user's profile under this device's ID (US 01.09.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.profile
@@ -9,7 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -19,10 +20,13 @@ import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Loads and updates the current user's profile. */
-class ProfileViewModel(
+/**
+ * Loads, creates and updates the profile for [deviceId], the current user's ID.
+ * Takes the [profileRepository] in its constructor so tests can pass a fake one.
+ */
+class ProfileController(
     private val profileRepository: ProfileRepository,
-    private val userId: String,
+    private val deviceId: String,
 ) : ViewModel() {
 
     private var profile: UserProfile? = null
@@ -34,18 +38,32 @@ class ProfileViewModel(
     var phone by mutableStateOf("")
         private set
 
+    /** Field-specific validation errors, keyed by field name. */
     var errors by mutableStateOf(emptyMap<String, String>())
         private set
 
+    /** True while the profile is being loaded from the repository. */
     var isLoading by mutableStateOf(true)
         private set
+
+    /** True while the profile is being saved. */
     var isSaving by mutableStateOf(false)
         private set
-    var saveFailed by mutableStateOf(false)
+
+    /** True once the profile is created on Welcome screen; the app then opens Home. */
+    var created by mutableStateOf(false)
         private set
+
+    /** True once profile edits have been saved from the Profile screen. */
+    var saved by mutableStateOf(false)
+        private set
+
+    /** True if loading the profile failed. */
     var loadFailed by mutableStateOf(false)
         private set
-    var saved by mutableStateOf(false)
+
+    /** True if saving failed. */
+    var saveFailed by mutableStateOf(false)
         private set
 
     init {
@@ -59,8 +77,8 @@ class ProfileViewModel(
             loadFailed = false
 
             try {
-                profile = profileRepository.getProfile(userId)
-                val current = profile
+                val current = profileRepository.getProfile(deviceId)
+                profile = current
 
                 if (current != null) {
                     name = current.name
@@ -80,32 +98,47 @@ class ProfileViewModel(
     }
 
     /** Updates the name and clears its previous validation error. */
-    fun onNameChange(value: String) {
-        name = value
+    fun onNameChange(text: String) {
+        name = text
         errors = errors - "name"
         saveFailed = false
         saved = false
     }
 
     /** Updates the email and clears its previous validation error. */
-    fun onEmailChange(value: String) {
-        email = value
+    fun onEmailChange(text: String) {
+        email = text
         errors = errors - "email"
         saveFailed = false
         saved = false
     }
 
     /** Updates the phone and clears its previous validation error. */
-    fun onPhoneChange(value: String) {
-        phone = value
+    fun onPhoneChange(text: String) {
+        phone = text
         errors = errors - "phone"
         saveFailed = false
         saved = false
     }
 
-    /** Checks the form and saves the updated profile. */
+    /** Clears the saved confirmation flag after it has been displayed. */
+    fun clearSaved() {
+        saved = false
+    }
+
+    /** Continue stays disabled until a name is entered (email and phone are optional). */
+    val canContinue: Boolean
+        get() = name.isNotBlank() && !isSaving
+
+    /** Saves the profile in the background, if a name has been entered (Welcome screen flow). */
+    fun createProfile() {
+        if (!canContinue) return
+        viewModelScope.launch { save(toProfile()) }
+    }
+
+    /** Checks the form and saves the updated profile (Profile screen editing flow). */
     fun saveProfile() {
-        val current = profile ?: return
+        val current = profile ?: toProfile()
 
         val updated = current.copy(
             name = name.trim(),
@@ -138,14 +171,37 @@ class ProfileViewModel(
         }
     }
 
-    companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                val application =
-                    this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as CampApp
-                val container = application.container
+    /** Saves [profile] and sets [created] or [saveFailed]. Unit tests call it directly. */
+    suspend fun save(profile: UserProfile) {
+        isSaving = true
+        saveFailed = false
+        try {
+            profileRepository.saveProfile(profile)
+            created = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            saveFailed = true
+        } finally {
+            isSaving = false
+        }
+    }
 
-                ProfileViewModel(container.profileRepository, container.deviceId)
+    /** The profile the form describes right now, with this device's ID as its ID. */
+    fun toProfile() = UserProfile(
+        id = deviceId,
+        name = name.trim(),
+        email = email.trim(),
+        phone = phone.trim(),
+        createdAt = System.currentTimeMillis(),
+    )
+
+    companion object {
+        /** Makes the controller with the app's real repository and this device's ID. */
+        val Factory = viewModelFactory {
+            initializer {
+                val app = this[APPLICATION_KEY] as CampApp
+                ProfileController(app.container.profileRepository, app.container.deviceId)
             }
         }
     }
