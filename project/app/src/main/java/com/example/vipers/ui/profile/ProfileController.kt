@@ -2,7 +2,9 @@
  * ProfileController.kt
  * The controller (a ViewModel) behind the Welcome screen (T-01). It holds the name, email and
  * phone the user types and creates their profile under this device's ID (US 01.09.01).
- * Known issues: editing the profile from the Profile tab is added in US 01.07.03.
+ * Known issues: editing the profile from the Profile tab is added in US 01.07.03. Saving
+ * doesn't wait for the server (so it works offline), so if Firestore rejects the write the app
+ * still opens Home, and Welcome shows again on the next launch.
  */
 package com.example.vipers.ui.profile
 

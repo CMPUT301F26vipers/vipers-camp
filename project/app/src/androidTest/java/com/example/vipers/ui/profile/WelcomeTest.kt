@@ -2,7 +2,8 @@
  * WelcomeTest.kt
  * Intent tests for T-01 and US 01.09.01: first launch shows Welcome with no login, Continue
  * needs a name, and continuing saves the profile under this device and opens Home. A device
- * that already has a profile goes straight to Home.
+ * that already has a profile goes straight to Home. If the profile check fails it asks to
+ * retry instead of showing Welcome.
  * Known issues: uses fake repositories, so it doesn't touch Firestore.
  */
 package com.example.vipers.ui.profile
@@ -26,6 +27,7 @@ import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.ui.navigation.AppRoot
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
@@ -41,11 +43,11 @@ class WelcomeTest {
     private val profiles = FakeProfileRepository()
 
     /** Opens the app as the device "my-phone", with fake repositories in place of Firestore. */
-    private fun startApp() {
+    private fun startApp(profileRepository: ProfileRepository = profiles) {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
         app.container = AppContainer(
             deviceId = "my-phone",
-            profileRepository = profiles,
+            profileRepository = profileRepository,
             campsiteRepository = FakeCampsiteRepository(),
             lotteryRepository = FakeLotteryRepository(),
             reservationRepository = FakeReservationRepository(),
@@ -108,5 +110,27 @@ class WelcomeTest {
             composeRule.onAllNodes(hasTestTag("search_field")).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("Tell us your name to get started.").assertDoesNotExist()
+    }
+
+    @Test
+    fun failedProfileCheck_asksToRetryInsteadOfShowingWelcome() {
+        // like opening the app offline with nothing saved on the phone
+        var offline = true
+        val flaky = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? =
+                if (offline) throw Exception("offline") else profiles.getProfile(id)
+        }
+        runBlocking { profiles.saveProfile(UserProfile(id = "my-phone", name = "Maya Chen")) }
+        startApp(flaky)
+
+        waitFor("Retry")
+        composeRule.onNodeWithText("Tell us your name to get started.").assertDoesNotExist()
+
+        // back online: Retry finds the profile and opens Home
+        offline = false
+        composeRule.onNodeWithTag("button_retry").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodes(hasTestTag("search_field")).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 }
