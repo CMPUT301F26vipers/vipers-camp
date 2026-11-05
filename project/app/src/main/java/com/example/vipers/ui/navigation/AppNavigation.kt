@@ -22,6 +22,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
+import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.campsites.OwnerCampsiteScreen
@@ -68,7 +69,24 @@ fun AppNavigation(
         },
     ) { padding ->
         NavHost(navController, startDestination = Routes.HOME, modifier = Modifier.padding(padding)) {
-            composable(Routes.HOME) { HomeScreen() }
+            composable(Routes.HOME) {
+                HomeScreen(
+                    onOpenCampsite = { campsiteId ->
+                        val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            composable(
+                route = Routes.CAMPSITE_DETAILS,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CampsiteDetailsScreen(
+                    campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
             composable(Routes.CAMPSITES) {
                 MyCampsitesScreen(
