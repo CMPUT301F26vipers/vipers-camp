@@ -280,6 +280,8 @@ class LotteryControllerTest {
 
         val camp = Campsite(id = campsiteId, ownerId = ownerId, name = "Test Camp")
         campsiteRepository.addCampsite(camp)
+        val cal = AvailabilityCalendar(campsiteId = campsiteId, openNights = listOf("2026-01-01", "2026-01-02"))
+        campsiteRepository.saveAvailability(cal)
 
         val customController = LotteryController(
             campsiteRepository = campsiteRepository,
@@ -389,6 +391,32 @@ class LotteryControllerTest {
         assertEquals(now + 200_000, savedLottery.registrationEnd)
         assertEquals(now + 200_000, savedLottery.bookingStart)
         assertEquals(now + 300_000, savedLottery.bookingEnd)
+    }
+
+    @Test
+    fun availabilityChangesBetweenSelectionAndSavingHandledCorrectly() = runTest {
+        setupCampsiteAndController()
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        // Before saving, simulate another user holding the night
+        val cal = campsiteRepository.getAvailability(campsiteId)
+        campsiteRepository.saveAvailability(cal.copy(heldNights = listOf("2026-01-01")))
+
+        controller.saveLottery()
+
+        assertFalse(controller.saved)
+        assertEquals("One or more selected nights are no longer available. Please reload the nights.", controller.error)
+        assertTrue(lotteryRepository.getLotteriesForCampsite(campsiteId).isEmpty())
     }
 
     @Test

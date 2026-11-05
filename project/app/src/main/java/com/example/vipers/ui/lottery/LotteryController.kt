@@ -29,12 +29,12 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * ViewModel controller for managing the creation of a new lottery for campsite(s).
+ * ViewModel controller for managing the creation of a new lottery for a campsite.
  *
  * @param campsiteRepository Repository to access campsite details and availability.
  * @param lotteryRepository Repository to store new lotteries.
  * @param ownerId Device ID of the current user.
- * @param campsiteId ID of the initial campsite for which the lottery is created.
+ * @param campsiteId ID of the campsite for which the lottery is created.
  */
 class LotteryController(
     private val campsiteRepository: CampsiteRepository,
@@ -44,10 +44,6 @@ class LotteryController(
 ) : ViewModel() {
 
     var campsite by mutableStateOf<Campsite?>(null)
-        private set
-    var ownedCampsites by mutableStateOf<List<Campsite>>(emptyList())
-        private set
-    var selectedCampsiteIds by mutableStateOf(setOf(campsiteId))
         private set
 
     var availability by mutableStateOf<AvailabilityCalendar?>(null)
@@ -111,12 +107,6 @@ class LotteryController(
             error = null
             try {
                 val result = campsiteRepository.getCampsite(campsiteId)
-                val allOwned = campsiteRepository.getCampsitesByOwner(ownerId)
-                ownedCampsites = allOwned
-                if (campsiteId.isNotEmpty() && campsiteId !in selectedCampsiteIds) {
-                    selectedCampsiteIds = selectedCampsiteIds + campsiteId
-                }
-
                 if (result == null || result.ownerId != ownerId) {
                     error = "Campsite not found or you do not own it."
                 } else {
@@ -132,16 +122,6 @@ class LotteryController(
                 loading = false
             }
         }
-    }
-
-    /** Toggles campsite selection. */
-    fun toggleCampsite(id: String, checked: Boolean) {
-        selectedCampsiteIds = if (checked) {
-            selectedCampsiteIds + id
-        } else {
-            selectedCampsiteIds - id
-        }
-        error = null
     }
 
     /** Updates text for nights offered field. */
@@ -295,7 +275,7 @@ class LotteryController(
 
         val lottery = Lottery(
             ownerId = ownerId,
-            campsiteIds = selectedCampsiteIds.toList(),
+            campsiteIds = listOf(campsiteId),
             nightsOffered = nightsList,
             nightsDescription = nightsDesc,
             registrationStart = registrationStartMillis ?: 0L,
@@ -315,6 +295,17 @@ class LotteryController(
 
         viewModelScope.launch {
             try {
+                val latestCalendar = campsiteRepository.getAvailability(campsiteId)
+                val invalidNights = selectedNights.filter {
+                    it !in latestCalendar.openNights || it in latestCalendar.heldNights
+                }
+
+                if (invalidNights.isNotEmpty()) {
+                    error = "One or more selected nights are no longer available. Please reload the nights."
+                    saving = false
+                    return@launch
+                }
+
                 lotteryRepository.addLottery(lottery)
                 saved = true
             } catch (e: CancellationException) {

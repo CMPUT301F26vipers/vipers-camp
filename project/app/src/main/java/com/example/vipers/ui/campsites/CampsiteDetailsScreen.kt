@@ -1,6 +1,6 @@
 /*
  * CampsiteDetailsScreen.kt
- * The screen to view details of a campsite (mockup O08).
+ * The screen to view details of a campsite (mockup O04).
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -38,7 +38,7 @@ import com.example.vipers.domain.model.LotteryStatus
 import com.example.vipers.ui.common.TopBar
 
 /**
- * Displays details for a single campsite (mockup O08), including its active and past lotteries.
+ * Displays details for a single campsite (mockup O04), including its active and past lotteries.
  * Allows owners to create a new lottery for this campsite via a bottom action button.
  *
  * @param campsiteId ID of the campsite being viewed.

@@ -1,6 +1,6 @@
 /*
  * LotteryFormScreen.kt
- * The screen to create a new lottery for a campsite (mockup O08).
+ * The screen to create a new lottery for a campsite.
  * Known issues: none.
  */
 package com.example.vipers.ui.lottery
@@ -38,11 +38,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Screen allowing campsite owners to configure and publish a new lottery (mockup O08),
- * including multi-campsite selection, nights offered, registration period, booking period,
+ * Screen allowing campsite owners to configure and publish a new lottery,
+ * including available night selection, nights description, registration period, booking period,
  * winner count, and optional waiting list limit.
  *
- * @param campsiteId ID of the initial campsite selected.
+ * @param campsiteId ID of the campsite selected.
  * @param onBack Callback triggered when navigating back.
  * @param controller ViewModel managing creation state and validation.
  */
@@ -53,6 +53,7 @@ fun LotteryFormScreen(
     controller: LotteryController = viewModel(factory = LotteryController.factory(campsiteId))
 ) {
     val context = LocalContext.current
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
     LaunchedEffect(controller.saved) {
         if (controller.saved) {
@@ -64,6 +65,52 @@ fun LotteryFormScreen(
         if (millis == null || millis <= 0L) return "Not set"
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
         return sdf.format(Date(millis))
+    }
+
+    fun showDatePicker(isStartDate: Boolean) {
+        val targetDateStr = if (isStartDate) controller.rangeStart else controller.rangeEnd
+        val initialCal = Calendar.getInstance().apply {
+            if (targetDateStr.isNotEmpty()) {
+                val parsed = controller.parseStrictDate(targetDateStr)
+                if (parsed != null) time = parsed
+            }
+        }
+
+        val startCalendar = Calendar.getInstance().apply {
+            if (controller.rangeStart.isNotEmpty()) {
+                val parsed = controller.parseStrictDate(controller.rangeStart)
+                if (parsed != null) time = parsed
+            }
+        }
+
+        val picker = DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                val selectedDate = Calendar.getInstance().apply {
+                    set(year, month, day)
+                }
+                val formatted = dateFormat.format(selectedDate.time)
+                if (isStartDate) {
+                    controller.onRangeStartChange(formatted)
+                } else {
+                    controller.onRangeEndChange(formatted)
+                }
+            },
+            initialCal.get(Calendar.YEAR),
+            initialCal.get(Calendar.MONTH),
+            initialCal.get(Calendar.DAY_OF_MONTH)
+        )
+
+        picker.datePicker.minDate =
+            if (isStartDate) {
+                System.currentTimeMillis()
+            } else if (controller.rangeStart.isNotEmpty()) {
+                startCalendar.timeInMillis
+            } else {
+                System.currentTimeMillis()
+            }
+
+        picker.show()
     }
 
     fun showDateTimePicker(initialMillis: Long?, onSelected: (Long) -> Unit) {
@@ -119,31 +166,87 @@ fun LotteryFormScreen(
                 controller.loading -> CircularProgressIndicator()
                 controller.error != null && controller.campsite == null -> Text(controller.error!!)
                 else -> {
-                    // 1. Campsite selection (multi-select)
-                    Text("Select Campsites", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    if (controller.ownedCampsites.isEmpty()) {
-                        controller.campsite?.let { camp ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = true, onCheckedChange = {})
-                                Text(camp.name)
-                            }
-                        }
-                    } else {
-                        controller.ownedCampsites.forEach { camp ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = camp.id in controller.selectedCampsiteIds,
-                                    onCheckedChange = { checked -> controller.toggleCampsite(camp.id, checked) }
-                                )
-                                Text(camp.name)
-                            }
-                        }
+                    controller.campsite?.let { camp ->
+                        Text("Campsite: ${camp.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
 
                     HorizontalDivider()
 
-                    // 2. Nights Offered
-                    Text("Nights Offered", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    // 1. Selectable Available Nights Range & Checkboxes
+                    Text("Select Offered Nights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Choose date range to load available nights:")
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { showDatePicker(true) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("button_range_start")
+                        ) {
+                            Text(if (controller.rangeStart.isEmpty()) "Start Date" else controller.rangeStart)
+                        }
+
+                        Button(
+                            onClick = { showDatePicker(false) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("button_range_end")
+                        ) {
+                            Text(if (controller.rangeEnd.isEmpty()) "End Date" else controller.rangeEnd)
+                        }
+                    }
+
+                    Button(
+                        onClick = { controller.loadSelectedRange() },
+                        enabled = controller.rangeStart.isNotEmpty() && controller.rangeEnd.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Load nights")
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Available nights:")
+                        Button(
+                            onClick = { controller.toggleSelectAll() },
+                            enabled = controller.availableNights.isNotEmpty()
+                        ) {
+                            Text(
+                                if (controller.availableNights.isNotEmpty() &&
+                                    controller.selectedNights.size == controller.availableNights.size
+                                ) "Deselect All" else "Select All"
+                            )
+                        }
+                    }
+
+                    if (controller.availableNights.isEmpty()) {
+                        Text("No available nights loaded yet.")
+                    }
+
+                    controller.availableNights.forEach { night ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = night in controller.selectedNights,
+                                onCheckedChange = { checked ->
+                                    controller.toggleNight(night, checked)
+                                }
+                            )
+                            Text(text = night)
+                        }
+                    }
+
+                    Text("${controller.selectedNights.size} night(s) selected")
+
+                    HorizontalDivider()
+
+                    // 2. Optional Nights Offered Description
+                    Text("Nights Description (Optional)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
                         value = controller.nightsOfferedText,
                         onValueChange = { controller.onNightsOfferedTextChange(it) },
