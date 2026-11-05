@@ -34,7 +34,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -58,8 +57,10 @@ import com.example.vipers.domain.model.LotteryStatus
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.ButtonHeight
 import com.example.vipers.ui.theme.ButtonShape
+import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.Primary
+import com.example.vipers.ui.theme.TextMuted
 
 /**
  * The My Campsite screen (mockup O04): the owner's campsite with all its saved details, the Edit,
@@ -222,12 +223,15 @@ private fun SectionTitle(text: String) {
  */
 @Composable
 private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Unit) {
-    val statusLabel = when (lottery.status(System.currentTimeMillis())) {
-        LotteryStatus.OPEN -> "Registration is open"
-        LotteryStatus.UPCOMING -> "Registration upcoming"
-        LotteryStatus.DRAWN -> "Drawn"
+    // the labels from mockups O04 and O01
+    val status = lottery.status(System.currentTimeMillis())
+    val statusLabel = when (status) {
+        LotteryStatus.OPEN -> "Open"
+        LotteryStatus.UPCOMING -> "Upcoming"
+        LotteryStatus.DRAWN -> "Booking period"
         LotteryStatus.CLOSED -> "Closed"
     }
+    val isOpen = status == LotteryStatus.OPEN
     val displayNights = lottery.nightsDescription
         ?: lottery.nightsOffered.firstOrNull()
         ?: "Unknown dates"
@@ -255,17 +259,16 @@ private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Un
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Text(
-                    text = statusLabel,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            // green while entrants can join, grey otherwise, like the badge on Home
+            Text(
+                text = statusLabel,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isOpen) Primary else TextMuted,
+                modifier = Modifier
+                    .background(if (isOpen) GreenFill else Divider, CircleShape)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
             Icon(
                 painter = painterResource(id = R.drawable.ic_chevron_right),
                 contentDescription = "View details",
@@ -277,16 +280,16 @@ private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Un
 
 /**
  * The Details section: location, maximum guests and price, then the description, tags, rules
- * and cancellation policy. Empty optional fields are left out.
+ * and cancellation policy. Empty optional fields are left out, and so is a price of 0, which
+ * campsites have until the form asks for one (T-09).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CampsiteDetails(campsite: Campsite) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            "${campsite.address} · Up to ${campsite.guestsText()} · ${campsite.priceText()}",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        val summary = mutableListOf(campsite.address, "Up to ${campsite.guestsText()}")
+        if (campsite.pricePerNightCents > 0) summary.add(campsite.priceText())
+        Text(summary.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (campsite.description.isNotBlank()) {
             Text(campsite.description)
         }

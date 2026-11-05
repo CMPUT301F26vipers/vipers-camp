@@ -74,13 +74,14 @@ class ViewMyCampsiteDetailsTest {
     // what each button was last asked to do
     private var opened = ""
 
-    /** Shows the My Campsite screen for [campsiteId], loading from [campsites]. */
+    /** Shows My Campsite for [campsiteId], loading from [campsites] and [lotteryList]. */
     private fun openScreen(
         campsites: CampsiteRepository = FakeCampsiteRepository(listOf(hinton)),
         campsiteId: String = "hinton",
+        lotteryList: List<Lottery> = lotteries,
     ): OwnerCampsiteController {
         val controller =
-            OwnerCampsiteController(campsites, FakeLotteryRepository(lotteries, entries), campsiteId)
+            OwnerCampsiteController(campsites, FakeLotteryRepository(lotteryList, entries), campsiteId)
         composeRule.setContent {
             VipersTheme {
                 OwnerCampsiteScreen(
@@ -165,6 +166,30 @@ class ViewMyCampsiteDetailsTest {
         openScreen()
         composeRule.onNodeWithText("Lottery: May 2027 weekends").performScrollTo().performClick()
         assertEquals("lottery may", opened)
+    }
+
+    @Test
+    fun eachLotteryShowsItsStatusLikeTheMockup() {
+        val now = System.currentTimeMillis()
+        val day = 24 * 60 * 60 * 1000L
+        // registration opened yesterday and closes in 3 days
+        val open = Lottery(
+            id = "june", campsiteIds = listOf("hinton"), nightsDescription = "June 2027 weekends",
+            registrationStart = now - day, registrationEnd = now + 3 * day,
+            bookingStart = now + 5 * day, bookingEnd = now + 30 * day,
+        )
+        // "may" has no periods set, so it counts as Closed
+        openScreen(lotteryList = lotteries + open)
+        assertShown("Open")
+        assertShown("Closed")
+    }
+
+    @Test
+    fun priceIsLeftOutWhileItIsZero() {
+        // campsites added in the app have no price until T-09 adds it to the form
+        openScreen(FakeCampsiteRepository(listOf(hinton.copy(pricePerNightCents = 0))))
+        assertShown("Hinton, AB · Up to 8 guests")
+        composeRule.onNodeWithText("$0", substring = true).assertDoesNotExist()
     }
 
     @Test
