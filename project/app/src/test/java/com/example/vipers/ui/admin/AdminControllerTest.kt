@@ -1,6 +1,6 @@
 /*
- * AdminCampsitesViewModelTest.kt
- * Unit tests for AdminCampsitesViewModel (US 03.04.01).
+ * AdminControllerTest.kt
+ * Unit tests for AdminController (US 03.04.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
@@ -20,7 +20,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-class AdminCampsitesViewModelTest {
+class AdminControllerTest {
 
     @Before
     fun setUp() {
@@ -36,7 +36,7 @@ class AdminCampsitesViewModelTest {
     fun init_withEmptyRepository_returnsEmptyListWithoutError() {
         val fakeRepo = FakeCampsiteRepository()
 
-        val viewModel = AdminCampsitesViewModel(fakeRepo, FakeProfileRepository())
+        val viewModel = AdminController(fakeRepo, FakeProfileRepository())
 
         assertTrue(viewModel.campsites.isEmpty())
         assertFalse(viewModel.loadFailed)
@@ -52,7 +52,7 @@ class AdminCampsitesViewModelTest {
         )
         val fakeRepo = FakeCampsiteRepository(initial = campsites)
 
-        val viewModel = AdminCampsitesViewModel(fakeRepo, FakeProfileRepository())
+        val viewModel = AdminController(fakeRepo, FakeProfileRepository())
 
         assertEquals(3, viewModel.campsites.size)
         assertEquals(listOf("c1", "c2", "c3"), viewModel.campsites.map { it.id })
@@ -68,7 +68,7 @@ class AdminCampsitesViewModelTest {
         )
         val fakeRepo = FakeCampsiteRepository(initial = campsites)
 
-        val viewModel = AdminCampsitesViewModel(fakeRepo, FakeProfileRepository())
+        val viewModel = AdminController(fakeRepo, FakeProfileRepository())
 
         assertEquals(2, viewModel.campsites.size)
         assertEquals(listOf("c1", "c3"), viewModel.campsites.map { it.id })
@@ -83,7 +83,7 @@ class AdminCampsitesViewModelTest {
             }
         }
 
-        val viewModel = AdminCampsitesViewModel(failingRepo, FakeProfileRepository())
+        val viewModel = AdminController(failingRepo, FakeProfileRepository())
 
         assertTrue(viewModel.loadFailed)
         assertTrue(viewModel.campsites.isEmpty())
@@ -101,7 +101,7 @@ class AdminCampsitesViewModelTest {
             }
         }
 
-        val viewModel = AdminCampsitesViewModel(repository, FakeProfileRepository())
+        val viewModel = AdminController(repository, FakeProfileRepository())
 
         assertTrue(viewModel.loadFailed)
         assertTrue(viewModel.campsites.isEmpty())
@@ -127,7 +127,7 @@ class AdminCampsitesViewModelTest {
             )
         )
 
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val viewModel = AdminController(campsiteRepo, profileRepo)
 
         assertEquals("Alice Smith", viewModel.getOwnerName("owner1"))
         assertEquals("Deleted user", viewModel.getOwnerName("owner2"))

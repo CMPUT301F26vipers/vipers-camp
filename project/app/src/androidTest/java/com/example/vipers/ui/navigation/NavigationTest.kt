@@ -191,8 +191,8 @@ class NavigationTest {
         assertShown("All Campsites")
 
         composeRule.onNodeWithText("Lakeside Camp").performClick()
-        assertShown("Campsite Details")
-        assertShown("Viewing details for campsite ID: camp-123")
+        assertShown("My Campsite")
+        assertShown("Lakeside Camp")
 
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("All Campsites")

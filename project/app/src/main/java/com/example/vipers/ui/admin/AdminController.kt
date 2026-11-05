@@ -1,5 +1,5 @@
 /*
- * AdminCampsitesViewModel.kt
+ * AdminController.kt
  * Loads campsites for the admin browsing screen.
  * Known issues: none.
  */
@@ -21,7 +21,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Loads campsites for the admin browsing screen. */
-class AdminCampsitesViewModel(
+class AdminController(
     private val campsiteRepository: CampsiteRepository,
     private val profileRepository: ProfileRepository,
 ) : ViewModel() {
@@ -77,7 +77,7 @@ class AdminCampsitesViewModel(
                 val application =
                     this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as CampApp
 
-                AdminCampsitesViewModel(
+                AdminController(
                     campsiteRepository = application.container.campsiteRepository,
                     profileRepository = application.container.profileRepository,
                 )

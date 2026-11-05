@@ -49,11 +49,11 @@ import com.example.vipers.ui.theme.Shapes
 fun BrowseCampsitesScreen(
     onBack: () -> Unit,
     onOpenCampsite: (String) -> Unit = {},
-    viewModel: AdminCampsitesViewModel = viewModel(factory = AdminCampsitesViewModel.Factory)
+    controller: AdminController = viewModel(factory = AdminController.Factory)
 ) {
     var searchText by rememberSaveable { mutableStateOf("") }
 
-    val filteredCampsites = viewModel.campsites.filter {
+    val filteredCampsites = controller.campsites.filter {
         it.matchesSearch(searchText)
     }
 
@@ -85,7 +85,7 @@ fun BrowseCampsitesScreen(
         }
 
         when {
-            viewModel.isLoading && viewModel.campsites.isEmpty() -> {
+            controller.isLoading && controller.campsites.isEmpty() -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -95,7 +95,7 @@ fun BrowseCampsitesScreen(
                     CircularProgressIndicator()
                 }
             }
-            viewModel.loadFailed && viewModel.campsites.isEmpty() -> {
+            controller.loadFailed && controller.campsites.isEmpty() -> {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -109,7 +109,7 @@ fun BrowseCampsitesScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.padding(8.dp))
-                    Button(onClick = { viewModel.loadCampsites() }) {
+                    Button(onClick = { controller.loadCampsites() }) {
                         Text("Retry")
                     }
                 }
@@ -140,7 +140,7 @@ fun BrowseCampsitesScreen(
                     items(filteredCampsites, key = { it.id }) { campsite ->
                         BrowseCampsiteItem(
                             campsite = campsite,
-                            ownerName = viewModel.getOwnerName(campsite.ownerId),
+                            ownerName = controller.getOwnerName(campsite.ownerId),
                             onClick = { onOpenCampsite(campsite.id) }
                         )
                     }

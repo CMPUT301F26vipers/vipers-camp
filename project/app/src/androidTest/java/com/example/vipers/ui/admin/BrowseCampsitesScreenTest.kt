@@ -39,11 +39,11 @@ class BrowseCampsitesScreenTest {
                 UserProfile(id = "owner2", name = "Bob Jones")
             )
         )
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val controller = AdminController(campsiteRepo, profileRepo)
 
         composeRule.setContent {
             VipersTheme {
-                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, controller = controller)
             }
         }
 
@@ -64,11 +64,11 @@ class BrowseCampsitesScreenTest {
                 UserProfile(id = "owner2", name = "Bob Jones")
             )
         )
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val controller = AdminController(campsiteRepo, profileRepo)
 
         composeRule.setContent {
             VipersTheme {
-                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, controller = controller)
             }
         }
 
@@ -87,11 +87,11 @@ class BrowseCampsitesScreenTest {
         )
         val campsiteRepo = FakeCampsiteRepository(campsites)
         val profileRepo = FakeProfileRepository()
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val controller = AdminController(campsiteRepo, profileRepo)
 
         composeRule.setContent {
             VipersTheme {
-                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, controller = controller)
             }
         }
 
@@ -105,11 +105,11 @@ class BrowseCampsitesScreenTest {
     fun emptyRepositoryDisplaysNoCampsitesFoundMessage() {
         val campsiteRepo = FakeCampsiteRepository(emptyList())
         val profileRepo = FakeProfileRepository()
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val controller = AdminController(campsiteRepo, profileRepo)
 
         composeRule.setContent {
             VipersTheme {
-                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, controller = controller)
             }
         }
 
@@ -123,11 +123,11 @@ class BrowseCampsitesScreenTest {
         )
         val campsiteRepo = FakeCampsiteRepository(campsites)
         val profileRepo = FakeProfileRepository()
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val controller = AdminController(campsiteRepo, profileRepo)
 
         composeRule.setContent {
             VipersTheme {
-                BrowseCampsitesScreen(onBack = {}, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = {}, controller = controller)
             }
         }
 
@@ -140,12 +140,12 @@ class BrowseCampsitesScreenTest {
     fun clickingBackButtonInvokesOnBackCallback() {
         val campsiteRepo = FakeCampsiteRepository(emptyList())
         val profileRepo = FakeProfileRepository()
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val controller = AdminController(campsiteRepo, profileRepo)
         var backClicked = false
 
         composeRule.setContent {
             VipersTheme {
-                BrowseCampsitesScreen(onBack = { backClicked = true }, viewModel = viewModel)
+                BrowseCampsitesScreen(onBack = { backClicked = true }, controller = controller)
             }
         }
 
@@ -161,7 +161,7 @@ class BrowseCampsitesScreenTest {
         )
         val campsiteRepo = FakeCampsiteRepository(campsites)
         val profileRepo = FakeProfileRepository()
-        val viewModel = AdminCampsitesViewModel(campsiteRepo, profileRepo)
+        val controller = AdminController(campsiteRepo, profileRepo)
         var openedCampsiteId: String? = null
 
         composeRule.setContent {
@@ -169,7 +169,7 @@ class BrowseCampsitesScreenTest {
                 BrowseCampsitesScreen(
                     onBack = {},
                     onOpenCampsite = { openedCampsiteId = it },
-                    viewModel = viewModel
+                    controller = controller
                 )
             }
         }
