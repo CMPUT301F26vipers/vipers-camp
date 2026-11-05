@@ -129,6 +129,22 @@ class LotteryValidationTest {
         assertTrue(errors.contains("Waitlist limit must be at least 1"))
     }
 
+    @Test
+    fun validateLottery_allowsRegistrationStartAtCurrentTime() {
+        val lottery = Lottery(
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now,
+            registrationEnd = now + 1000L,
+            bookingStart = now + 1000L,
+            bookingEnd = now + 2000L,
+            winnersCount = 1,
+        )
+        val errors = validateLottery(lottery, now = now)
+        assertTrue(errors.isEmpty())
+    }
+
     private fun openLottery(
         waitlistCapacity: Int? = 10,
         removed: Boolean = false,

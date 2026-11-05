@@ -64,6 +64,11 @@ Document ID = **device ID**.
 | ratingSum, ratingCount | number | average = sum / count |
 | removed | bool | |
 
+Owners save changes with `updateCampsite(campsite)` (US 02.01.03). It writes only `name`, `address`,
+`region`, `description`, `maxOccupancy`, `tags`, `pricePerNightCents`, `rules` and
+`cancellationPolicy`, never `ownerId`, `ratingSum`, `ratingCount`, `imageId`, `lat`, `lng` or
+`removed`. It throws `NoSuchElementException` if the campsite ID doesn't exist.
+
 ### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
 Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.
 
