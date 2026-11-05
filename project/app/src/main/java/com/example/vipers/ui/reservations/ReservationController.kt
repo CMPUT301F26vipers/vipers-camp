@@ -19,19 +19,18 @@ import com.example.vipers.CampApp
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import java.time.LocalDate
+import java.time.format.DateTimeParseException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
  * Loads the active reservations at [ownerId]'s campsites (US 02.07.01).
- * Takes the repositories in its constructor so tests can pass fake ones, and [today] so tests can
- * fix the date.
+ * Takes the repositories in its constructor so tests can pass fake ones.
  */
 class ReservationController(
     private val reservationRepository: ReservationRepository,
     private val profileRepository: ProfileRepository,
     private val ownerId: String,
-    private val today: () -> LocalDate = { LocalDate.now() },
 ) : ViewModel() {
 
     /** The owner's active reservations, soonest check-in first. */
@@ -46,37 +45,48 @@ class ReservationController(
     var loadFailed by mutableStateOf(false)
         private set
 
-    /**
-     * Loads the owner's active reservations into [activeRows] in the background, and sets
-     * [isLoading] and [loadFailed] (US 02.07.01).
-     */
+    /** Loads the owner's active reservations in the background (US 02.07.01). */
     fun loadOwnerActive() {
-        viewModelScope.launch {
-            isLoading = true
-            loadFailed = false
-            try {
-                val date = today()
-                activeRows = reservationRepository.getReservationsForOwner(ownerId)
-                    .filter { it.isActive(date) }
-                    .sortedBy { it.checkIn }
-                    .map { reservation ->
-                        ReservationRow(
-                            reservationId = reservation.id,
-                            entrantName = profileRepository.getDisplayName(reservation.userId),
-                            campsiteName = reservation.campsiteName,
-                            checkIn = reservation.checkIn,
-                            checkOut = reservation.checkOut,
-                            groupSize = reservation.groupSize,
-                        )
+        viewModelScope.launch { fetchOwnerActive() }
+    }
+
+    /**
+     * Gets the reservations active on [today] at the owner's campsites into [activeRows], and sets
+     * [isLoading] and [loadFailed] (US 02.07.01). Reservations whose dates can't be read are left
+     * out, so one bad document doesn't stop the rest from showing.
+     * [loadOwnerActive] runs this in the background; unit tests call it directly with a fixed date.
+     */
+    suspend fun fetchOwnerActive(today: LocalDate = LocalDate.now()) {
+        isLoading = true
+        loadFailed = false
+        try {
+            activeRows = reservationRepository.getReservationsForOwner(ownerId)
+                .filter { reservation ->
+                    try {
+                        LocalDate.parse(reservation.checkIn)
+                        reservation.isActive(today)
+                    } catch (e: DateTimeParseException) {
+                        false
                     }
-            } catch (e: CancellationException) {
-                // the load was stopped on purpose (the controller is gone), so it didn't fail
-                throw e
-            } catch (e: Exception) {
-                loadFailed = true
-            } finally {
-                isLoading = false
-            }
+                }
+                .sortedBy { it.checkIn }
+                .map { reservation ->
+                    ReservationRow(
+                        reservationId = reservation.id,
+                        entrantName = profileRepository.getDisplayName(reservation.userId),
+                        campsiteName = reservation.campsiteName,
+                        checkIn = reservation.checkIn,
+                        checkOut = reservation.checkOut,
+                        groupSize = reservation.groupSize,
+                    )
+                }
+        } catch (e: CancellationException) {
+            // the load was stopped on purpose (the controller is gone), so it didn't fail
+            throw e
+        } catch (e: Exception) {
+            loadFailed = true
+        } finally {
+            isLoading = false
         }
     }
 

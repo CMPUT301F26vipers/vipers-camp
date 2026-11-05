@@ -1,6 +1,7 @@
 /*
  * ReservationRow.kt
- * One row of the owner's active reservations list (US 02.07.01).
+ * One row of the owner's active reservations list (US 02.07.01), and the stay's date and guest
+ * text that the list and the reservation details screen both show.
  * Known issues: none. Built when the list loads and never stored, so entrantName can be the
  * entrant's current name rather than a copy.
  */
@@ -33,22 +34,29 @@ data class ReservationRow(
     val checkOut: String,
     val groupSize: Int,
 ) {
-    /**
-     * The stay as text for the UI, e.g. "May 8 – May 10, 2027", with the year on both sides only
-     * when the years differ (US 02.07.01). Dates that can't be read are shown as saved, so one
-     * bad document can't crash the list.
-     */
+    /** The stay as text for the UI, e.g. "May 8 – May 10, 2027" (see [formatStayDates]). */
     val datesText: String
-        get() = try {
-            val start = LocalDate.parse(checkIn)
-            val end = LocalDate.parse(checkOut)
-            val startFormat = if (start.year == end.year) MONTH_DAY else MONTH_DAY_YEAR
-            "${start.format(startFormat)} – ${end.format(MONTH_DAY_YEAR)}"
-        } catch (e: DateTimeParseException) {
-            "$checkIn – $checkOut"
-        }
+        get() = formatStayDates(checkIn, checkOut)
 
     /** The group size as text for the UI, e.g. "1 guest" or "3 guests" (US 02.07.01). */
     val guestsText: String
-        get() = if (groupSize == 1) "1 guest" else "$groupSize guests"
+        get() = formatGuests(groupSize)
 }
+
+/**
+ * A stay from [checkIn] to [checkOut] ("yyyy-MM-dd") as text, e.g. "May 8 – May 10, 2027", with
+ * the year on both sides only when the years differ (US 02.07.01). Dates that can't be read are
+ * shown as saved instead of crashing the screen.
+ */
+fun formatStayDates(checkIn: String, checkOut: String): String =
+    try {
+        val start = LocalDate.parse(checkIn)
+        val end = LocalDate.parse(checkOut)
+        val startFormat = if (start.year == end.year) MONTH_DAY else MONTH_DAY_YEAR
+        "${start.format(startFormat)} – ${end.format(MONTH_DAY_YEAR)}"
+    } catch (e: DateTimeParseException) {
+        "$checkIn – $checkOut"
+    }
+
+/** [groupSize] as text, e.g. "1 guest" or "3 guests" (US 02.07.01). */
+fun formatGuests(groupSize: Int): String = if (groupSize == 1) "1 guest" else "$groupSize guests"

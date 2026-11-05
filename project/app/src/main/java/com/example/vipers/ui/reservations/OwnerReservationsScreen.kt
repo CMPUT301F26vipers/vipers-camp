@@ -3,8 +3,8 @@
  * The owner's Reservations screen (mockup O14), with Active, Past and Cancelled tabs. The Active
  * tab lists the confirmed reservations at the owner's campsites whose check-out is today or later
  * (US 02.07.01).
+ * Tapping a row opens the reservation's details (mockup O15).
  * Known issues: the Past tab (US 02.07.02) and the Cancelled tab (US 02.07.03) are placeholders.
- * Tapping a row opens a placeholder until the reservation details screen (mockup O15) is built.
  */
 package com.example.vipers.ui.reservations
 

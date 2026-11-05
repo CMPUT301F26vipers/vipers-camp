@@ -1,9 +1,9 @@
 /*
  * OwnerActiveReservationsTest.kt
  * Intent tests for US 02.07.01: the owner's Active tab lists active reservations with the entrant's
- * name and dates, leaves out past ones, and tapping a row opens the reservation's details. Uses the
- * fake repositories, so it doesn't touch Firestore.
- * Known issues: the details route only shows a placeholder until mockup O15 is built.
+ * name and dates, leaves out past ones, and tapping a row opens the reservation's details (mockup
+ * O15). Uses the fake repositories, so it doesn't touch Firestore.
+ * Known issues: none.
  */
 package com.example.vipers.ui.reservations
 
@@ -30,7 +30,6 @@ import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
-import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -42,39 +41,39 @@ class OwnerActiveReservationsTest {
 
     private val profiles = FakeProfileRepository(
         listOf(
-            UserProfile(id = "sam", name = "Sam Patel"),
+            UserProfile(id = "sam", name = "Sam Patel", email = "sam@example.com", phone = "780-555-0101"),
             UserProfile(id = "alex", name = "Alex Chen"),
         ),
     )
 
-    // still running on the fixed date openScreen uses
+    // the screen uses today's date, so this stay is far in the future
     private val active = Reservation(
         id = "active",
         userId = "sam",
         ownerId = "test-device",
         campsiteName = "Hinton Ridge Campground",
-        checkIn = "2027-05-08",
-        checkOut = "2027-05-10",
+        checkIn = "2099-05-08",
+        checkOut = "2099-05-10",
         groupSize = 3,
+        rulesAcceptedAt = 1_700_000_000_000,
     )
 
-    // checked out before that date
+    // and this one ended long ago
     private val past = active.copy(
         id = "past",
         userId = "alex",
-        checkIn = "2027-05-01",
-        checkOut = "2027-05-03",
+        checkIn = "2000-05-01",
+        checkOut = "2000-05-03",
     )
 
     private var openedId = ""
 
-    /** Shows the Reservations screen on 2027-05-09 with [reservations] saved. */
+    /** Shows the Reservations screen with [reservations] saved. */
     private fun openScreen(vararg reservations: Reservation) {
         val controller = ReservationController(
             reservationRepository = FakeReservationRepository(reservations.toList()),
             profileRepository = profiles,
             ownerId = "test-device",
-            today = { LocalDate.of(2027, 5, 9) },
         )
         composeRule.setContent {
             VipersTheme {
@@ -92,7 +91,7 @@ class OwnerActiveReservationsTest {
         openScreen(active)
 
         composeRule.onNodeWithText("Sam Patel").assertIsDisplayed()
-        composeRule.onNodeWithText("Hinton Ridge Campground · May 8 – May 10, 2027 · 3 guests")
+        composeRule.onNodeWithText("Hinton Ridge Campground · May 8 – May 10, 2099 · 3 guests")
             .assertIsDisplayed()
     }
 
@@ -114,17 +113,14 @@ class OwnerActiveReservationsTest {
     }
 
     @Test
-    fun tappingARowOpensTheDetailsRoute() {
+    fun tappingARowOpensTheReservationDetails() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
         app.container = AppContainer(
             deviceId = "test-device",
             profileRepository = profiles,
             campsiteRepository = FakeCampsiteRepository(),
             lotteryRepository = FakeLotteryRepository(),
-            // the app uses the real date here, so this stay has to be far in the future
-            reservationRepository = FakeReservationRepository(
-                listOf(active.copy(checkIn = "2099-05-08", checkOut = "2099-05-10")),
-            ),
+            reservationRepository = FakeReservationRepository(listOf(active)),
             notificationRepository = FakeNotificationRepository(),
         )
         composeRule.setContent { VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) } }
@@ -135,6 +131,11 @@ class OwnerActiveReservationsTest {
         ).performClick()
         composeRule.onNodeWithTag("reservation_row").performClick()
 
-        composeRule.onNodeWithText("Reservation details are added", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Sam Patel").assertIsDisplayed()
+        composeRule.onNodeWithText("sam@example.com · 780-555-0101").assertIsDisplayed()
+        composeRule.onNodeWithText("Hinton Ridge Campground").assertIsDisplayed()
+        composeRule.onNodeWithText("May 8 – May 10, 2099").assertIsDisplayed()
+        composeRule.onNodeWithText("Rules accepted").assertIsDisplayed()
+        composeRule.onNodeWithText("Yes").assertIsDisplayed()
     }
 }

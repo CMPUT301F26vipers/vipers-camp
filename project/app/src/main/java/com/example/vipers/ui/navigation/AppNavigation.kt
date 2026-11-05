@@ -32,6 +32,7 @@ import com.example.vipers.ui.profile.PolicyScreen
 import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
+import com.example.vipers.ui.reservations.OwnerReservationDetailsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
@@ -95,15 +96,14 @@ fun AppNavigation(
                     },
                 )
             }
-            // placeholder until the owner's reservation details screen (mockup O15) is built
             composable(
                 route = Routes.OWNER_RESERVATION_DETAILS,
                 arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
-            ) {
-                Column {
-                    TopBar(title = "Reservation", onBack = { navController.popBackStack() })
-                    Placeholder("Reservation details are added in US 02.07.01, 02.08.01 and 02.12.01.")
-                }
+            ) { backStackEntry ->
+                OwnerReservationDetailsScreen(
+                    reservationId = backStackEntry.arguments?.getString("reservationId") ?: "",
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable(Routes.OWNER_SENT) {
                 SentScreen(onBack = { navController.popBackStack() })
