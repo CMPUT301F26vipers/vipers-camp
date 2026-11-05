@@ -6,6 +6,8 @@
 package com.example.vipers.domain.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -62,5 +64,33 @@ class LotteryTest {
     @Test
     fun status_doesNotCrashWhenTimesAreNotSet() {
         assertEquals(LotteryStatus.CLOSED, Lottery().status(at("2027-05-01T09:00")))
+    }
+
+    @Test
+    fun canEntrantJoin_returnsFalseBeforeRegistrationStarts() {
+        assertFalse(lottery.canEntrantJoin(at("2027-05-01T08:59")))
+    }
+
+    @Test
+    fun canEntrantJoin_returnsTrueAtAndDuringRegistrationPeriod() {
+        assertTrue(lottery.canEntrantJoin(at("2027-05-01T09:00")))
+        assertTrue(lottery.canEntrantJoin(at("2027-05-05T12:00")))
+        assertTrue(lottery.canEntrantJoin(at("2027-05-10T15:00")))
+    }
+
+    @Test
+    fun canEntrantJoin_returnsFalseAfterRegistrationEnds() {
+        assertFalse(lottery.canEntrantJoin(at("2027-05-10T15:01")))
+    }
+
+    @Test
+    fun canEntrantJoin_returnsFalseWhenTimesAreNotSet() {
+        assertFalse(Lottery().canEntrantJoin(at("2027-05-01T09:00")))
+    }
+
+    @Test
+    fun canEntrantJoin_returnsFalseWhenPeriodIsReversed() {
+        val reversed = Lottery(registrationStart = 2000L, registrationEnd = 1000L)
+        assertFalse(reversed.canEntrantJoin(1500L))
     }
 }
