@@ -31,6 +31,7 @@ import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
+import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
 import org.junit.Before
 import org.junit.Rule
@@ -53,7 +54,7 @@ class NavigationTest {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
         app.container = AppContainer(
             deviceId = "test-device",
-            profileRepository = FakeProfileRepository(),
+            profileRepository = FakeProfileRepository(listOf(UserProfile(id = "test-device", name = "Sam Patel"))),
             campsiteRepository = FakeCampsiteRepository(),
             lotteryRepository = FakeLotteryRepository(),
             reservationRepository = FakeReservationRepository(),
@@ -90,7 +91,7 @@ class NavigationTest {
         tapTab(Routes.NOTIFICATIONS)
         assertShown("Your notifications")
         tapTab(Routes.PROFILE)
-        assertShown("Editing your name")
+        assertShown("Sam Patel")
         tapTab(Routes.HOME)
         assertHomeShown()
     }
@@ -116,7 +117,7 @@ class NavigationTest {
         assertShown("Load demo data")
 
         pressBack()
-        assertShown("Editing your name")
+        assertShown("Sam Patel")
 
         composeRule.onNodeWithText("Policy").performClick()
         assertShown("How the lottery works")
@@ -154,7 +155,7 @@ class NavigationTest {
         tapTab(Routes.NOTIFICATIONS)
         assertShown("Your notifications")
         tapTab(Routes.PROFILE)
-        assertShown("Editing your name")
+        assertShown("Sam Patel")
         tapTab(Routes.HOME)
         assertHomeShown()
     }

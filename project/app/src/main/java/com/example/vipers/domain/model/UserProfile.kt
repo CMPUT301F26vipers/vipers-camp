@@ -28,4 +28,37 @@ data class UserProfile(
     val notificationsEnabled: Boolean = true,
     val isAdmin: Boolean = false,
     val createdAt: Long = 0,
-)
+) {
+
+    /**
+     * Validates editable profile information.
+     * Returns field-specific errors, or an empty map if valid.
+     */
+    fun validateEdit(): Map<String, String> {
+        val errors = mutableMapOf<String, String>()
+
+        if (name.isBlank()) {
+            errors["name"] = "Name is required"
+        }
+
+        val trimmedEmail = email.trim()
+        if (trimmedEmail.isNotEmpty()) {
+            val emailRegex = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$".toRegex()
+            if (!emailRegex.matches(trimmedEmail)) {
+                errors["email"] = "Invalid email address"
+            }
+        }
+
+        val trimmedPhone = phone.trim()
+        if (trimmedPhone.isNotEmpty()) {
+            val phoneRegex = "^\\+?[0-9\\s()\\-.]{7,25}$".toRegex()
+            val digitCount = trimmedPhone.count { it.isDigit() }
+            if (!phoneRegex.matches(trimmedPhone) || digitCount < 7 || digitCount > 15) {
+                errors["phone"] = "Invalid phone number"
+            }
+        }
+
+        return errors
+    }
+
+}
