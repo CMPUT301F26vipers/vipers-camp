@@ -36,8 +36,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.LotteryStatus
 import com.example.vipers.ui.common.TopBar
-import java.text.DateFormat
-import java.util.Date
 
 /**
  * Displays details for a single campsite (mockup O04), including its active and past lotteries.
@@ -73,7 +71,7 @@ fun CampsiteDetailsScreen(
     Column(
         modifier = Modifier.fillMaxSize(),
     ) {
-        TopBar(title = if (controller.isOwner) "My Campsite" else "Campsite Details", onBack = onBack)
+        TopBar(title = "My Campsite", onBack = onBack)
 
         Column(
             modifier = Modifier
@@ -128,17 +126,6 @@ fun CampsiteDetailsScreen(
                                         fontWeight = FontWeight.Medium
                                     )
 
-                                    val registrationEndLabel = if (lottery.registrationEnd > 0L) {
-                                        "Registration ends: ${formatDate(lottery.registrationEnd)}"
-                                    } else {
-                                        "Registration ends: Not set"
-                                    }
-                                    Text(
-                                        text = registrationEndLabel,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -168,25 +155,18 @@ fun CampsiteDetailsScreen(
                         }
                     }
 
-                    // Primary Create Lottery Button positioned at bottom (owners only)
-                    if (controller.isOwner) {
-                        Button(
-                            onClick = onCreateLottery,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            Text("Create Lottery")
-                        }
+                    // Primary Create Lottery Button positioned at bottom
+                    Button(
+                        onClick = onCreateLottery,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text("Create Lottery")
                     }
                 }
                 else -> Text("Campsite not found.")
             }
         }
     }
-}
-
-private fun formatDate(timestamp: Long): String {
-    if (timestamp <= 0L) return "Not set"
-    return DateFormat.getDateTimeInstance().format(Date(timestamp))
 }

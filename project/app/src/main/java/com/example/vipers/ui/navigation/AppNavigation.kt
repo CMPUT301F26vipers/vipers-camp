@@ -67,14 +67,7 @@ fun AppNavigation(
         },
     ) { padding ->
         NavHost(navController, startDestination = Routes.HOME, modifier = Modifier.padding(padding)) {
-            composable(Routes.HOME) {
-                HomeScreen(
-                    onCampsiteClick = { campsiteId ->
-                        val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
-                        navController.navigate(route)
-                    }
-                )
-            }
+            composable(Routes.HOME) { HomeScreen() }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
             composable(Routes.CAMPSITES) {
                 MyCampsitesScreen(

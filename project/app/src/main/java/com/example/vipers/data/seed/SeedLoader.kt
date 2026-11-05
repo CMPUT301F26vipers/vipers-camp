@@ -15,7 +15,6 @@ package com.example.vipers.data.seed
 import com.example.vipers.AppContainer
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
-import com.example.vipers.domain.model.DuplicateLotteryEntryException
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
@@ -212,20 +211,15 @@ class SeedLoader(
     }
 
     private suspend fun addEntry(lottery: Lottery, userId: String, status: EntryStatus, groupSize: Int) {
-        if (container.lotteryRepository.getEntry(lottery.id, userId) != null) return
-        try {
-            container.lotteryRepository.saveEntry(
-                LotteryEntry(
-                    lotteryId = lottery.id,
-                    userId = userId,
-                    groupSize = groupSize,
-                    joinedAt = lottery.registrationStart,
-                    status = status,
-                )
+        container.lotteryRepository.saveEntry(
+            LotteryEntry(
+                lotteryId = lottery.id,
+                userId = userId,
+                groupSize = groupSize,
+                joinedAt = lottery.registrationStart,
+                status = status,
             )
-        } catch (_: DuplicateLotteryEntryException) {
-            // Already created in a previous or concurrent seed attempt
-        }
+        )
     }
 
     /** Adds a reserved entry, the reservation and holds its nights. Returns the reservation ID. */

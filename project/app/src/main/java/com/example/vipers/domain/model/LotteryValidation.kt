@@ -61,26 +61,3 @@ fun validateLottery(lottery: Lottery, now: Long = System.currentTimeMillis()): L
 
     return errors
 }
-
-/**
- * Validates whether an entrant can join a [lottery] at time [now].
- *
- * @param lottery The lottery to join.
- * @param now Current timestamp in milliseconds (defaults to system time).
- * @return An error message string if ineligible to join, or null if eligible.
- */
-fun validateEntrantJoinEligibility(lottery: Lottery, now: Long = System.currentTimeMillis()): String? {
-    if (lottery.registrationStart <= 0L || lottery.registrationEnd <= 0L) {
-        return "Registration period is not configured"
-    }
-    if (lottery.registrationEnd <= lottery.registrationStart) {
-        return "Invalid registration period"
-    }
-    if (now < lottery.registrationStart) {
-        return "Registration has not started yet"
-    }
-    if (now > lottery.registrationEnd) {
-        return "Registration has ended"
-    }
-    return null
-}

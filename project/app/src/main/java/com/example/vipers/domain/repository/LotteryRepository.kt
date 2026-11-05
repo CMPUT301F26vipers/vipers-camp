@@ -6,7 +6,6 @@
  */
 package com.example.vipers.domain.repository
 
-import com.example.vipers.domain.model.DuplicateLotteryEntryException
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 
@@ -22,10 +21,7 @@ interface LotteryRepository {
     /** Loads the lotteries that cover [campsiteId] and haven't been removed. */
     suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery>
 
-    /**
-     * Saves [entry]. Its ID is "lotteryId_userId", ensuring a user can only have one entry per lottery.
-     * @throws DuplicateLotteryEntryException if an entry with this ID already exists.
-     */
+    /** Creates or updates [entry]. Its ID is "lotteryId_userId", so a user has one entry per lottery. */
     suspend fun saveEntry(entry: LotteryEntry)
 
     /** Loads [userId]'s entry in [lotteryId], or returns null if they haven't joined. */

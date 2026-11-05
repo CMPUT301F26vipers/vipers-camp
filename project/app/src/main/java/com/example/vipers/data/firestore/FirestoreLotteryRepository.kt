@@ -6,7 +6,6 @@
  */
 package com.example.vipers.data.firestore
 
-import com.example.vipers.domain.model.DuplicateLotteryEntryException
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
@@ -16,7 +15,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 
 /** Stores lotteries and their entries in Firestore. */
 class FirestoreLotteryRepository(
-    private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    db: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : LotteryRepository {
 
     private val lotteries = db.collection("lotteries")
@@ -42,22 +41,7 @@ class FirestoreLotteryRepository(
 
     override suspend fun saveEntry(entry: LotteryEntry) {
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
-        val docRef = entries.document(id)
-        try {
-            db.runTransaction { transaction ->
-                val snapshot = transaction.get(docRef)
-                if (snapshot.exists()) {
-                    throw DuplicateLotteryEntryException("Entry already exists for lottery ${entry.lotteryId} and user ${entry.userId}")
-                }
-                transaction.set(docRef, entry.copy(id = id).toMap())
-                null
-            }.await()
-        } catch (e: Exception) {
-            if (e is DuplicateLotteryEntryException) throw e
-            val cause = e.cause
-            if (cause is DuplicateLotteryEntryException) throw cause
-            throw e
-        }
+        entries.document(id).set(entry.copy(id = id).toMap()).await()
     }
 
     override suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry? {
