@@ -1,7 +1,8 @@
 /*
  * CampsiteController.kt
  * The controller (a ViewModel) behind the Add Campsite form (US 02.01.01, 02.01.02a). It holds
- * what the owner has typed, checks it, and saves the campsite with the owner's device ID.
+ * what the owner has typed, checks it, and saves the campsite with the owner's device ID. It can
+ * also fill the form from a saved campsite so its owner can edit it (US 02.01.03).
  * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
  * cancellation policy (T-11) are added to the form by those stories.
  */
@@ -30,6 +31,22 @@ class CampsiteController(
     private val campsiteRepository: CampsiteRepository,
     private val ownerId: String,
 ) : ViewModel() {
+
+    /** Whether the form is adding a new campsite or editing a saved one (US 02.01.03). */
+    var mode by mutableStateOf(FormMode.CREATE)
+        private set
+
+    /** The saved campsite being edited, or null unless [loadForEdit] filled the form (US 02.01.03). */
+    var loadedCampsite by mutableStateOf<Campsite?>(null)
+        private set
+
+    /** True if the campsite to edit doesn't exist or isn't this owner's (US 02.01.03). */
+    var notAllowed by mutableStateOf(false)
+        private set
+
+    /** True if the campsite to edit couldn't be loaded, e.g. offline with no saved copy (US 02.01.03). */
+    var loadFailed by mutableStateOf(false)
+        private set
 
     var name by mutableStateOf("")
         private set
@@ -132,6 +149,39 @@ class CampsiteController(
         } finally {
             isSaving = false
         }
+    }
+
+    /**
+     * Loads the campsite with this [campsiteId] for editing (US 02.01.03). If it exists and belongs
+     * to this owner, switches to [FormMode.EDIT] and fills in the form. Otherwise sets [notAllowed]
+     * and fills in nothing. If the load itself fails, sets [loadFailed] and fills in nothing.
+     */
+    suspend fun loadForEdit(campsiteId: String) {
+        notAllowed = false
+        loadFailed = false
+        try {
+            val campsite = campsiteRepository.getCampsite(campsiteId)
+            if (campsite != null && campsite.isOwnedBy(ownerId)) {
+                fillForm(campsite)
+            } else {
+                notAllowed = true
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            loadFailed = true
+        }
+    }
+
+    private fun fillForm(campsite: Campsite) {
+        loadedCampsite = campsite
+        mode = FormMode.EDIT
+        name = campsite.name
+        address = campsite.address
+        region = campsite.region
+        maxGuests = campsite.maxOccupancy.toString()
+        description = campsite.description
+        tags = campsite.tags
     }
 
     /** The campsite the form describes right now. */

@@ -1,6 +1,7 @@
 /*
  * CampsiteControllerTest.kt
- * Unit tests for CampsiteController (US 02.01.01, 02.01.02a), using the fake campsite repository.
+ * Unit tests for CampsiteController (US 02.01.01, 02.01.02a, 02.01.03), using the fake campsite
+ * repository.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -131,6 +133,82 @@ class CampsiteControllerTest {
         assertTrue(controller.hasUnsavedChanges)
         controller.publish()
         assertFalse(controller.hasUnsavedChanges)
+    }
+
+    // a saved campsite belonging to the controller's owner
+    private val hinton = Campsite(
+        id = "hinton",
+        ownerId = "my-phone",
+        name = "Hinton Ridge Campground",
+        address = "Hinton, AB",
+        region = Region.HINTON,
+        description = "Outdoor cookhouse",
+        maxOccupancy = 8,
+        tags = listOf("Cookhouse", "Tennis court"),
+    )
+
+    private fun assertFormIsEmpty(form: CampsiteController) {
+        assertEquals(FormMode.CREATE, form.mode)
+        assertNull(form.loadedCampsite)
+        assertEquals("", form.name)
+        assertEquals("", form.address)
+        assertNull(form.region)
+        assertEquals("", form.maxGuests)
+        assertEquals("", form.description)
+        assertTrue(form.tags.isEmpty())
+    }
+
+    @Test
+    fun mode_newController_isCreate() {
+        assertEquals(FormMode.CREATE, controller.mode)
+    }
+
+    @Test
+    fun loadForEdit_owner_prefillsEveryField() = runBlocking {
+        val form = CampsiteController(FakeCampsiteRepository(listOf(hinton)), ownerId = "my-phone")
+        form.loadForEdit("hinton")
+
+        assertEquals(FormMode.EDIT, form.mode)
+        assertEquals(hinton, form.loadedCampsite)
+        assertEquals("Hinton Ridge Campground", form.name)
+        assertEquals("Hinton, AB", form.address)
+        assertEquals(Region.HINTON, form.region)
+        assertEquals("8", form.maxGuests)
+        assertEquals("Outdoor cookhouse", form.description)
+        assertEquals(listOf("Cookhouse", "Tennis court"), form.tags)
+        assertFalse(form.notAllowed)
+        assertFalse(form.loadFailed)
+    }
+
+    @Test
+    fun loadForEdit_nonOwner_setsNotAllowedAndLeavesTheFormEmpty() = runBlocking {
+        val form = CampsiteController(FakeCampsiteRepository(listOf(hinton)), ownerId = "someone-else")
+        form.loadForEdit("hinton")
+
+        assertTrue(form.notAllowed)
+        assertFormIsEmpty(form)
+    }
+
+    @Test
+    fun loadForEdit_missingId_setsNotAllowedAndLeavesTheFormEmpty() = runBlocking {
+        val form = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        form.loadForEdit("nope")
+
+        assertTrue(form.notAllowed)
+        assertFormIsEmpty(form)
+    }
+
+    @Test
+    fun loadForEdit_whenTheRepositoryFails_setsLoadFailedAndLeavesTheFormEmpty() = runBlocking {
+        val failing = object : CampsiteRepository by FakeCampsiteRepository() {
+            override suspend fun getCampsite(id: String): Campsite? = throw Exception("offline")
+        }
+        val form = CampsiteController(failing, ownerId = "my-phone")
+        form.loadForEdit("hinton")
+
+        assertTrue(form.loadFailed)
+        assertFalse(form.notAllowed)
+        assertFormIsEmpty(form)
     }
 
     @Test
