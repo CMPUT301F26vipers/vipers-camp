@@ -22,9 +22,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
-import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
+import com.example.vipers.ui.campsites.OwnerCampsiteScreen
 import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SentScreen
@@ -33,6 +33,8 @@ import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
+import com.example.vipers.ui.lottery.LotteryFormScreen
+import com.example.vipers.ui.lottery.LotteryDetailsScreen
 
 import androidx.compose.foundation.layout.Column
 import com.example.vipers.ui.common.Placeholder
@@ -44,12 +46,14 @@ private val tabRoutes = listOf(
 )
 
 /**
- * The whole app's navigation. [isAdmin] shows the Admin tab, [userId] is the ID of current user
- * to be used when trying to load user's campsites, and [onLoadDemoData] is called
+ * The whole app's navigation. [isAdmin] shows the Admin tab, and [onLoadDemoData] is called
  * by the button on Settings.
  */
 @Composable
-fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
+fun AppNavigation(
+    isAdmin: Boolean,
+    onLoadDemoData: () -> Unit,
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -71,8 +75,8 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                     onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) },
                     onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) },
                     onOpenSent = { navController.navigate(Routes.OWNER_SENT) },
-                    onOpenCampsite = { campsiteId -> // Updated name here!
-                        val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                    onOpenCampsite = { campsiteId ->
+                        val route = Routes.OWNER_CAMPSITE.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
                     })
             }
@@ -89,13 +93,61 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                 SentScreen(onBack = { navController.popBackStack() })
             }
             composable(
-                route = Routes.CAMPSITE_DETAILS,
+                route = Routes.OWNER_CAMPSITE,
                 // You MUST declare the argument here for Compose to extract it from the route
                 arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
-                CampsiteDetailsScreen(
+                OwnerCampsiteScreen(
                     campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() },
+                    onEdit = {
+                        navController.navigate(Routes.EDIT_CAMPSITE.replace("{campsiteId}", campsiteId))
+                    },
+                    onOpenAvailability = {
+                        navController.navigate(Routes.AVAILABILITY.replace("{campsiteId}", campsiteId))
+                    },
+                    onOpenReservations = { navController.navigate(Routes.OWNER_RESERVATIONS) },
+                    onCreateLottery = {
+                        val route = Routes.CREATE_LOTTERY.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    },
+                    onLotteryClick = { lotteryId ->
+                        val route = Routes.LOTTERY_DETAILS.replace("{lotteryId}", lotteryId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            // placeholders until 02.01.03 and T-10 build these screens
+            composable(Routes.EDIT_CAMPSITE) {
+                Column {
+                    TopBar(title = "Edit Campsite", onBack = { navController.popBackStack() })
+                    Placeholder("Editing a campsite is added in US 02.01.03.")
+                }
+            }
+            composable(Routes.AVAILABILITY) {
+                Column {
+                    TopBar(title = "Availability", onBack = { navController.popBackStack() })
+                    Placeholder("Setting available nights is added in T-10.")
+                }
+            }
+            composable(
+                route = Routes.CREATE_LOTTERY,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                LotteryFormScreen(
+                    campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Routes.LOTTERY_DETAILS,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
+                LotteryDetailsScreen(
+                    lotteryId = lotteryId,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -140,7 +192,7 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                     BrowseCampsitesScreen(
                         onBack = { navController.popBackStack() },
                         onOpenCampsite = { campsiteId ->
-                            val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                            val route = Routes.OWNER_CAMPSITE.replace("{campsiteId}", campsiteId)
                             navController.navigate(route)
                         }
                     )

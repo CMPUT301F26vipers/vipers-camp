@@ -62,7 +62,7 @@ class AddCampsiteTest {
     private fun fillValidForm() {
         type("field_name", "Hinton Ridge Campground")
         type("field_address", "Hinton, AB")
-        composeRule.onNodeWithTag("field_region").performClick()
+        composeRule.onNodeWithTag("field_region").performScrollTo().performClick()
         composeRule.onNodeWithText("Hinton").performClick()
         type("field_max_guests", "6")
     }
