@@ -25,7 +25,9 @@ class FirestoreProfileRepository(
     }
 
     override suspend fun saveProfile(profile: UserProfile) {
-        collection.document(profile.id).set(profile.toMap()).await()
+        // Not awaited, same as addCampsite: offline, set() only finishes once the phone
+        // reconnects. Firestore keeps the write on the phone and sends it later.
+        collection.document(profile.id).set(profile.toMap())
     }
 }
 

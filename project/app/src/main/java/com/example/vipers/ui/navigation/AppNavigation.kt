@@ -33,6 +33,10 @@ import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
 
+import androidx.compose.foundation.layout.Column
+import com.example.vipers.ui.common.Placeholder
+import com.example.vipers.ui.common.TopBar
+
 // The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
     Routes.HOME, Routes.RESERVATIONS, Routes.CAMPSITES, Routes.NOTIFICATIONS, Routes.PROFILE, Routes.ADMIN,
@@ -109,7 +113,69 @@ fun AppNavigation(isAdmin: Boolean, onLoadDemoData: () -> Unit) {
                 )
             }
             composable(Routes.POLICY) { PolicyScreen(onBack = { navController.popBackStack() }) }
-            composable(Routes.ADMIN) { AdminHomeScreen() }
+
+            if (isAdmin) {
+                composable(Routes.ADMIN) {
+                    AdminHomeScreen(
+                        onOpenCampsites = {
+                            navController.navigate(Routes.ADMIN_CAMPSITES)
+                        },
+                        onOpenProfiles = {
+                            navController.navigate(Routes.ADMIN_PROFILES)
+                        },
+                        onOpenImages = {
+                            navController.navigate(Routes.ADMIN_IMAGES)
+                        },
+                        onOpenNotificationLog = {
+                            navController.navigate(Routes.ADMIN_NOTIFICATION_LOG)
+                        },
+                        onOpenMessageLog = {
+                            navController.navigate(Routes.ADMIN_MESSAGE_LOG)
+                        }
+                    )
+                }
+
+                composable(Routes.ADMIN_CAMPSITES) {
+                    AdminPlaceholderScreen(
+                        "All Campsites",
+                        "Browse Campsites (03.04.01)",
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(Routes.ADMIN_PROFILES) {
+                    AdminPlaceholderScreen(
+                        "All Profiles",
+                        "Browse Profiles (03.05.01)",
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(Routes.ADMIN_IMAGES) {
+                    AdminPlaceholderScreen(
+                        "All Images",
+                        "Browse Images (03.06.01)",
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(Routes.ADMIN_NOTIFICATION_LOG) {
+                    AdminPlaceholderScreen(
+                        "Logs",
+                        "Notification Log (03.08.01)",
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(Routes.ADMIN_MESSAGE_LOG) {
+                    AdminPlaceholderScreen(
+                        "Logs",
+                        "Message Log (03.12.01)",
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+            }
+
         }
     }
 }
@@ -125,3 +191,18 @@ private fun NavHostController.openTab(route: String) {
         restoreState = true
     }
 }
+
+
+/** Temporary screen for admin features that are not implemented yet. */
+@Composable
+private fun AdminPlaceholderScreen(
+    title: String,
+    message: String,
+    onBack: () -> Unit
+) {
+    Column {
+        TopBar(title = title, onBack = onBack)
+        Placeholder(message)
+    }
+}
+
