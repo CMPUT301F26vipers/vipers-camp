@@ -4,7 +4,8 @@
  * what the owner has typed, checks it, and saves the campsite with the owner's device ID. It can
  * also fill the form from a saved campsite and save its owner's changes (US 02.01.03).
  * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
- * cancellation policy (T-11) are added to the form by those stories.
+ * cancellation policy (T-11) are added to the form by those stories. Until then an edit keeps their
+ * saved values, and those stories need to add their fields to withFormValues.
  */
 package com.example.vipers.ui.campsites
 
@@ -24,7 +25,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Holds the Add Campsite form and publishes the campsite for [ownerId].
+ * Holds the Add Campsite and Edit Campsite form, and publishes the campsite for [ownerId] or saves
+ * the changes to it.
  * Takes the [campsiteRepository] in its constructor so tests can pass a fake one.
  */
 class CampsiteController(

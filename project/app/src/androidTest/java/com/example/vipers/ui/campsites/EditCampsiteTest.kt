@@ -1,8 +1,8 @@
 /*
  * EditCampsiteTest.kt
  * Intent tests for US 02.01.03: the owner opens the form from their campsite with its details
- * filled in, saves a change and sees it on the campsite screen. Only the owner gets the Edit
- * button. Uses the fake repositories, so it doesn't touch Firestore.
+ * filled in, saves a change and sees it on the campsite screen, and entrants see it on Home. Only
+ * the owner gets the Edit button. Uses the fake repositories, so it doesn't touch Firestore.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -117,6 +118,22 @@ class EditCampsiteTest {
             hinton.copy(name = "Hinton Ridge Sites"),
             runBlocking { campsites.getCampsite("hinton") },
         )
+    }
+
+    @Test
+    fun savedNameShowsOnHomeTheNextTimeItLoads() {
+        openApp()
+        composeRule.onNodeWithText("Hinton Ridge Campground").assertIsDisplayed() // Home, before the edit
+        openEditForm()
+
+        composeRule.onNodeWithTag("field_name").performTextReplacement("Hinton Ridge Sites")
+        composeRule.onNodeWithTag("button_publish").performClick()
+        composeRule.onNodeWithText("My Campsite").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.onNodeWithTag("tab_${Routes.HOME}").performClick()
+
+        composeRule.onNodeWithText("Hinton Ridge Sites").assertIsDisplayed()
+        composeRule.onNodeWithText("Hinton Ridge Campground").assertDoesNotExist()
     }
 
     @Test
