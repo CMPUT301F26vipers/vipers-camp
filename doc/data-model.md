@@ -79,6 +79,7 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | ownerId | string | |
 | campsiteIds | string[] | one lottery can cover several campsites |
 | nightsOffered | string[] | dates |
+| nightsDescription | string? | optional description, e.g. "May 2027 weekends" |
 | registrationStart, registrationEnd | number | ms; joining period (date **and** time) |
 | bookingStart, bookingEnd | number | ms; reserving period |
 | winnersCount | number | ≥ 1 |

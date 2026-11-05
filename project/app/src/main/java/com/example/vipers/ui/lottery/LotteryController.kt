@@ -100,27 +100,30 @@ class LotteryController(
         return date
     }
 
-    /** Loads the campsite details and current availability calendar. */
+    /** Loads the campsite details and current availability calendar in the background. */
     fun loadCampsiteData() {
-        viewModelScope.launch {
-            loading = true
-            error = null
-            try {
-                val result = campsiteRepository.getCampsite(campsiteId)
-                if (result == null || result.ownerId != ownerId) {
-                    error = "Campsite not found or you do not own it."
-                } else {
-                    campsite = result
-                    val calendar = campsiteRepository.getAvailability(campsiteId)
-                    availability = calendar
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = "Unable to load campsite availability."
-            } finally {
-                loading = false
+        viewModelScope.launch { fetchCampsiteData() }
+    }
+
+    /** Loads the campsite details and current availability calendar. Unit tests can call it directly. */
+    suspend fun fetchCampsiteData() {
+        loading = true
+        error = null
+        try {
+            val result = campsiteRepository.getCampsite(campsiteId)
+            if (result == null || result.ownerId != ownerId) {
+                error = "Campsite not found or you do not own it."
+            } else {
+                campsite = result
+                val calendar = campsiteRepository.getAvailability(campsiteId)
+                availability = calendar
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = "Unable to load campsite availability."
+        } finally {
+            loading = false
         }
     }
 

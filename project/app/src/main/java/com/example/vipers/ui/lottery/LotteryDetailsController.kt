@@ -50,29 +50,32 @@ class LotteryDetailsController(
         loadData()
     }
 
-    /** Loads lottery details and resolves waitlist entry user display names. */
+    /** Loads lottery details and resolves waitlist entry user display names in the background. */
     fun loadData() {
-        viewModelScope.launch {
-            loading = true
-            error = null
-            try {
-                lottery = lotteryRepository.getLottery(lotteryId)
-                val entries = lotteryRepository.getEntries(lotteryId)
-                    .filter { it.status == EntryStatus.WAITING }
-                waitingEntries = entries
+        viewModelScope.launch { fetchData() }
+    }
 
-                val names = mutableMapOf<String, String>()
-                for (entry in entries) {
-                    names[entry.userId] = profileRepository.getDisplayName(entry.userId)
-                }
-                userNames = names
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = "Unable to load lottery details. Please check your network connection and try again."
-            } finally {
-                loading = false
+    /** Loads lottery details and resolves waitlist entry user display names. Unit tests can call it directly. */
+    suspend fun fetchData() {
+        loading = true
+        error = null
+        try {
+            lottery = lotteryRepository.getLottery(lotteryId)
+            val entries = lotteryRepository.getEntries(lotteryId)
+                .filter { it.status == EntryStatus.WAITING }
+            waitingEntries = entries
+
+            val names = mutableMapOf<String, String>()
+            for (entry in entries) {
+                names[entry.userId] = profileRepository.getDisplayName(entry.userId)
             }
+            userNames = names
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = "Unable to load lottery details. Please check your network connection and try again."
+        } finally {
+            loading = false
         }
     }
 

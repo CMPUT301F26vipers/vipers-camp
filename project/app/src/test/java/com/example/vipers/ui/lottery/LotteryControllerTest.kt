@@ -428,4 +428,52 @@ class LotteryControllerTest {
         assertFalse(controller.saved)
         assertEquals("Select at least one night", controller.error)
     }
+
+    @Test
+    fun fetchCampsiteData_loadsCampsiteAndAvailability() = runTest {
+        setupCampsiteAndController()
+        controller.fetchCampsiteData()
+
+        assertFalse(controller.loading)
+        assertNull(controller.error)
+        assertNotNull(controller.campsite)
+        assertEquals("Test Camp", controller.campsite!!.name)
+        assertNotNull(controller.availability)
+        assertEquals(4, controller.availability!!.openNights.size)
+    }
+
+    @Test
+    fun fetchCampsiteData_whenCampsiteNotFoundOrNotOwned_setsError() = runTest {
+        val otherOwnerCamp = Campsite(id = "other-camp", ownerId = "someone-else", name = "Other Camp")
+        campsiteRepository.addCampsite(otherOwnerCamp)
+
+        val unownedController = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = lotteryRepository,
+            ownerId = ownerId,
+            campsiteId = "other-camp"
+        )
+        unownedController.fetchCampsiteData()
+
+        assertFalse(unownedController.loading)
+        assertEquals("Campsite not found or you do not own it.", unownedController.error)
+        assertNull(unownedController.campsite)
+    }
+
+    @Test
+    fun fetchCampsiteData_whenRepositoryFails_setsError() = runTest {
+        val failingRepo = object : com.example.vipers.domain.repository.CampsiteRepository by FakeCampsiteRepository() {
+            override suspend fun getCampsite(id: String): Campsite? = throw RuntimeException("Firestore offline")
+        }
+        val failingController = LotteryController(
+            campsiteRepository = failingRepo,
+            lotteryRepository = lotteryRepository,
+            ownerId = ownerId,
+            campsiteId = campsiteId
+        )
+        failingController.fetchCampsiteData()
+
+        assertFalse(failingController.loading)
+        assertEquals("Unable to load campsite availability.", failingController.error)
+    }
 }
