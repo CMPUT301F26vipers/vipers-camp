@@ -1,8 +1,8 @@
 /*
  * OwnerCampsiteControllerTest.kt
  * Unit tests for OwnerCampsiteController (US 02.01.04): loading one of the owner's campsites with
- * its details, its lotteries and how many joined or reserved each one, using the fake campsite and
- * lottery repositories.
+ * its details, its lotteries and how many joined or reserved each one, and who may edit it
+ * (US 02.01.03), using the fake campsite and lottery repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -72,16 +72,44 @@ class OwnerCampsiteControllerTest {
     private fun loadedController(
         campsiteId: String = "hinton",
         lotteryEntries: List<LotteryEntry> = entries,
+        userId: String = "owner-priya",
     ): OwnerCampsiteController =
         runBlocking {
             val controller = OwnerCampsiteController(
                 FakeCampsiteRepository(listOf(hinton, banff)),
                 FakeLotteryRepository(lotteries, lotteryEntries),
                 campsiteId,
+                userId,
             )
             controller.fetchData()
             controller
         }
+
+    @Test
+    fun canEdit_owner_isTrue() {
+        assertTrue(loadedController(userId = "owner-priya").canEdit)
+    }
+
+    @Test
+    fun canEdit_anotherUser_isFalse() {
+        assertFalse(loadedController(userId = "admin-phone").canEdit)
+    }
+
+    @Test
+    fun canEdit_beforeTheCampsiteLoads_isFalse() {
+        val controller = OwnerCampsiteController(
+            FakeCampsiteRepository(listOf(hinton)),
+            FakeLotteryRepository(),
+            "hinton",
+            "owner-priya",
+        )
+        assertFalse(controller.canEdit)
+    }
+
+    @Test
+    fun canEdit_campsiteNotFound_isFalse() {
+        assertFalse(loadedController(campsiteId = "missing").canEdit)
+    }
 
     @Test
     fun fetchData_loadsTheCampsiteWithAllItsDetails() {
@@ -130,7 +158,7 @@ class OwnerCampsiteControllerTest {
         val campsites = object : CampsiteRepository by FakeCampsiteRepository() {
             override suspend fun getCampsite(id: String): Campsite? = saved
         }
-        val controller = OwnerCampsiteController(campsites, FakeLotteryRepository(), "hinton")
+        val controller = OwnerCampsiteController(campsites, FakeLotteryRepository(), "hinton", "owner-priya")
         controller.fetchData()
         assertEquals("Hinton Ridge Campground", controller.campsite?.name)
 
@@ -146,7 +174,7 @@ class OwnerCampsiteControllerTest {
         val failing = object : CampsiteRepository by FakeCampsiteRepository() {
             override suspend fun getCampsite(id: String): Campsite? = throw Exception("offline")
         }
-        val controller = OwnerCampsiteController(failing, FakeLotteryRepository(), "hinton")
+        val controller = OwnerCampsiteController(failing, FakeLotteryRepository(), "hinton", "owner-priya")
         controller.fetchData()
         assertEquals("Unable to load details.", controller.error)
         assertFalse(controller.loading)
@@ -158,7 +186,7 @@ class OwnerCampsiteControllerTest {
         val slow = object : CampsiteRepository by FakeCampsiteRepository() {
             override suspend fun getCampsite(id: String): Campsite? = awaitCancellation()
         }
-        val controller = OwnerCampsiteController(slow, FakeLotteryRepository(), "hinton")
+        val controller = OwnerCampsiteController(slow, FakeLotteryRepository(), "hinton", "owner-priya")
         val load = launch { controller.fetchData() }
         yield() // let the load start
         load.cancelAndJoin()

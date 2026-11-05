@@ -118,13 +118,18 @@ fun AppNavigation(
                     },
                 )
             }
-            // placeholders until 02.01.03 and T-10 build these screens
-            composable(Routes.EDIT_CAMPSITE) {
-                Column {
-                    TopBar(title = "Edit Campsite", onBack = { navController.popBackStack() })
-                    Placeholder("Editing a campsite is added in US 02.01.03.")
-                }
+            composable(
+                route = Routes.EDIT_CAMPSITE,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CampsiteFormScreen(
+                    campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() },
+                    onPublished = { navController.popBackStack() },
+                )
             }
+            // placeholder until T-10 builds this screen
             composable(Routes.AVAILABILITY) {
                 Column {
                     TopBar(title = "Availability", onBack = { navController.popBackStack() })
