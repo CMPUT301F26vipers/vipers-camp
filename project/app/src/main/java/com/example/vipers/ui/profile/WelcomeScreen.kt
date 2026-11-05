@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -72,19 +72,18 @@ fun WelcomeScreen(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Spacer(Modifier.height(48.dp))
             Box(
-                Modifier.size(88.dp).background(GreenFill, CircleShape),
+                Modifier.size(64.dp).background(GreenFill, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painterResource(R.drawable.ic_campsite),
+                    painterResource(R.drawable.ic_tent),
                     contentDescription = null,
                     tint = Primary,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(36.dp),
                 )
             }
             Text("Welcome", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -119,7 +118,7 @@ fun WelcomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(16.dp)
+                .padding(horizontal = 24.dp, vertical = 16.dp) // same sides as the fields
                 .height(ButtonHeight)
                 .testTag("button_continue"),
         ) {
@@ -136,13 +135,21 @@ private fun WelcomeField(
     tag: String,
     keyboardType: KeyboardType = KeyboardType.Text,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        singleLine = true,
-        shape = InputShape,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = Modifier.fillMaxWidth().testTag(tag),
-    )
+    // label above the field, like the mockup and the Add Campsite form
+    Column {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            shape = InputShape,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            modifier = Modifier.fillMaxWidth().testTag(tag),
+        )
+    }
 }

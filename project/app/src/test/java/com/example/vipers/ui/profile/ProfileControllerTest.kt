@@ -9,6 +9,7 @@ import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -20,6 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class) // setMain is still marked experimental
 class ProfileControllerTest {
 
     private val repo = FakeProfileRepository()
