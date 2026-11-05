@@ -61,6 +61,8 @@ import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.Primary
 import com.example.vipers.ui.theme.TextMuted
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * The My Campsite screen (mockup O04): the owner's campsite with all its saved details, the Edit,
@@ -254,6 +256,16 @@ private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Un
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        val registrationEndLabel = if (lottery.registrationEnd > 0L) {
+            "Registration ends: ${formatDate(lottery.registrationEnd)}"
+        } else {
+            "Registration ends: Not set"
+        }
+        Text(
+            text = registrationEndLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -326,4 +338,9 @@ private fun LabelledText(label: String, text: String) {
             append(text)
         }
     )
+}
+
+private fun formatDate(timestamp: Long): String {
+    if (timestamp <= 0L) return "Not set"
+    return DateFormat.getDateTimeInstance().format(Date(timestamp))
 }

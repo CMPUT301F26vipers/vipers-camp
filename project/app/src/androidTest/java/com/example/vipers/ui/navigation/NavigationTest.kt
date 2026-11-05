@@ -31,8 +31,11 @@ import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
+import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -224,5 +227,56 @@ class NavigationTest {
 
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("My Campsites")
+    }
+
+    @Test
+    fun ownerNavigatesFromMyCampsitesToOwnerCampsite_showsRegistrationDeadlineAndCreateLottery() {
+        runBlocking {
+            val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+            val campsiteRepo = FakeCampsiteRepository()
+            val lotteryRepo = FakeLotteryRepository()
+            val campsiteId = campsiteRepo.addCampsite(
+                Campsite(
+                    name = "Owner Campground",
+                    ownerId = "test-device",
+                    address = "Jasper National Park"
+                )
+            )
+            lotteryRepo.addLottery(
+                Lottery(
+                    campsiteIds = listOf(campsiteId),
+                    nightsDescription = "Summer Nights",
+                    registrationStart = 1000L,
+                    registrationEnd = 2000000000000L,
+                    bookingStart = 2000000000000L,
+                    bookingEnd = 2000001000000L,
+                )
+            )
+            app.container = AppContainer(
+                deviceId = "test-device",
+                profileRepository = FakeProfileRepository(listOf(UserProfile(id = "test-device", name = "Owner User"))),
+                campsiteRepository = campsiteRepo,
+                lotteryRepository = lotteryRepo,
+                reservationRepository = FakeReservationRepository(),
+                notificationRepository = FakeNotificationRepository(),
+            )
+
+            startApp()
+            tapTab(Routes.CAMPSITES)
+            composeRule.onNodeWithText("Owner Campground").performClick()
+
+            // Owner sees campsite details and registration deadline
+            assertShown("Owner Campground")
+            assertShown("Registration ends: ")
+            composeRule.onNodeWithText("Create Lottery").assertIsDisplayed()
+
+            // Clicking Create Lottery navigates to Create Lottery form
+            composeRule.onNodeWithText("Create Lottery").performClick()
+            assertShown("Select Offered Nights")
+
+            // Back returns to Owner Campsite
+            composeRule.onNodeWithContentDescription("Back").performClick()
+            assertShown("Owner Campground")
+        }
     }
 }
