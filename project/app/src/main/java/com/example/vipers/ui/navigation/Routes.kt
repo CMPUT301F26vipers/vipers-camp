@@ -27,9 +27,11 @@ object Routes {
 
 
     const val OWNER_RESERVATIONS = "owner_reservations"
+    const val OWNER_RESERVATION_DETAILS = "owner_reservation/{reservationId}"
 
     const val OWNER_SENT = "owner_sent"
 
+    const val CAMPSITE_DETAILS = "campsite_details/{campsiteId}"
     const val OWNER_CAMPSITE = "owner_campsite/{campsiteId}"
     const val EDIT_CAMPSITE = "edit_campsite/{campsiteId}"
     const val AVAILABILITY = "availability/{campsiteId}"

@@ -1,7 +1,8 @@
 /*
  * RulesAndPolicySection.kt
  * A campsite's rules and cancellation policy as "Rules: …" and "Cancellation: …" lines (T-11),
- * shared by every screen that shows them, starting with the owner's My Campsite (mockup O04).
+ * shared by every screen that shows them: My Campsite (mockup O04) and Campsite Details (mockup
+ * E05), through CampsiteDetails. Also holds LabelledText, which CampsiteDetails uses for "Region".
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -31,9 +32,12 @@ fun RulesAndPolicySection(campsite: Campsite) {
     }
 }
 
-/** Text like "Rules: quiet hours after 10 PM", with the [label] in bold. */
+/**
+ * Text like "Rules: quiet hours after 10 PM", with the [label] in bold. Internal so
+ * CampsiteDetails can use it for other labelled lines, like "Region" (US 01.01.05).
+ */
 @Composable
-private fun LabelledText(label: String, text: String) {
+internal fun LabelledText(label: String, text: String) {
     Text(
         buildAnnotatedString {
             withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("$label: ") }

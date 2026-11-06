@@ -91,6 +91,10 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | waitlistCapacity | number? | `null` = no limit |
 | drawnAt | number? | ms, `null` until the draw runs |
 | removed | bool | |
+| waitingUserIds | string[] | entrant device IDs currently on the waiting list |
+
+Operations rewriting an entire lottery document must preserve `waitingUserIds`, including Edit
+Lottery and US 02.04.06 (#18), otherwise the waiting-list count may be reset.
 
 ### `lotteryEntries`: `LotteryEntry` (`LotteryRepository`)
 Document ID = **`lotteryId_userId`**, so a user can only have one entry per lottery.

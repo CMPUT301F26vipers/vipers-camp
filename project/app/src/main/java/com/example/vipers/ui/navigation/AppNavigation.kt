@@ -22,9 +22,11 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
+import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.campsites.OwnerCampsiteScreen
+import com.example.vipers.ui.campsites.AvailabilityScreen
 import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SentScreen
@@ -32,6 +34,7 @@ import com.example.vipers.ui.profile.PolicyScreen
 import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
+import com.example.vipers.ui.reservations.OwnerReservationDetailsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
@@ -68,7 +71,24 @@ fun AppNavigation(
         },
     ) { padding ->
         NavHost(navController, startDestination = Routes.HOME, modifier = Modifier.padding(padding)) {
-            composable(Routes.HOME) { HomeScreen() }
+            composable(Routes.HOME) {
+                HomeScreen(
+                    onOpenCampsite = { campsiteId ->
+                        val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            composable(
+                route = Routes.CAMPSITE_DETAILS,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                CampsiteDetailsScreen(
+                    campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
             composable(Routes.CAMPSITES) {
                 MyCampsitesScreen(
@@ -87,7 +107,22 @@ fun AppNavigation(
                 )
             }
             composable(Routes.OWNER_RESERVATIONS) {
-                OwnerReservationsScreen(onBack = { navController.popBackStack() })
+                OwnerReservationsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenReservation = { reservationId ->
+                        val route = Routes.OWNER_RESERVATION_DETAILS.replace("{reservationId}", reservationId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            composable(
+                route = Routes.OWNER_RESERVATION_DETAILS,
+                arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                OwnerReservationDetailsScreen(
+                    reservationId = backStackEntry.arguments?.getString("reservationId") ?: "",
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable(Routes.OWNER_SENT) {
                 SentScreen(onBack = { navController.popBackStack() })
@@ -129,12 +164,12 @@ fun AppNavigation(
                     onPublished = { navController.popBackStack() },
                 )
             }
-            // placeholder until T-10 builds this screen
-            composable(Routes.AVAILABILITY) {
-                Column {
-                    TopBar(title = "Availability", onBack = { navController.popBackStack() })
-                    Placeholder("Setting available nights is added in T-10.")
-                }
+            composable(
+                route = Routes.AVAILABILITY,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                AvailabilityScreen(campsiteId = campsiteId, onBack = { navController.popBackStack() })
             }
             composable(
                 route = Routes.CREATE_LOTTERY,

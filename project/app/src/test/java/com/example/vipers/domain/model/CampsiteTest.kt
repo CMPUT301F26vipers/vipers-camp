@@ -70,6 +70,18 @@ class CampsiteTest {
     }
 
     @Test
+    fun summaryText_showsLocationGuestsAndPrice() {
+        val campsite = Campsite(address = "Hinton, AB", maxOccupancy = 8, pricePerNightCents = 6500)
+        assertEquals("Hinton, AB · Up to 8 guests · $65 / night", campsite.summaryText())
+    }
+
+    @Test
+    fun summaryText_leavesOutAPriceOfZero() {
+        val campsite = Campsite(address = "Banff, AB", maxOccupancy = 1, pricePerNightCents = 0)
+        assertEquals("Banff, AB · Up to 1 guest", campsite.summaryText())
+    }
+
+    @Test
     fun matchesSearch_matchesTheStartOfTheName() {
         val campsite = Campsite(name = "Hinton Ridge Campground")
         assertTrue(campsite.matchesSearch("Hin"))

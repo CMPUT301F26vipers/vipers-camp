@@ -24,6 +24,7 @@ package com.example.vipers.domain.model
  * @property waitlistCapacity Most entrants allowed to join, or null for no limit.
  * @property drawnAt When the draw ran, or null if it hasn't.
  * @property removed True once an admin removes it.
+ * @property waitingUserIds Device IDs of entrants currently on the waiting list.
  */
 data class Lottery(
     val id: String = "",
@@ -39,7 +40,9 @@ data class Lottery(
     val waitlistCapacity: Int? = null,
     val drawnAt: Long? = null,
     val removed: Boolean = false,
+    val waitingUserIds: List<String> = emptyList(),
 ) {
+
     /**
      * The lottery's stage at time [now] (milliseconds since 1970), worked out from its
      * periods and whether it has been drawn. A lottery with no times set counts as CLOSED.
@@ -61,4 +64,20 @@ data class Lottery(
      */
     fun canEntrantJoin(now: Long = System.currentTimeMillis()): Boolean =
         status(now) == LotteryStatus.OPEN
+
+    /**
+     * Checks if the booking period is currently open at time [now] (milliseconds since 1970).
+     * Reserving is open between [bookingStart] and [bookingEnd] (inclusive) when the lottery has
+     * not been removed and booking timestamps are valid ([bookingEnd] > [bookingStart] > 0).
+     */
+    fun isBookingOpen(now: Long = System.currentTimeMillis()): Boolean =
+        !removed && bookingStart > 0L && bookingEnd > 0L && bookingEnd > bookingStart && now in bookingStart..bookingEnd
+
+    /**
+     * Checks if the booking period has expired at time [now] (milliseconds since 1970).
+     * Expired when a valid booking period exists ([bookingStart] > 0 and [bookingEnd] > [bookingStart])
+     * and [now] is strictly after [bookingEnd].
+     */
+    fun isBookingExpired(now: Long = System.currentTimeMillis()): Boolean =
+        bookingStart > 0L && bookingEnd > bookingStart && now > bookingEnd
 }
