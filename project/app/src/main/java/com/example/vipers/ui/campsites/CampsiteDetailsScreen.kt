@@ -2,7 +2,8 @@
  * CampsiteDetailsScreen.kt
  * The entrant's view of one campsite (mockups E05 and E05b, US 01.01.05, US 01.01.06), opened by
  * tapping a search result on Home: all its details, the lottery they can join with its registration
- * deadline, and an action to join the waiting list. CampsiteDetailsController loads the data.
+ * deadline, and an action to join the waiting list. A winner's Reserve button opens the Reserve
+ * screen (US 01.04.01). CampsiteDetailsController loads the data.
  * Known issues: the photo is a placeholder until promo images (02.01.02b), the map comes with
  * T-04, and Rate (01.13.01) is added by that story.
  */
@@ -57,6 +58,7 @@ import com.example.vipers.ui.theme.TextMuted
  * @param campsiteId ID of the campsite being viewed.
  * @param onBack Called when pressing back; Home keeps its search text.
  * @param onJoinClick Called when tapping the join action; navigates to the lottery details screen.
+ * @param onReserve Called with the won lottery's ID when tapping Reserve (US 01.04.01).
  * @param controller ViewModel that loads the campsite and its active lottery.
  */
 @Composable
@@ -64,6 +66,7 @@ fun CampsiteDetailsScreen(
     campsiteId: String,
     onBack: () -> Unit,
     onJoinClick: (String) -> Unit = {},
+    onReserve: (String) -> Unit = {},
     controller: CampsiteDetailsController =
         viewModel(factory = CampsiteDetailsController.factory(campsiteId)),
 ) {
@@ -128,6 +131,7 @@ fun CampsiteDetailsScreen(
                     isJoined = controller.isJoined,
                     isFull = controller.isFull,
                     onJoinClick = onJoinClick,
+                    onReserve = onReserve,
                 )
                 CampsiteDetails(campsite, showSummary = false)
             }
@@ -144,7 +148,8 @@ private fun ratingWithCount(campsite: Campsite): String {
 /**
  * The green box with the active [lottery]'s registration deadline, remaining waiting list spots,
  * nights, and waiting list action (E05), a grey "No active lottery" box when there is none (E05b),
- * or the entrant's draw results after a completed draw (E07b, E07c).
+ * or the entrant's draw results after a completed draw (E07b, E07c). A winner's Reserve button
+ * calls [onReserve] with the lottery's ID (US 01.04.01).
  */
 @Composable
 private fun LotteryBox(
@@ -155,6 +160,7 @@ private fun LotteryBox(
     isJoined: Boolean = false,
     isFull: Boolean = false,
     onJoinClick: (String) -> Unit = {},
+    onReserve: (String) -> Unit = {},
 ) {
     val now = System.currentTimeMillis()
     val isLost = userEntry?.status == EntryStatus.LOST
@@ -202,7 +208,7 @@ private fun LotteryBox(
                         )
                     }
                     Button(
-                        onClick = { /* placeholder until T-03 / US 01.04.01 */ },
+                        onClick = { onReserve(lottery.id) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)

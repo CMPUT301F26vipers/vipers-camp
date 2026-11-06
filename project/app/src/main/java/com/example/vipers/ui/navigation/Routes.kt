@@ -32,6 +32,8 @@ object Routes {
     const val OWNER_SENT = "owner_sent"
 
     const val CAMPSITE_DETAILS = "campsite_details/{campsiteId}"
+    // campsiteId is optional; without it the lottery's first campsite is used (01.04.01)
+    const val RESERVE = "reserve/{lotteryId}?campsiteId={campsiteId}"
     const val OWNER_CAMPSITE = "owner_campsite/{campsiteId}"
     const val EDIT_CAMPSITE = "edit_campsite/{campsiteId}"
     const val AVAILABILITY = "availability/{campsiteId}"

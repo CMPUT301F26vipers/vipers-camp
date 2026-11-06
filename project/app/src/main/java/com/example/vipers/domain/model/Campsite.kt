@@ -70,10 +70,7 @@ data class Campsite(
 
     /** The nightly price in dollars, as the campsite form shows it: "50" or "65.50" (T-09). */
     fun priceInDollars(): String {
-        val dollars = pricePerNightCents / 100
-        val cents = pricePerNightCents % 100
-        // only show cents when there are some
-        return if (cents == 0L) "$dollars" else "$dollars.%02d".format(cents)
+        return dollarsText(pricePerNightCents)
     }
 
     /** The nightly price as text for the UI, e.g. "$50 / night" or "$65.50 / night". */
@@ -87,6 +84,18 @@ data class Campsite(
      */
     fun totalPriceCents(nights: Int): Long {
         return pricePerNightCents * nights
+    }
+
+    /** The total for staying [nights] nights as text for the UI, e.g. "$100" (US 01.04.01). */
+    fun totalPriceText(nights: Int): String {
+        return "$${dollarsText(totalPriceCents(nights))}"
+    }
+
+    // An amount in cents as dollars: "50" or "65.50". Cents only show when there are some.
+    private fun dollarsText(amountCents: Long): String {
+        val dollars = amountCents / 100
+        val cents = amountCents % 100
+        return if (cents == 0L) "$dollars" else "$dollars.%02d".format(cents)
     }
 
     /**
