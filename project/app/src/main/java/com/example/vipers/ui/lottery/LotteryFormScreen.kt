@@ -347,7 +347,7 @@ fun LotteryFormScreen(
                     OutlinedTextField(
                         value = controller.waitlistCapacityText,
                         onValueChange = { controller.onWaitlistCapacityChange(it) },
-                        label = { Text("Waiting List Capacity (Optional)") },
+                        label = { Text("Max entrants") },
                         placeholder = { Text("No limit") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

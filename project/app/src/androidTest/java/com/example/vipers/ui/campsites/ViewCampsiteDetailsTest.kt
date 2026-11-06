@@ -160,6 +160,27 @@ class ViewCampsiteDetailsTest {
     }
 
     @Test
+    fun activeLotteryWithCapacityShowsSpotsRemaining() {
+        val lotteryWithCapacity = openLottery.copy(
+            waitlistCapacity = 20,
+            waitingUserIds = listOf("u1", "u2", "u3", "u4", "u5", "u6"),
+        )
+        openScreen(lotteries = listOf(lotteryWithCapacity))
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 14 spots left")
+        assertShown("Available: May 2027 weekends")
+    }
+
+    @Test
+    fun activeLotteryAtCapacityShowsZeroSpotsLeft() {
+        val fullLottery = openLottery.copy(
+            waitlistCapacity = 2,
+            waitingUserIds = listOf("u1", "u2"),
+        )
+        openScreen(lotteries = listOf(fullLottery))
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 0 spots left")
+    }
+
+    @Test
     fun campsiteWithoutAnOpenLotterySaysNoActiveLottery() {
         // registration only starts next week, so entrants can't join yet
         val upcoming = openLottery.copy(

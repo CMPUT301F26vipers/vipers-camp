@@ -2,8 +2,7 @@
  * CampsiteDetailsController.kt
  * The controller (a ViewModel) behind the entrant's Campsite Details screen (mockup E05,
  * US 01.01.05). It loads one campsite and finds its lottery that is open for registration, if any.
- * Known issues: the spots left on the waiting list (02.04.07) and joining it (01.01.06) are added
- * by those stories.
+ * Known issues: joining the waiting list (01.01.06) is added by that story.
  */
 package com.example.vipers.ui.campsites
 
@@ -41,6 +40,17 @@ class CampsiteDetailsController(
     /** The campsite's lottery that entrants can join right now, or null if there is none. */
     var activeLottery by mutableStateOf<Lottery?>(null)
         private set
+
+    /**
+     * How many spots remain on the active lottery's waiting list, or null if capacity is unlimited
+     * or there is no active lottery.
+     */
+    val spotsLeft: Int?
+        get() {
+            val capacity = activeLottery?.waitlistCapacity ?: return null
+            val count = activeLottery?.waitingUserIds?.size ?: 0
+            return maxOf(0, capacity - count)
+        }
 
     /** True while the campsite is loading. */
     var loading by mutableStateOf(true)

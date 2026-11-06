@@ -277,19 +277,14 @@ class LotteryController(
 
         val winnersCount = winnersCountText.toIntOrNull() ?: 0
 
-        val waitlistCapacity: Int? = if (waitlistCapacityText.isBlank()) {
-            null
-        } else {
-            val parsed = waitlistCapacityText.trim().toIntOrNull()
-            if (parsed == null || parsed < 1) {
-                val errorMsg = "Waitlist limit must be a whole number at least 1"
-                waitlistCapacityError = errorMsg
-                error = errorMsg
-                saving = false
-                return
-            }
-            parsed
+        val capacityError = validateWaitlistCapacity(waitlistCapacityText)
+        if (capacityError != null) {
+            waitlistCapacityError = capacityError
+            error = capacityError
+            saving = false
+            return
         }
+        val waitlistCapacity: Int? = waitlistCapacityText.trim().toIntOrNull()
 
         val lottery = Lottery(
             ownerId = ownerId,
