@@ -54,7 +54,7 @@ fun MyCampsitesScreen(
     onOpenReservations: () -> Unit,
     onOpenSent: () -> Unit,
     onOpenCampsite: (String) -> Unit,
-    viewModel: MyCampsitesViewModel = viewModel(factory = MyCampsitesViewModel.Factory)
+    viewModel: MyCampsitesController = viewModel(factory = MyCampsitesController.Factory)
 ) {
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar(

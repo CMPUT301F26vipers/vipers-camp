@@ -101,12 +101,19 @@ class CampsiteController(
         private set
 
     // Typing in a field clears its error, so the message goes away once it's fixed.
+    /** Updates the name as the owner types and clears its error. */
     fun onNameChange(text: String) { name = text; clearError("name") }
+    /** Updates the address as the owner types and clears its error. */
     fun onAddressChange(text: String) { address = text; clearError("address") }
+    /** Sets the region the owner picked and clears its error. */
     fun onRegionChange(choice: Region) { region = choice; clearError("region") }
+    /** Updates max guests as typed and clears its error; it's checked when publishing. */
     fun onMaxGuestsChange(text: String) { maxGuests = text; clearError("maxOccupancy") }
+    /** Updates the nightly price as typed and clears its error; it's checked when publishing (T-09). */
     fun onPriceChange(text: String) { price = text; clearError("pricePerNightCents") }
+    /** Updates the description as the owner types; it's optional. */
     fun onDescriptionChange(text: String) { description = text }
+    /** Updates the tag being typed, before the owner taps Add. */
     fun onTagInputChange(text: String) { tagInput = text }
 
     /** Updates the rules as the owner types (T-11). */
@@ -124,6 +131,7 @@ class CampsiteController(
         tagInput = ""
     }
 
+    /** Removes [tag] from the campsite's tags. */
     fun removeTag(tag: String) {
         tags = tags - tag
     }

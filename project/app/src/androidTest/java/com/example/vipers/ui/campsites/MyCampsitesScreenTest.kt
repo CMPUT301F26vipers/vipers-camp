@@ -1,3 +1,9 @@
+/*
+ * MyCampsitesScreenTest.kt
+ * Intent tests for the My Campsites screen (mockup O01, US 02.03.01): the empty state, the owner's
+ * campsites in the list, and tapping a campsite to open it. Uses the fake campsite repository.
+ * Known issues: none.
+ */
 package com.example.vipers.ui.campsites
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -20,7 +26,7 @@ class MyCampsitesScreenTest {
     fun emptyCampsites_showsPlaceholderText() {
         // 1. ARRANGE: Create an empty fake repository
         val fakeRepo = FakeCampsiteRepository(initial = emptyList())
-        val viewModel = MyCampsitesViewModel(fakeRepo, "user12")
+        val viewModel = MyCampsitesController(fakeRepo, "user12")
 
         // 2. ACT: Launch the screen with the empty ViewModel
         composeTestRule.setContent {
@@ -44,7 +50,7 @@ class MyCampsitesScreenTest {
             Campsite(id = "1", ownerId = "user12", name = "Test Camp Alpha")
         )
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
-        val viewModel = MyCampsitesViewModel(fakeRepo, "user12")
+        val viewModel = MyCampsitesController(fakeRepo, "user12")
 
         // 2. ACT: Launch the screen
         composeTestRule.setContent {
@@ -68,7 +74,7 @@ class MyCampsitesScreenTest {
             Campsite(id = "1", ownerId = "user123", name = "Test Camp Alpha")
         )
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
-        val viewModel = MyCampsitesViewModel(fakeRepo, "user12")
+        val viewModel = MyCampsitesController(fakeRepo, "user12")
 
         // 2. ACT: Launch the screen
         composeTestRule.setContent {
