@@ -1,0 +1,173 @@
+' 00-overview.puml
+' Overview UML class diagram: every class with a CRC card, by package, with names and
+' relationships only. 01-model, 02-data, 03-controllers and 04-views have the members.
+' Drawn from main at 20960f4 and the "Part 2: CRC Cards" wiki page.
+@startuml 00-overview
+title Overview: the classes on the CRC cards and how they connect
+
+scale max 4000*4000
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam nodesep 30
+skinparam ranksep 90
+skinparam class {
+  BackgroundColor<<planned>> #EEEEEE
+  BorderColor<<planned>> #999999
+  FontColor<<planned>> #777777
+}
+hide members
+
+package "View (ui, Jetpack Compose)" {
+  class MainActivity
+  class HomeScreen
+  class MyReservationsScreen
+  class MyCampsitesScreen
+  class NotificationsScreen
+  class ProfileScreen
+  class AdminHomeScreen
+}
+
+package "Controller (ViewModels and services)" {
+  class DeviceIdentityManager
+  class ProfileController
+  class CampsiteSearchController
+  class CampsiteDetailsController
+  class MyCampsitesController
+  class CampsiteController
+  class OwnerCampsiteController
+  class AvailabilityController
+  class LotteryController
+  class LotteryDetailsController
+  class WaitingListController
+  class ReserveController
+  class ReservationController
+  class ReservationDetailsController
+  class OwnerReservationDetailsController
+  class NotificationsController
+  class AdminController
+  class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class LotteryDrawer
+  class NotificationService
+  class DrawAndNotifyWorker <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class CsvExporter <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class DeletionService <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+}
+
+package "App wiring" {
+  class CampApp
+  class AppContainer
+}
+
+package "Data (repositories)" {
+  interface ProfileRepository
+  interface CampsiteRepository
+  interface LotteryRepository
+  interface ReservationRepository
+  interface NotificationRepository
+  interface MessageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  interface ImageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+
+  package "data.firestore" {
+    class FirestoreProfileRepository
+    class FirestoreCampsiteRepository
+    class FirestoreLotteryRepository
+    class FirestoreReservationRepository
+    class FirestoreNotificationRepository
+  }
+  package "data.fake (tests)" {
+    class FakeProfileRepository
+    class FakeCampsiteRepository
+    class FakeLotteryRepository
+    class FakeReservationRepository
+    class FakeNotificationRepository
+  }
+}
+
+package "Model (domain.model)" {
+  class UserProfile
+  class Campsite
+  class AvailabilityCalendar
+  class Lottery
+  class LotteryEntry
+  class Reservation
+  class Notification
+  class Message
+  class Rating
+  class ImageAsset
+}
+
+MainActivity --> HomeScreen
+MainActivity --> MyReservationsScreen
+MainActivity --> MyCampsitesScreen
+MainActivity --> NotificationsScreen
+MainActivity --> ProfileScreen
+MainActivity --> AdminHomeScreen
+MainActivity ..> DeviceIdentityManager
+HomeScreen ..> CampsiteSearchController
+MyCampsitesScreen ..> MyCampsitesController
+NotificationsScreen ..> NotificationsController
+ProfileScreen ..> ProfileController
+AdminHomeScreen ..> AdminController
+
+CampApp *-- AppContainer
+AppContainer --> ProfileRepository
+AppContainer --> CampsiteRepository
+AppContainer --> LotteryRepository
+AppContainer --> ReservationRepository
+AppContainer --> NotificationRepository
+AppContainer o-- DeviceIdentityManager
+AppContainer o-- LotteryDrawer
+
+NotificationsController ..> NotificationService
+LotteryDrawer ..> NotificationService
+LotteryDrawer ..> LotteryRepository
+NotificationService ..> NotificationRepository
+LotteryDetailsController ..> LotteryDrawer
+DrawAndNotifyWorker ..> LotteryDrawer
+MessageController ..> MessageRepository
+DeletionService ..> ImageRepository
+CsvExporter ..> Reservation
+
+FirestoreProfileRepository ..|> ProfileRepository
+FirestoreCampsiteRepository ..|> CampsiteRepository
+FirestoreLotteryRepository ..|> LotteryRepository
+FirestoreReservationRepository ..|> ReservationRepository
+FirestoreNotificationRepository ..|> NotificationRepository
+FakeProfileRepository ..|> ProfileRepository
+FakeCampsiteRepository ..|> CampsiteRepository
+FakeLotteryRepository ..|> LotteryRepository
+FakeReservationRepository ..|> ReservationRepository
+FakeNotificationRepository ..|> NotificationRepository
+
+ProfileRepository ..> UserProfile
+CampsiteRepository ..> Campsite
+CampsiteRepository ..> AvailabilityCalendar
+LotteryRepository ..> Lottery
+LotteryRepository ..> LotteryEntry
+ReservationRepository ..> Reservation
+NotificationRepository ..> Notification
+MessageRepository ..> Message
+ImageRepository ..> ImageAsset
+
+UserProfile -- Campsite
+Campsite -- AvailabilityCalendar
+Lottery -- Campsite
+Lottery -- LotteryEntry
+LotteryEntry -- Reservation
+Reservation -- Campsite
+Notification -- UserProfile
+Message -- Reservation
+Rating -- Campsite
+Campsite -- ImageAsset
+
+note as Legend
+  <b>How to read this</b>
+  Layers follow MVC: screens (view) -> controllers
+  -> repository interfaces -> model classes.
+  Dashed arrow with a hollow head: implements.
+  Dashed arrow: uses. Grey dashed box: <<planned>>,
+  on a CRC card but built after the half-way point.
+  The other screens and each controller's
+  repositories are in 03-controllers and 04-views.
+end note
+@enduml

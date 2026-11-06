@@ -1,0 +1,362 @@
+' 03-controllers.puml
+' UML class diagram of the controllers and services: the ViewModel controllers (ui/*),
+' NotificationService, LotteryDrawer, DeviceIdentityManager and the manual dependency injection
+' (CampApp, AppContainer). Repositories are shown by name only; 02-data has their methods.
+' Drawn from main at 20960f4 and the "Part 2: CRC Cards" wiki page.
+@startuml 03-controllers
+title Controllers and services
+
+scale max 4000*4000
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam nodesep 25
+skinparam ranksep 120
+skinparam class {
+  BackgroundColor<<planned>> #EEEEEE
+  BorderColor<<planned>> #999999
+  FontColor<<planned>> #777777
+  AttributeFontColor<<planned>> #777777
+}
+hide empty members
+
+package "app (dependency injection)" {
+  class CampApp {
+    container: AppContainer
+    onCreate()
+  }
+  class AppContainer {
+    deviceId: String
+    profileRepository: ProfileRepository
+    campsiteRepository: CampsiteRepository
+    lotteryRepository: LotteryRepository
+    reservationRepository: ReservationRepository
+    notificationRepository: NotificationRepository
+    deviceIdentityManager: DeviceIdentityManager
+    lotteryDrawer: LotteryDrawer
+  }
+}
+
+package "controllers (ViewModels)" {
+
+  class DeviceIdentityManager {
+    deviceId: String
+    suspend currentProfile(): UserProfile?
+    suspend hasProfile(): Boolean
+    {static} androidId(context: Context): String
+  }
+
+  class ProfileController <<ViewModel>> {
+    name: String
+    email: String
+    phone: String
+    errors: Map<String, String>
+    canContinue: Boolean
+    loadProfile()
+    createProfile()
+    saveProfile()
+    suspend save(profile: UserProfile)
+  }
+
+  class CampsiteSearchController <<ViewModel>> {
+    searchText: String
+    selectedRegion: Region?
+    filterStartDate: String?
+    filterEndDate: String?
+    filterMinGuests: Int?
+    results: List<Campsite>
+    resultCountText: String
+    onSearchTextChange(text: String)
+    applyFilters(...)
+    clearFilters()
+    hasOpenLottery(campsite: Campsite): Boolean
+    suspend fetchCampsites(now: Long)
+  }
+
+  class CampsiteDetailsController <<ViewModel>> {
+    campsite: Campsite?
+    activeLottery: Lottery?
+    userEntry: LotteryEntry?
+    isJoined: Boolean
+    isFull: Boolean
+    canJoin: Boolean
+    suspend fetchData(now: Long)
+  }
+
+  class MyCampsitesController <<ViewModel>> {
+    campsites: List<Campsite>
+    loadCampsites()
+  }
+
+  class CampsiteController <<ViewModel>> {
+    mode: FormMode
+    name: String
+    address: String
+    region: Region?
+    maxGuests: String
+    price: String
+    errors: Map<String, String>
+    toCampsite(): Campsite
+    publish()
+    suspend save(campsite: Campsite)
+    suspend saveEdits(campsite: Campsite)
+    suspend loadForEdit(campsiteId: String)
+  }
+
+  class OwnerCampsiteController <<ViewModel>> {
+    campsite: Campsite?
+    lotteries: List<Lottery>
+    entrySummaries: Map<String, String>
+    canEdit: Boolean
+    suspend fetchData()
+  }
+
+  class AvailabilityController <<ViewModel>> {
+    calendar: AvailabilityCalendar?
+    month: YearMonth
+    pickingRange: Boolean
+    suspend fetchData(today: LocalDate)
+    onNightTap(night: String, today: LocalDate)
+    startRange(open: Boolean)
+    suspend saveCalendar()
+  }
+
+  class LotteryController <<ViewModel>> {
+    campsite: Campsite?
+    availableNights: List<String>
+    selectedNights: Set<String>
+    winnersCountText: String
+    waitlistCapacityText: String
+    suspend fetchCampsiteData()
+    toggleNight(night: String, checked: Boolean)
+    saveLottery()
+  }
+
+  class LotteryDetailsController <<ViewModel>> {
+    lottery: Lottery?
+    waitingEntries: List<LotteryEntry>
+    userEntry: LotteryEntry?
+    isJoined: Boolean
+    canLeave: Boolean
+    isFull: Boolean
+    isOwner: Boolean
+    suspend fetchData()
+    suspend performJoin(groupSize: Int, now: Long): Boolean
+    suspend performLeave(): Boolean
+    suspend drawLottery(): LotteryDrawResult
+  }
+
+  class WaitingListController <<ViewModel>> {
+    lottery: Lottery?
+    entries: List<LotteryEntry>
+    names: Map<String, String>
+    isDrawn: Boolean
+    countLabel: String
+    suspend watch()
+  }
+
+  class ReserveController <<ViewModel>> {
+    lottery: Lottery?
+    campsite: Campsite?
+    offerState: OfferState
+    freeNights: List<String>
+    selectedNights: List<String>
+    groupSize: Int
+    confirmedReservation: Reservation?
+    canDecline: Boolean
+    totalText: String?
+    suspend fetchData(now: Long)
+    onNightTap(night: String)
+    onGroupSizeChange(newSize: Int)
+    suspend reserveNights(now: Long): ReserveResult
+    suspend decline(now: Long)
+  }
+
+  class ReservationController <<ViewModel>> {
+    activeRows: List<ReservationRow>
+    suspend fetchOwnerActive(today: LocalDate)
+  }
+
+  class ReservationDetailsController <<ViewModel>> {
+    userId: String
+    reservationId: String
+    reservation: Reservation?
+    campsite: Campsite?
+    suspend fetchData()
+  }
+
+  class OwnerReservationDetailsController <<ViewModel>> {
+    reservation: Reservation?
+    entrant: UserProfile?
+    suspend fetchData()
+  }
+
+  class NotificationsController <<ViewModel>> {
+    items: List<Notification>
+    onInboxChanged(items: List<Notification>)
+    onInboxError()
+    open(item: Notification): NotificationTarget?
+    suspend markRead(item: Notification)
+  }
+
+  class AdminController <<ViewModel>> {
+    campsites: List<Campsite>
+    ownerNames: Map<String, String>
+    loadCampsites()
+    getOwnerName(ownerId: String): String
+  }
+
+  class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
+    send(reservationId: String, text: String)
+    listenToThread(reservationId: String)
+  }
+}
+
+package "services" {
+  class NotificationService {
+    listenToInbox(userId: String, listener: InboxListener): Subscription
+    suspend markRead(id: String)
+    suspend sendDrawResults(result: DrawResult, now: Long)
+  }
+
+  class LotteryDrawer {
+    random: Random
+    suspend drawLottery(lotteryId: String, now: Long): LotteryDrawResult
+  }
+
+  class DrawAndNotifyWorker <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
+    doWork(): Result
+  }
+
+  class CsvExporter <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
+    toCsv(reservation: Reservation, campsite: Campsite): String
+  }
+
+  class DeletionService <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
+    deleteProfile(userId: String)
+    removeCampsite(campsiteId: String)
+    removeImage(imageId: String)
+  }
+}
+
+package "repositories (see 02-data)" {
+  interface ProfileRepository
+  interface CampsiteRepository
+  interface LotteryRepository
+  interface ReservationRepository
+  interface NotificationRepository
+  interface MessageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  interface ImageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+}
+
+enum OfferState {
+  OPEN
+  NOT_YET_OPEN
+  EXPIRED
+  USED
+  NO_WIN
+}
+
+abstract class LotteryDrawResult <<sealed>> {
+  Success(winnerCount, totalCount)
+  EmptyList
+  Error(message)
+}
+
+CampApp *-- AppContainer : creates >
+AppContainer o-- DeviceIdentityManager
+AppContainer o-- LotteryDrawer
+AppContainer --> ProfileRepository
+AppContainer --> CampsiteRepository
+AppContainer --> LotteryRepository
+AppContainer --> ReservationRepository
+AppContainer --> NotificationRepository
+
+DeviceIdentityManager ..> ProfileRepository
+ProfileController ..> ProfileRepository
+CampsiteSearchController ..> CampsiteRepository
+CampsiteSearchController ..> LotteryRepository
+CampsiteDetailsController ..> CampsiteRepository
+CampsiteDetailsController ..> LotteryRepository
+MyCampsitesController ..> CampsiteRepository
+CampsiteController ..> CampsiteRepository
+OwnerCampsiteController ..> CampsiteRepository
+OwnerCampsiteController ..> LotteryRepository
+AvailabilityController ..> CampsiteRepository
+LotteryController ..> CampsiteRepository
+LotteryController ..> LotteryRepository
+LotteryDetailsController ..> LotteryRepository
+LotteryDetailsController ..> ProfileRepository
+LotteryDetailsController ..> CampsiteRepository
+LotteryDetailsController ..> LotteryDrawer
+WaitingListController ..> LotteryRepository
+WaitingListController ..> ProfileRepository
+ReserveController ..> CampsiteRepository
+ReserveController ..> LotteryRepository
+ReserveController ..> ReservationRepository
+ReserveController ..> OfferState
+ReservationController ..> ReservationRepository
+ReservationController ..> ProfileRepository
+ReservationDetailsController ..> ReservationRepository
+ReservationDetailsController ..> CampsiteRepository
+OwnerReservationDetailsController ..> ReservationRepository
+OwnerReservationDetailsController ..> ProfileRepository
+NotificationsController ..> NotificationService
+AdminController ..> CampsiteRepository
+AdminController ..> ProfileRepository
+MessageController ..> MessageRepository
+MessageController ..> NotificationService
+
+NotificationService ..> NotificationRepository
+NotificationService ..> CampsiteRepository
+LotteryDrawer ..> LotteryRepository
+LotteryDrawer ..> NotificationRepository
+LotteryDrawer ..> CampsiteRepository
+LotteryDrawer --> NotificationService : sends results through >
+LotteryDrawer ..> LotteryDrawResult
+DrawAndNotifyWorker ..> LotteryDrawer
+DrawAndNotifyWorker ..> NotificationRepository
+DeletionService ..> ProfileRepository
+DeletionService ..> CampsiteRepository
+DeletionService ..> LotteryRepository
+DeletionService ..> ReservationRepository
+DeletionService ..> ImageRepository
+
+note top of AppContainer
+  <b>Manual dependency injection</b>
+  CampApp builds one AppContainer with the
+  Firestore repositories. Each controller's
+  companion factory(...) takes its repositories
+  from (application as CampApp).container.
+  Tests build controllers with fake repositories.
+end note
+
+note as ControllerNote
+  Every <<ViewModel>> class extends androidx
+  ViewModel (the controller in MVC) and has a
+  companion factory(...) (Factory pattern).
+  Its state is Compose mutableStateOf, so the
+  screen redraws when it changes.
+  suspend fetchX() is what unit tests call;
+  loadX() runs it in viewModelScope.
+end note
+
+note bottom of NotificationsController
+  Observer pattern: implements InboxListener,
+  so the inbox updates live.
+end note
+
+note bottom of LotteryDrawer
+  Takes an injected Random so tests repeat.
+  The draw is a Firestore transaction, so it
+  runs once even if several phones start it.
+end note
+
+note as PlannedNote
+  <<planned>> classes (grey, dashed) are on the
+  CRC cards but are built after the half-way
+  checkpoint; their methods are from the card's
+  responsibilities, not from code.
+end note
+@enduml

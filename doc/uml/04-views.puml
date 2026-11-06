@@ -1,0 +1,185 @@
+' 04-views.puml
+' UML class diagram of the views: MainActivity, the navigation (AppRoot, AppNavigation,
+' BottomBar) and the Compose screens on the CRC cards page, each with the controller it uses.
+' Drawn from main at 20960f4 and the "Part 2: CRC Cards" wiki page.
+@startuml 04-views
+title Views: MainActivity, navigation and screens
+
+scale max 4000*4000
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam nodesep 20
+skinparam ranksep 90
+skinparam class {
+  BackgroundColor<<planned>> #EEEEEE
+  BorderColor<<planned>> #999999
+  FontColor<<planned>> #777777
+  BackgroundColor<<Composable>> #F3F8F1
+  BackgroundColor<<ViewModel>> #FFF8E6
+}
+hide empty members
+
+class MainActivity <<Activity>> {
+  onCreate(savedInstanceState: Bundle?)
+  loadDemoData()
+}
+
+package "ui.navigation" {
+  class AppRoot <<Composable>> {
+    AppRoot(deviceIdentityManager, onLoadDemoData)
+  }
+  class AppNavigation <<Composable>>
+  class BottomBar <<Composable>> {
+    BottomBar(currentRoute, isAdmin, onTabClick)
+  }
+  class Routes <<object>> {
+    HOME
+    RESERVATIONS
+    CAMPSITES
+    NOTIFICATIONS
+    PROFILE
+    ADMIN
+  }
+}
+
+package "Tab screens (own CRC cards)" {
+  class HomeScreen <<Composable>>
+  class MyReservationsScreen <<Composable>>
+  class MyCampsitesScreen <<Composable>>
+  class NotificationsScreen <<Composable>>
+  class ProfileScreen <<Composable>>
+  class AdminHomeScreen <<Composable>>
+}
+
+package "Other screens (collaborators on the CRC cards)" {
+  class WelcomeScreen <<Composable>>
+  class CampsiteDetailsScreen <<Composable>>
+  class ReserveScreen <<Composable>>
+  class ReservationDetailsScreen <<Composable>>
+  class SettingsScreen <<Composable>>
+  class PolicyScreen <<Composable>>
+  class CampsiteFormScreen <<Composable>>
+  class OwnerCampsiteScreen <<Composable>>
+  class AvailabilityScreen <<Composable>>
+  class LotteryFormScreen <<Composable>>
+  class LotteryDetailsScreen <<Composable>>
+  class WaitingListScreen <<Composable>>
+  class SentScreen <<Composable>>
+  class OwnerReservationsScreen <<Composable>>
+  class OwnerReservationDetailsScreen <<Composable>>
+  class BrowseCampsitesScreen <<Composable>>
+}
+
+package "Planned screens" {
+  class ReservationConfirmedScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class MessagesScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class SendNotificationScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class BrowseProfilesScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class ProfileDetailsScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class BrowseImagesScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class LogsScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class MessageLogConversationScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+}
+
+package "Controllers (see 03-controllers)" {
+  class CampsiteSearchController <<ViewModel>>
+  class MyCampsitesController <<ViewModel>>
+  class NotificationsController <<ViewModel>>
+  class ProfileController <<ViewModel>>
+  class CampsiteDetailsController <<ViewModel>>
+  class ReserveController <<ViewModel>>
+  class ReservationDetailsController <<ViewModel>>
+  class CampsiteController <<ViewModel>>
+  class OwnerCampsiteController <<ViewModel>>
+  class AvailabilityController <<ViewModel>>
+  class LotteryController <<ViewModel>>
+  class LotteryDetailsController <<ViewModel>>
+  class WaitingListController <<ViewModel>>
+  class ReservationController <<ViewModel>>
+  class OwnerReservationDetailsController <<ViewModel>>
+  class AdminController <<ViewModel>>
+  class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class DeviceIdentityManager
+}
+
+MainActivity --> AppRoot : setContent >
+AppRoot ..> DeviceIdentityManager : hasProfile()
+AppRoot --> WelcomeScreen : first launch
+AppRoot --> AppNavigation : after a profile exists
+AppNavigation --> BottomBar
+AppNavigation ..> Routes
+AppNavigation --> HomeScreen
+AppNavigation --> MyReservationsScreen
+AppNavigation --> MyCampsitesScreen
+AppNavigation --> NotificationsScreen
+AppNavigation --> ProfileScreen
+AppNavigation --> AdminHomeScreen : admins only
+
+HomeScreen ..> CampsiteSearchController
+MyCampsitesScreen ..> MyCampsitesController
+NotificationsScreen ..> NotificationsController
+ProfileScreen ..> ProfileController
+WelcomeScreen ..> ProfileController
+CampsiteDetailsScreen ..> CampsiteDetailsController
+ReserveScreen ..> ReserveController
+ReservationDetailsScreen ..> ReservationDetailsController
+CampsiteFormScreen ..> CampsiteController
+OwnerCampsiteScreen ..> OwnerCampsiteController
+AvailabilityScreen ..> AvailabilityController
+LotteryFormScreen ..> LotteryController
+LotteryDetailsScreen ..> LotteryDetailsController
+WaitingListScreen ..> WaitingListController
+OwnerReservationsScreen ..> ReservationController
+OwnerReservationDetailsScreen ..> OwnerReservationDetailsController
+BrowseCampsitesScreen ..> AdminController
+MessagesScreen ..> MessageController
+
+HomeScreen --> CampsiteDetailsScreen : tap a card
+CampsiteDetailsScreen --> LotteryDetailsScreen : Join
+NotificationsScreen --> ReserveScreen : WON
+NotificationsScreen --> ReservationDetailsScreen : reservation update
+NotificationsScreen --> CampsiteDetailsScreen
+NotificationsScreen --> MessagesScreen : NEW_MESSAGE
+ProfileScreen --> SettingsScreen
+ProfileScreen --> PolicyScreen
+MyCampsitesScreen --> CampsiteFormScreen : +
+MyCampsitesScreen --> OwnerCampsiteScreen
+MyCampsitesScreen --> OwnerReservationsScreen
+MyCampsitesScreen --> SentScreen
+OwnerCampsiteScreen --> AvailabilityScreen
+OwnerCampsiteScreen --> LotteryFormScreen
+LotteryDetailsScreen --> WaitingListScreen : owner
+OwnerReservationsScreen --> OwnerReservationDetailsScreen
+MyReservationsScreen --> ReservationDetailsScreen
+ReserveScreen --> ReservationConfirmedScreen
+AdminHomeScreen --> BrowseCampsitesScreen
+AdminHomeScreen --> BrowseProfilesScreen
+AdminHomeScreen --> BrowseImagesScreen
+AdminHomeScreen --> LogsScreen
+BrowseProfilesScreen --> ProfileDetailsScreen
+LogsScreen --> MessageLogConversationScreen
+
+note top of MainActivity
+  The single activity. Every screen is a
+  Compose function shown inside it; Back
+  returns to the previous screen.
+end note
+
+note bottom of SentScreen
+  The CRC page calls this
+  SentNotificationsScreen (O13).
+  It is a placeholder for now.
+end note
+
+note bottom of ReservationConfirmedScreen
+  E13: built as a confirmation dialog
+  inside ReserveScreen, not its own screen.
+end note
+
+note bottom of MyReservationsScreen
+  Placeholder: the Active and Past lists
+  come with US 01.06.01 and 01.06.02.
+end note
+@enduml

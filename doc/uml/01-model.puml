@@ -1,0 +1,317 @@
+' 01-model.puml
+' UML class diagram of the model layer (domain/model) for the half-way checkpoint.
+' Drawn from main at 20960f4 and the "Part 2: CRC Cards" wiki page.
+@startuml 01-model
+title Model layer (domain/model)
+
+scale max 4000*4000
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam nodesep 60
+skinparam ranksep 70
+hide empty members
+
+package "domain.model" {
+
+  class UserProfile {
+    id: String
+    name: String
+    email: String
+    phone: String
+    imageId: String?
+    notificationsEnabled: Boolean
+    isAdmin: Boolean
+    createdAt: Long
+    --
+    validateEdit(): Map<String, String>
+  }
+
+  class Campsite {
+    id: String
+    ownerId: String
+    name: String
+    address: String
+    region: Region
+    description: String
+    maxOccupancy: Int
+    tags: List<String>
+    pricePerNightCents: Long
+    rules: String
+    cancellationPolicy: String
+    imageId: String?
+    lat: Double?
+    lng: Double?
+    ratingSum: Int
+    ratingCount: Int
+    removed: Boolean
+    --
+    averageRating(): Double
+    ratingText(): String
+    priceText(): String
+    totalPriceCents(nights: Int): Long
+    matchesSearch(searchText: String): Boolean
+    matchesRegion(filterRegion: Region?): Boolean
+    matchesGuests(minGuests: Int?): Boolean
+    isOwnedBy(userId: String): Boolean
+    validate(): Map<String, String>
+    {static} dollarsText(amountCents: Long): String
+  }
+
+  class AvailabilityCalendar {
+    campsiteId: String
+    openNights: List<String>
+    heldNights: List<String>
+    --
+    isFree(night: String): Boolean
+    canChange(night: String, today: LocalDate): Boolean
+    toggle(night: String, today: LocalDate): AvailabilityCalendar
+    openRange(first: String, last: String, today: LocalDate): AvailabilityCalendar
+    closeRange(first: String, last: String, today: LocalDate): AvailabilityCalendar
+    freeNights(first: String, last: String): List<String>
+  }
+
+  class Lottery {
+    id: String
+    ownerId: String
+    campsiteIds: List<String>
+    nightsOffered: List<String>
+    registrationStart: Long
+    registrationEnd: Long
+    bookingStart: Long
+    bookingEnd: Long
+    winnersCount: Int
+    waitlistCapacity: Int?
+    drawnAt: Long?
+    removed: Boolean
+    waitingUserIds: List<String>
+    entriesVersion: Long
+    committedDrawId: String?
+    --
+    status(now: Long): LotteryStatus
+    canEntrantJoin(now: Long): Boolean
+    isBookingOpen(now: Long): Boolean
+    isBookingExpired(now: Long): Boolean
+    freeNights(calendar: AvailabilityCalendar, today: LocalDate): List<String>
+  }
+
+  class LotteryEntry {
+    id: String
+    lotteryId: String
+    userId: String
+    groupSize: Int
+    joinedAt: Long
+    status: EntryStatus
+    --
+    canReserve(lottery: Lottery, now: Long): Boolean
+    canDecline(lottery: Lottery, now: Long): Boolean
+    canLeave(lottery: Lottery): Boolean
+    isExpired(lottery: Lottery, now: Long): Boolean
+    {static} idFor(lotteryId: String, userId: String): String
+  }
+
+  class Reservation {
+    id: String
+    reservationNumber: String
+    userId: String
+    ownerId: String
+    campsiteId: String
+    campsiteName: String
+    lotteryEntryId: String
+    checkIn: String
+    checkOut: String
+    groupSize: Int
+    totalPriceCents: Long
+    rulesAcceptedAt: Long
+    status: ReservationStatus
+    statusChangedAt: Long
+    rejectionReason: String?
+    --
+    isActive(today: LocalDate): Boolean
+    totalPriceText: String
+  }
+
+  class Notification {
+    id: String
+    recipientId: String
+    senderId: String
+    campsiteId: String?
+    lotteryId: String?
+    reservationId: String?
+    type: NotificationType
+    title: String
+    message: String
+    read: Boolean
+    shownOnDevice: Boolean
+    batchId: String?
+    createdAt: Long
+    --
+    target: NotificationTarget?
+    displayCategory: String
+  }
+
+  class Message {
+    id: String
+    reservationId: String
+    senderId: String
+    text: String
+    createdAt: Long
+  }
+
+  class Rating {
+    id: String
+    campsiteId: String
+    userId: String
+    stars: Int
+  }
+
+  class ImageAsset {
+    id: String
+    storagePath: String
+    uploaderId: String
+    ownerType: String
+    ownerId: String
+    label: String
+  }
+
+  abstract class NotificationTarget <<sealed>>
+  class OpenReserve {
+    lotteryId: String
+  }
+  class OpenReservation {
+    reservationId: String
+  }
+  class OpenThread {
+    reservationId: String
+  }
+  class OpenCampsite {
+    campsiteId: String
+  }
+
+  class DrawManifestChunk {
+    drawId: String
+    lotteryId: String
+    chunkIndex: Int
+    winnerUserIds: List<String>
+    loserUserIds: List<String>
+  }
+
+  class LotteryValidation <<top-level functions>> {
+    validateLottery(lottery: Lottery, now: Long): List<String>
+    validateJoinLottery(lottery, existingEntry, waitingCount, groupSize, maxOccupancy, now): List<String>
+  }
+
+  enum Region {
+    BANFF
+    JASPER
+    KANANASKIS
+    HINTON
+    --
+    displayName: String
+  }
+
+  enum LotteryStatus {
+    UPCOMING
+    OPEN
+    DRAWN
+    CLOSED
+  }
+
+  enum EntryStatus {
+    WAITING
+    WON
+    LOST
+    DECLINED
+    RESERVED
+    EXPIRED
+    REMOVED
+  }
+
+  enum ReservationStatus {
+    CONFIRMED
+    CANCELLED
+    REJECTED
+  }
+
+  enum NotificationType {
+    WON
+    NOT_SELECTED
+    RESERVATION_CONFIRMED
+    RESERVATION_CANCELLED
+    RESERVATION_REJECTED
+    OWNER_BROADCAST
+    NEW_MESSAGE
+    CAMPSITE_REMOVED
+  }
+}
+
+UserProfile "1" -- "*" Campsite : owns >
+Campsite "1" -- "1" AvailabilityCalendar : calendar >
+Lottery "*" -- "1..*" Campsite : covers >
+Lottery "1" -- "*" LotteryEntry : waiting list >
+UserProfile "1" -- "*" LotteryEntry : joins >
+LotteryEntry "1" -- "0..1" Reservation : used for >
+Reservation "*" -- "1" Campsite : at >
+Reservation "*" -- "1" UserProfile : entrant >
+Notification "*" -- "1" UserProfile : recipient >
+Message "*" -- "1" Reservation : thread >
+Rating "*" -- "1" Campsite : rates >
+Rating "*" -- "1" UserProfile : by >
+Campsite "*" -- "0..1" ImageAsset : promo image >
+UserProfile "*" -- "0..1" ImageAsset : photo >
+DrawManifestChunk "*" -- "1" Lottery : staged draw >
+
+Campsite --> Region
+Lottery ..> LotteryStatus : status() works it out
+LotteryEntry --> EntryStatus
+Reservation --> ReservationStatus
+Notification --> NotificationType
+Notification ..> NotificationTarget : target
+NotificationTarget <|-- OpenReserve
+NotificationTarget <|-- OpenReservation
+NotificationTarget <|-- OpenThread
+NotificationTarget <|-- OpenCampsite
+LotteryValidation ..> Lottery : checks
+LotteryValidation ..> LotteryEntry : checks
+
+note top of Campsite
+  Money is in whole cents (Long):
+  pricePerNightCents, totalPriceCents.
+  Average rating is worked out from
+  ratingSum / ratingCount, never stored.
+end note
+
+note bottom of Lottery
+  status() is worked out from the clock and
+  drawnAt, never stored. Times (registration,
+  booking, drawnAt) are ms since 1970.
+  Nights are "yyyy-MM-dd" strings.
+end note
+
+note bottom of LotteryEntry
+  ID = lotteryId_userId, so a user can
+  join one lottery's waiting list only once.
+end note
+
+note bottom of Reservation
+  Active / Past is worked out (isActive),
+  never stored. campsiteName is the one name
+  that is copied; every other name is looked
+  up by user ID ("Deleted user" if missing).
+end note
+
+note "Soft delete: removed = true.\nEvery list and search skips removed items." as SoftDelete
+SoftDelete .. Campsite
+SoftDelete .. Lottery
+
+note right of Message
+  Message, Rating and ImageAsset exist as
+  model classes, but nothing stores them yet
+  (their repositories are planned).
+end note
+
+note top of NotificationTarget
+  Never stored: Notification.target works
+  it out from the type and IDs.
+end note
+@enduml

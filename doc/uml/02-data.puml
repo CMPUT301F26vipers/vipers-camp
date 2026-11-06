@@ -1,0 +1,211 @@
+' 02-data.puml
+' UML class diagram of the data layer: repository interfaces (domain/repository), their
+' Firestore versions (data/firestore) and their fakes for tests (data/fake).
+' Drawn from main at 20960f4 and the "Part 2: CRC Cards" wiki page.
+@startuml 02-data
+title Data layer: repository interfaces, Firestore versions and fakes
+
+scale max 4000*4000
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam nodesep 40
+skinparam ranksep 80
+skinparam class {
+  BackgroundColor<<planned>> #EEEEEE
+  BorderColor<<planned>> #999999
+  FontColor<<planned>> #777777
+  AttributeFontColor<<planned>> #777777
+}
+hide empty members
+
+package "domain.repository" {
+
+  interface ProfileRepository {
+    suspend getProfile(id: String): UserProfile?
+    suspend saveProfile(profile: UserProfile)
+    suspend getDisplayName(id: String): String
+  }
+
+  interface CampsiteRepository {
+    suspend addCampsite(campsite: Campsite): String
+    suspend getCampsite(id: String): Campsite?
+    suspend updateCampsite(campsite: Campsite)
+    suspend getCampsitesByOwner(ownerId: String): List<Campsite>
+    suspend getAllCampsites(): List<Campsite>
+    suspend getAvailability(campsiteId: String): AvailabilityCalendar
+    suspend saveAvailability(calendar: AvailabilityCalendar)
+  }
+
+  interface LotteryRepository {
+    suspend addLottery(lottery: Lottery): String
+    suspend getLottery(id: String): Lottery?
+    suspend getLotteriesForCampsite(campsiteId: String): List<Lottery>
+    suspend joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult
+    suspend leaveWaitingList(lotteryId: String, userId: String)
+    suspend updateEntry(entry: LotteryEntry)
+    suspend declineTransaction(lotteryId: String, userId: String): Boolean
+    suspend getEntry(lotteryId: String, userId: String): LotteryEntry?
+    suspend getEntries(lotteryId: String): List<LotteryEntry>
+    observeEntries(lotteryId: String): Flow<List<LotteryEntry>>
+    suspend stageManifestChunks(lotteryId: String, chunks: List<DrawManifestChunk>)
+    suspend loadManifestChunks(lotteryId: String, drawId: String): List<DrawManifestChunk>
+    suspend runDrawTransaction(lotteryId, candidateDrawId, expectedVersion, chunkCount, participantCount, winnerCount, drawnAt, now): DrawTransactionResult
+    suspend reconcileEntryStatuses(lotteryId: String, committedDrawId: String)
+    suspend seedEntry(entry: LotteryEntry)
+  }
+
+  interface ReservationRepository {
+    suspend addReservation(reservation: Reservation): String
+    suspend getReservation(id: String): Reservation?
+    suspend getReservationsForUser(userId: String): List<Reservation>
+    suspend getReservationsForOwner(ownerId: String): List<Reservation>
+    suspend createReservation(lotteryId, campsiteId, userId, nights, groupSize, now): ReserveResult
+  }
+
+  interface NotificationRepository {
+    suspend addNotification(notification: Notification): String
+    suspend saveNotification(notification: Notification): String
+    suspend addAll(notifications: List<Notification>)
+    suspend getNotificationsFor(recipientId: String): List<Notification>
+    suspend markRead(id: String)
+    listenToInbox(recipientId: String, listener: InboxListener): Subscription
+  }
+
+  interface MessageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
+    suspend saveMessage(message: Message)
+    listenToThread(reservationId: String)
+    suspend getAllThreads()
+  }
+
+  interface ImageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
+    suspend uploadImage(...): ImageAsset
+    suspend getAllImages(): List<ImageAsset>
+    suspend deleteImage(id: String)
+  }
+
+  interface InboxListener {
+    onInboxChanged(items: List<Notification>)
+    onInboxError()
+  }
+
+  interface Subscription <<fun interface>> {
+    cancel()
+  }
+
+  interface JoinWaitingListResult <<sealed>> {
+    Success
+    WaitlistFull
+    AlreadyJoined
+    Error(message)
+  }
+
+  abstract class DrawTransactionResult <<sealed>> {
+    Committed(lottery)
+    AlreadyDrawn(lottery)
+    VersionMismatch
+    Error(message)
+  }
+
+  interface ReserveResult <<sealed>> {
+    Success(reservation)
+    Conflict
+    NotEligible
+    CapacityExceeded
+    Error(message)
+  }
+}
+
+package "data.firestore" {
+  class FirestoreProfileRepository {
+    db: FirebaseFirestore
+  }
+  class FirestoreCampsiteRepository {
+    db: FirebaseFirestore
+  }
+  class FirestoreLotteryRepository {
+    db: FirebaseFirestore
+  }
+  class FirestoreReservationRepository {
+    db: FirebaseFirestore
+  }
+  class FirestoreNotificationRepository {
+    db: FirebaseFirestore
+  }
+}
+
+package "data.fake" {
+  class FakeProfileRepository {
+    initial: List<UserProfile>
+  }
+  class FakeCampsiteRepository {
+    initial: List<Campsite>
+  }
+  class FakeLotteryRepository {
+    initialLotteries: List<Lottery>
+    initialEntries: List<LotteryEntry>
+  }
+  class FakeReservationRepository {
+    campsiteRepository: CampsiteRepository?
+    lotteryRepository: LotteryRepository?
+    notificationRepository: NotificationRepository?
+  }
+  class FakeNotificationRepository {
+    initial: List<Notification>
+  }
+}
+
+FirestoreProfileRepository ..|> ProfileRepository
+FirestoreCampsiteRepository ..|> CampsiteRepository
+FirestoreLotteryRepository ..|> LotteryRepository
+FirestoreReservationRepository ..|> ReservationRepository
+FirestoreNotificationRepository ..|> NotificationRepository
+
+FakeProfileRepository ..|> ProfileRepository
+FakeCampsiteRepository ..|> CampsiteRepository
+FakeLotteryRepository ..|> LotteryRepository
+FakeReservationRepository ..|> ReservationRepository
+FakeNotificationRepository ..|> NotificationRepository
+
+LotteryRepository ..> JoinWaitingListResult
+LotteryRepository ..> DrawTransactionResult
+ReservationRepository ..> ReserveResult
+NotificationRepository ..> InboxListener : calls on every change
+NotificationRepository ..> Subscription : returns
+
+note top of LotteryRepository
+  Firestore transactions: joinWaitingList
+  (refuses duplicates, a full list and joins
+  outside registration), declineTransaction
+  and runDrawTransaction (the draw runs once
+  even if several phones start it).
+end note
+
+note top of ReservationRepository
+  createReservation runs one transaction:
+  it holds the nights, sets the entry to
+  RESERVED, saves the reservation and its
+  RESERVATION_CONFIRMED notification, or
+  returns Conflict if the nights were taken.
+end note
+
+note bottom of NotificationRepository
+  Observer pattern: listenToInbox and
+  observeEntries are live Firestore
+  snapshot listeners.
+end note
+
+note as RepoPattern
+  <b>Repository pattern</b>
+  Controllers only see the interfaces.
+  CampApp builds the Firestore versions;
+  tests pass the in-memory fakes instead.
+  A new method goes in the interface, the
+  Firestore version and the fake together.
+end note
+
+note bottom of MessageRepository
+  <<planned>>: on a CRC card, but not built
+  before the half-way checkpoint.
+end note
+@enduml
