@@ -39,6 +39,13 @@ data class LotteryEntry(
     fun isExpired(lottery: Lottery, now: Long = System.currentTimeMillis()): Boolean =
         status == EntryStatus.WON && lottery.isBookingExpired(now)
 
+    /**
+     * Tells whether the entrant can leave the waiting list for [lottery].
+     * Returns true only when [status] is [EntryStatus.WAITING] and the lottery has not been drawn.
+     */
+    fun canLeave(lottery: Lottery): Boolean =
+        status == EntryStatus.WAITING && lottery.drawnAt == null
+
     companion object {
         /** The entry ID for [userId] in [lotteryId]. */
         fun idFor(lotteryId: String, userId: String): String = "${lotteryId}_$userId"

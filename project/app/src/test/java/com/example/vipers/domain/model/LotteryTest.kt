@@ -1,6 +1,7 @@
 /*
  * LotteryTest.kt
- * Unit tests for working out a lottery's status from its registration and booking periods.
+ * Unit tests for working out a lottery's status from its registration and booking periods, and
+ * which of its nights a winner can still pick (US 01.04.01).
  * Known issues: none.
  */
 package com.example.vipers.domain.model
@@ -9,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -180,5 +182,34 @@ class LotteryTest {
     fun isBookingExpired_returnsFalseWhenBookingStartNotSet() {
         val noStart = Lottery(bookingStart = 0L, bookingEnd = 1000L)
         assertFalse(noStart.isBookingExpired(1500L))
+    }
+
+    // Two May weekends offered; the owner opened all but May 15, and May 8 is already booked.
+    private val offering = lottery.copy(
+        nightsOffered = listOf("2027-05-15", "2027-05-07", "2027-05-08", "2027-05-14"),
+    )
+    private val calendar = AvailabilityCalendar(
+        campsiteId = "hinton",
+        openNights = listOf("2027-05-07", "2027-05-08", "2027-05-14", "2027-05-21"),
+        heldNights = listOf("2027-05-08"),
+    )
+
+    @Test
+    fun freeNights_keepsOfferedNightsThatAreOpenAndNotBooked() {
+        val free = offering.freeNights(calendar, LocalDate.of(2027, 5, 1))
+        // May 8 is booked, May 15 is closed, and May 21 isn't part of this lottery
+        assertEquals(listOf("2027-05-07", "2027-05-14"), free)
+    }
+
+    @Test
+    fun freeNights_leavesOutNightsBeforeToday() {
+        val free = offering.freeNights(calendar, LocalDate.of(2027, 5, 10))
+        assertEquals(listOf("2027-05-14"), free)
+    }
+
+    @Test
+    fun freeNights_isEmptyWhenNoOfferedNightIsOpen() {
+        val closed = AvailabilityCalendar(campsiteId = "hinton")
+        assertTrue(offering.freeNights(closed, LocalDate.of(2027, 5, 1)).isEmpty())
     }
 }

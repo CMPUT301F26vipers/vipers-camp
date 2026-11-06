@@ -3,8 +3,11 @@
  * Runs the random draw for a lottery, following the Project Part 2 CRC card specifications.
  * Randomly picks the set number of winners from WAITING entries, writes chunked manifests,
  * commits the atomic Phase 1 draw transaction, reconciles entry statuses, and dispatches
- * idempotent notifications.
- * Known issues: Draw transaction not tested against real Firestore yet.
+ * idempotent notifications: the winners' through NotificationService (US 01.03.01), the losers'
+ * directly until US 01.03.02 moves them there.
+ * Known issues: Draw transaction not tested against real Firestore yet. Nothing in the app starts
+ * a draw yet; DrawAndNotifyWorker (US 02.05.01b) will. The replacement draw after a decline
+ * (US 01.04.03) isn't built.
  */
 package com.example.vipers.ui.lottery
 
@@ -18,8 +21,8 @@ import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
-import java.text.DateFormat
-import java.util.Date
+import com.example.vipers.domain.service.DrawResult
+import com.example.vipers.domain.service.NotificationService
 import java.util.Random
 import java.util.UUID
 
@@ -42,12 +45,16 @@ sealed class LotteryDrawResult {
  * @param notificationRepository Repository to deliver idempotent inbox notifications.
  * @param campsiteRepository Repository to resolve campsite names.
  * @param random Injected [Random] instance for reproducible, testable draws.
+ * @param notificationService Sends the winners' "You won" notices (US 01.03.01); by default one
+ *   built from [notificationRepository] and [campsiteRepository].
  */
 class LotteryDrawer(
     private val lotteryRepository: LotteryRepository,
     private val notificationRepository: NotificationRepository,
     private val campsiteRepository: CampsiteRepository,
     private val random: Random = Random(),
+    private val notificationService: NotificationService =
+        NotificationService(notificationRepository, campsiteRepository),
 ) {
 
     /**
@@ -186,25 +193,15 @@ class LotteryDrawer(
         val manifestLosers = chunks.flatMap { it.loserUserIds }.toSet()
         val totalParticipants = manifestWinners.size + manifestLosers.size
 
-        // Phase 3: Deliver notifications idempotently strictly to manifest participants
+        // Phase 3: Deliver notifications idempotently strictly to manifest participants.
+        // The winners' notices come from NotificationService (US 01.03.01).
+        notificationService.sendDrawResults(
+            DrawResult(committedLottery, manifestWinners.toList(), manifestLosers.toList()),
+            now,
+        )
+
+        // The losers' notices move to NotificationService with US 01.03.02.
         val (notifCampsiteId, campsiteSummary) = resolveCampsiteNotificationInfo(committedLottery)
-        val deadlineStr = formatDate(committedLottery.bookingEnd)
-
-        for (winnerId in manifestWinners) {
-            val notif = Notification(
-                id = "draw_${lotteryId}_$winnerId",
-                recipientId = winnerId,
-                senderId = "system",
-                campsiteId = notifCampsiteId,
-                lotteryId = lotteryId,
-                type = NotificationType.WON,
-                title = "You won the lottery!",
-                message = "$campsiteSummary: reserve by $deadlineStr",
-                createdAt = committedLottery.drawnAt ?: now,
-            )
-            notificationRepository.saveNotification(notif)
-        }
-
         for (loserId in manifestLosers) {
             val notif = Notification(
                 id = "draw_${lotteryId}_$loserId",
@@ -236,10 +233,5 @@ class LotteryDrawer(
             if (names.isEmpty()) "Campsites" else names.joinToString(", ")
         }
         return Pair(null, summary)
-    }
-
-    private fun formatDate(timestamp: Long): String {
-        if (timestamp <= 0L) return "Not set"
-        return DateFormat.getDateInstance().format(Date(timestamp))
     }
 }

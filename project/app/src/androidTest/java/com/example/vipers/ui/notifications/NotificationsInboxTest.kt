@@ -3,8 +3,8 @@
  * Intent tests for T-13: the entrant opens the Notifications tab (mockup E10), sees their own
  * notifications newest first or an empty-state message, and taps a win to mark it read and open
  * Reserve. Uses the fake repositories, so it doesn't touch Firestore.
- * Known issues: there's no Reserve route yet (01.04.01 / T-03), so the win tap is checked through
- * the screen's onOpenReserve lambda instead of the Reserve screen itself.
+ * Known issues: none. The win tap is checked through the screen's onOpenReserve lambda here;
+ * ViewDatesAfterWinningTest (01.04.01) checks that it opens the Reserve screen in the whole app.
  */
 package com.example.vipers.ui.notifications
 
@@ -74,7 +74,7 @@ class NotificationsInboxTest {
     /** Shows the Notifications screen for "test-device" with [notifications] in a fake repository. */
     private fun openScreen(notifications: List<Notification>) {
         val controller = NotificationsController(
-            NotificationService(FakeNotificationRepository(notifications)),
+            NotificationService(FakeNotificationRepository(notifications), FakeCampsiteRepository()),
             userId = "test-device",
         )
         composeRule.setContent {

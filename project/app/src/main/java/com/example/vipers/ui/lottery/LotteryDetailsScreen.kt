@@ -5,6 +5,7 @@
  */
 package com.example.vipers.ui.lottery
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -63,6 +66,7 @@ fun LotteryDetailsScreen(
     controller: LotteryDetailsController = viewModel(factory = LotteryDetailsController.factory(lotteryId))
 ) {
     var showJoinDialog by remember { mutableStateOf(false) }
+    var showLeaveDialog by remember { mutableStateOf(false) }
     var groupSizeText by remember { mutableStateOf("1") }
 
     Column(
@@ -209,16 +213,32 @@ fun LotteryDetailsScreen(
                                         }
                                     }
 
-                                    if (controller.joinError != null) {
+                                    if (controller.actionError != null) {
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
                                             color = MaterialTheme.colorScheme.errorContainer,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text(
-                                                text = controller.joinError!!,
+                                                text = controller.actionError!!,
                                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                                 style = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.padding(12.dp)
+                                            )
+                                        }
+                                    }
+
+                                    if (controller.leaveSuccess) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Successfully left the waiting list.",
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
                                                 modifier = Modifier.padding(12.dp)
                                             )
                                         }
@@ -231,7 +251,10 @@ fun LotteryDetailsScreen(
                                                 color = MaterialTheme.colorScheme.secondaryContainer,
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Column(modifier = Modifier.padding(16.dp)) {
+                                                Column(
+                                                    modifier = Modifier.padding(16.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
                                                     Text(
                                                         text = "On Waiting List",
                                                         style = MaterialTheme.typography.titleMedium,
@@ -244,6 +267,20 @@ fun LotteryDetailsScreen(
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         color = MaterialTheme.colorScheme.onSecondaryContainer
                                                     )
+                                                    if (controller.canLeave) {
+                                                        OutlinedButton(
+                                                            onClick = { showLeaveDialog = true },
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .testTag("leave_lottery_button"),
+                                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                                contentColor = MaterialTheme.colorScheme.error,
+                                                            ),
+                                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                                                        ) {
+                                                            Text("Leave Waiting List")
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -372,6 +409,35 @@ fun LotteryDetailsScreen(
         )
     }
 
+    if (showLeaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showLeaveDialog = false },
+            title = { Text("Leave waiting list?") },
+            text = {
+                Text("You will not be in the draw for this campsite.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLeaveDialog = false
+                        controller.leaveWaitingList()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ),
+                    modifier = Modifier.testTag("confirm_leave_button")
+                ) {
+                    Text("Leave")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveDialog = false }) {
+                    Text("Stay")
+                }
+            }
+        )
+    }
 }
 
 private fun formatDate(timestamp: Long): String {

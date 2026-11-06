@@ -366,8 +366,8 @@ class LotteryDrawerTest {
     }
 
     @Test
-    fun notifications_multiCampsite_formatsNullCampsiteIdAndSummary() = runTest {
-        // Multi-campsite with nightsDescription
+    fun notifications_multiCampsite_namesEveryCampsiteWithNullCampsiteId() = runTest {
+        // Multi-campsite with nightsDescription: the win still names the campsites (US 01.03.01)
         val lotteryA = createTestLottery(
             campsiteIds = listOf("camp-1", "camp-2"),
             winnersCount = 1,
@@ -378,7 +378,7 @@ class LotteryDrawerTest {
 
         val notifA = notificationRepository.getNotificationsFor("user-1")[0]
         assertNull(notifA.campsiteId) // null for multi-campsite
-        assertTrue(notifA.message.contains("July Long Weekend"))
+        assertTrue(notifA.message.contains("Pine Ridge, Maple Grove"))
 
         // Multi-campsite without nightsDescription -> uses concatenated names
         val lotteryB = createTestLottery(

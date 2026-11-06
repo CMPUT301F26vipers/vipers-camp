@@ -27,6 +27,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -423,5 +424,68 @@ class FakeRepositoryTest {
         repo.markRead("win")
 
         assertEquals(1, listener.calls.size) // only the first inbox, sent straight away
+    }
+
+    // Sam's and Alex's results from one draw, each with its own ID (US 01.03.01)
+    private val drawResults = listOf(
+        Notification(id = "lottery-1_sam", recipientId = "sam", type = NotificationType.WON, createdAt = 200),
+        Notification(id = "lottery-1_alex", recipientId = "alex", type = NotificationType.NOT_SELECTED, createdAt = 200),
+    )
+
+    @Test
+    fun addAll_sameIdsTwice_keepsOneCopyEach() = runBlocking {
+        val repo = FakeNotificationRepository()
+        repo.addAll(drawResults)
+        repo.addAll(drawResults)
+
+        assertEquals(listOf("lottery-1_sam"), repo.getNotificationsFor("sam").map { it.id })
+        assertEquals(listOf("lottery-1_alex"), repo.getNotificationsFor("alex").map { it.id })
+    }
+
+    @Test
+    fun addAll_sameIdsAfterReadAndShown_keepsThemReadAndShown() = runBlocking {
+        val repo = FakeNotificationRepository()
+        repo.addAll(drawResults)
+        repo.markRead("lottery-1_sam")
+        // Sam's was also shown on the phone, e.g. by the device-notification worker
+        repo.saveNotification(repo.getNotificationsFor("sam").single().copy(shownOnDevice = true))
+
+        repo.addAll(drawResults.map { it.copy(message = "sent again") })
+
+        val sams = repo.getNotificationsFor("sam").single()
+        assertTrue(sams.read)
+        assertTrue(sams.shownOnDevice)
+        assertEquals("sent again", sams.message) // the content is still replaced
+        val alexs = repo.getNotificationsFor("alex").single()
+        assertFalse(alexs.read) // Alex never opened theirs
+        assertFalse(alexs.shownOnDevice)
+    }
+
+    @Test
+    fun addAll_emptyId_throwsAndSavesNothing() = runBlocking {
+        val repo = FakeNotificationRepository()
+        val withoutId = Notification(id = "", recipientId = "sam", createdAt = 300)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repo.addAll(drawResults + withoutId) }
+        }
+        // checked before writing, so the valid ones aren't saved either
+        assertTrue(repo.getNotificationsFor("sam").isEmpty())
+        assertTrue(repo.getNotificationsFor("alex").isEmpty())
+    }
+
+    @Test
+    fun addAll_withListener_sendsTheNewItemsOnce() = runBlocking {
+        val repo = FakeNotificationRepository(listOf(samsWin))
+        val listener = RecordingInboxListener()
+        repo.listenToInbox("sam", listener)
+
+        repo.addAll(
+            drawResults + Notification(id = "lottery-2_sam", recipientId = "sam", createdAt = 300),
+        )
+
+        // the first inbox straight away, then one more for the whole batch
+        assertEquals(2, listener.calls.size)
+        assertEquals(listOf("lottery-2_sam", "lottery-1_sam", "win"), listener.calls.last().map { it.id })
     }
 }

@@ -120,4 +120,38 @@ class LotteryEntryTest {
             )
         }
     }
+
+    @Test
+    fun canLeave_whenWaitingAndNotDrawn_returnsTrue() {
+        val waitingEntry = wonEntry.copy(status = EntryStatus.WAITING)
+        val undrawnLottery = lottery.copy(drawnAt = null)
+        assertTrue(waitingEntry.canLeave(undrawnLottery))
+    }
+
+    @Test
+    fun canLeave_whenLotteryAlreadyDrawn_returnsFalse() {
+        val waitingEntry = wonEntry.copy(status = EntryStatus.WAITING)
+        val drawnLottery = lottery.copy(drawnAt = at("2027-05-11T10:00"))
+        assertFalse(waitingEntry.canLeave(drawnLottery))
+    }
+
+    @Test
+    fun canLeave_whenStatusNotWaiting_returnsFalse() {
+        val undrawnLottery = lottery.copy(drawnAt = null)
+        val nonWaitingStatuses = listOf(
+            EntryStatus.WON,
+            EntryStatus.LOST,
+            EntryStatus.RESERVED,
+            EntryStatus.DECLINED,
+            EntryStatus.EXPIRED,
+            EntryStatus.REMOVED,
+        )
+        for (status in nonWaitingStatuses) {
+            val entry = wonEntry.copy(status = status)
+            assertFalse(
+                "Entry with status $status should not be allowed to leave",
+                entry.canLeave(undrawnLottery)
+            )
+        }
+    }
 }
