@@ -1,10 +1,10 @@
 /*
  * CampsiteDetailsScreen.kt
- * The entrant's view of one campsite (mockups E05 and E05b, US 01.01.05), opened by tapping a
- * search result on Home: all its details and, if it has one, the lottery they can join with its
- * registration deadline. CampsiteDetailsController loads the data.
+ * The entrant's view of one campsite (mockups E05 and E05b, US 01.01.05, US 01.01.06), opened by tapping a
+ * search result on Home: all its details, the lottery they can join with its registration deadline,
+ * and an action to join the waiting list. CampsiteDetailsController loads the data.
  * Known issues: the photo is a placeholder until promo images (02.01.02b), the map comes with
- * T-04, and Rate (01.13.01) and Join Waiting List (01.01.06) are added by those stories.
+ * T-04, and Rate (01.13.01) is added by that story.
  */
 package com.example.vipers.ui.campsites
 
@@ -19,18 +19,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
@@ -48,16 +53,29 @@ import com.example.vipers.ui.theme.TextMuted
  *
  * @param campsiteId ID of the campsite being viewed.
  * @param onBack Called when pressing back; Home keeps its search text.
+ * @param onJoinClick Called when tapping the join action; navigates to the lottery details screen.
  * @param controller ViewModel that loads the campsite and its active lottery.
  */
 @Composable
 fun CampsiteDetailsScreen(
     campsiteId: String,
     onBack: () -> Unit,
+    onJoinClick: (String) -> Unit = {},
     controller: CampsiteDetailsController =
         viewModel(factory = CampsiteDetailsController.factory(campsiteId)),
 ) {
-    LaunchedEffect(Unit) { controller.loadData() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                controller.loadData()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     val campsite = controller.campsite
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -99,7 +117,14 @@ fun CampsiteDetailsScreen(
                     Text(campsite.summaryText(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(ratingWithCount(campsite))
                 }
-                LotteryBox(controller.activeLottery, controller.spotsLeft)
+                LotteryBox(
+                    lottery = controller.activeLottery,
+                    spotsLeft = controller.spotsLeft,
+                    isOwner = controller.isOwner,
+                    isJoined = controller.isJoined,
+                    isFull = controller.isFull,
+                    onJoinClick = onJoinClick,
+                )
                 CampsiteDetails(campsite, showSummary = false)
             }
         }
@@ -114,12 +139,16 @@ private fun ratingWithCount(campsite: Campsite): String {
 
 /**
  * The green box with the active [lottery]'s registration deadline, remaining waiting list spots,
- * and nights (E05), or a grey "No active lottery" box when there is none (E05b).
+ * nights, and waiting list action (E05), or a grey "No active lottery" box when there is none (E05b).
  */
 @Composable
 private fun LotteryBox(
     lottery: Lottery?,
     spotsLeft: Int? = null,
+    isOwner: Boolean = false,
+    isJoined: Boolean = false,
+    isFull: Boolean = false,
+    onJoinClick: (String) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -149,6 +178,48 @@ private fun LotteryBox(
                     style = MaterialTheme.typography.bodySmall,
                     color = Primary,
                 )
+            }
+            if (!isOwner) {
+                when {
+                    isJoined -> {
+                        Button(
+                            onClick = { onJoinClick(lottery.id) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .testTag("joined_lottery_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            ),
+                        ) {
+                            Text("On Waiting List")
+                        }
+                    }
+                    isFull -> {
+                        Button(
+                            onClick = {},
+                            enabled = false,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .testTag("full_lottery_button"),
+                        ) {
+                            Text("Waiting List Full")
+                        }
+                    }
+                    else -> {
+                        Button(
+                            onClick = { onJoinClick(lottery.id) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .testTag("join_lottery_button"),
+                        ) {
+                            Text("Join Waiting List")
+                        }
+                    }
+                }
             }
         }
     }

@@ -1,8 +1,8 @@
 /*
  * ViewCampsiteDetailsTest.kt
- * Intent tests for US 01.01.05: an entrant taps a search result on Home and sees the campsite's
- * details and its active lottery (mockups E05, E05b), one test per acceptance criterion plus a
- * few edge cases. Uses the fake repositories, so it doesn't touch Firestore.
+ * Intent tests for US 01.01.05 and US 01.01.06: an entrant taps a search result on Home and sees
+ * the campsite's details and active lottery (mockups E05, E05b), and accesses the Join Waiting List
+ * workflow directly from Campsite Details. Uses the fake repositories, so it doesn't touch Firestore.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -27,11 +27,14 @@ import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.theme.VipersTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -77,14 +80,25 @@ class ViewCampsiteDetailsTest {
         campsites: List<Campsite> = listOf(hinton),
         lotteries: List<Lottery> = emptyList(),
         campsiteId: String = "hinton",
+        currentUserId: String = "test-device",
+        entries: List<LotteryEntry> = emptyList(),
+        onJoinClick: (String) -> Unit = {},
     ) {
         val controller = CampsiteDetailsController(
             FakeCampsiteRepository(campsites),
-            FakeLotteryRepository(lotteries),
+            FakeLotteryRepository(lotteries, entries),
             campsiteId,
+            currentUserId,
         )
         composeRule.setContent {
-            VipersTheme { CampsiteDetailsScreen(campsiteId, onBack = {}, controller = controller) }
+            VipersTheme {
+                CampsiteDetailsScreen(
+                    campsiteId = campsiteId,
+                    onBack = {},
+                    onJoinClick = onJoinClick,
+                    controller = controller,
+                )
+            }
         }
     }
 
@@ -224,5 +238,125 @@ class ViewCampsiteDetailsTest {
     fun removedCampsiteSaysNotFound() {
         openScreen(campsites = listOf(hinton.copy(removed = true)))
         composeRule.onNodeWithText("Campsite not found.").assertIsDisplayed()
+    }
+
+    @Test
+    fun activeLotteryShowsJoinWaitingListButton() {
+        openScreen(lotteries = listOf(openLottery))
+        composeRule.onNodeWithTag("join_lottery_button").assertIsDisplayed()
+        assertShown("Join Waiting List")
+    }
+
+    @Test
+    fun tappingJoinWaitingListCallsOnJoinClick() {
+        var clickedLotteryId: String? = null
+        openScreen(
+            lotteries = listOf(openLottery),
+            onJoinClick = { clickedLotteryId = it },
+        )
+        composeRule.onNodeWithTag("join_lottery_button").performClick()
+        assertEquals(openLottery.id, clickedLotteryId)
+    }
+
+    @Test
+    fun existingMemberSeesOnWaitingListInsteadOfJoin() {
+        val entry = LotteryEntry(
+            id = "may_test-device",
+            lotteryId = "may",
+            userId = "test-device",
+            status = EntryStatus.WAITING,
+        )
+        openScreen(
+            lotteries = listOf(openLottery),
+            entries = listOf(entry),
+        )
+        composeRule.onNodeWithTag("joined_lottery_button").assertIsDisplayed()
+        assertShown("On Waiting List")
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun fullWaitlistShowsWaitingListFullInsteadOfJoin() {
+        val full = openLottery.copy(
+            waitlistCapacity = 2,
+            waitingUserIds = listOf("u1", "u2"),
+        )
+        openScreen(lotteries = listOf(full))
+        composeRule.onNodeWithTag("full_lottery_button").assertIsDisplayed()
+        assertShown("Waiting List Full")
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun campsiteOwnerDoesNotSeeJoinWaitingList() {
+        openScreen(
+            lotteries = listOf(openLottery),
+            currentUserId = "owner-priya",
+        )
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun campsiteWithoutActiveLotteryDoesNotShowJoinButton() {
+        val upcoming = openLottery.copy(
+            registrationStart = now + 7 * day, registrationEnd = now + 12 * day,
+            bookingStart = now + 14 * day, bookingEnd = now + 40 * day,
+        )
+        openScreen(lotteries = listOf(upcoming))
+        assertShown("No active lottery")
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun joiningActiveLotteryFromCampsiteDetailsEndToEnd() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+            as CampApp
+        val lotteryWithCapacity = openLottery.copy(waitlistCapacity = 5)
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(
+                listOf(UserProfile(id = "test-device", name = "Sam Patel")),
+            ),
+            campsiteRepository = FakeCampsiteRepository(listOf(hinton)),
+            lotteryRepository = FakeLotteryRepository(listOf(lotteryWithCapacity)),
+            reservationRepository = FakeReservationRepository(),
+            notificationRepository = FakeNotificationRepository(),
+        )
+        composeRule.setContent {
+            VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) }
+        }
+
+        // 1. Search and open Hinton campsite
+        composeRule.onNodeWithTag("search_field").performTextInput("Hinton")
+        composeRule.onNodeWithText("Hinton Ridge Campground").performClick()
+        composeRule.onNodeWithText("Campsite").assertIsDisplayed()
+
+        // 2. See active lottery with 5 spots left and the Join button
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 5 spots left")
+        composeRule.onNodeWithTag("join_lottery_button").performScrollTo().assertIsDisplayed()
+
+        // 3. Tap Join Waiting List from Campsite Details -> navigates to LotteryDetailsScreen
+        composeRule.onNodeWithTag("join_lottery_button").performClick()
+        composeRule.onNodeWithText("Lottery Details").assertIsDisplayed()
+
+        // 4. Tap Join Waiting List on LotteryDetailsScreen to open the E06 Join Dialog
+        composeRule.onNodeWithText("Join Waiting List").performScrollTo().performClick()
+        composeRule.onNodeWithText("Confirm").assertIsDisplayed()
+
+        // 5. Confirm joining with default group size 1
+        composeRule.onNodeWithText("Confirm").performClick()
+
+        // 6. See success state on LotteryDetailsScreen
+        composeRule.onNodeWithText("Successfully joined the waiting list!").assertIsDisplayed()
+        composeRule.onNodeWithText("On Waiting List").assertIsDisplayed()
+
+        // 7. Navigate back to Campsite Details
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.onNodeWithText("Campsite").assertIsDisplayed()
+
+        // 8. Campsite Details has refreshed on resume: spots left is now 4, shows "On Waiting List"
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 4 spots left")
+        composeRule.onNodeWithTag("joined_lottery_button").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
     }
 }

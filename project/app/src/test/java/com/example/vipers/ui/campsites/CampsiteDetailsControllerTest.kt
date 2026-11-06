@@ -1,7 +1,7 @@
 /*
  * CampsiteDetailsControllerTest.kt
- * Unit tests for CampsiteDetailsController (US 01.01.05): loading a campsite for an entrant and
- * finding the lottery they can join, using the fake campsite and lottery repositories.
+ * Unit tests for CampsiteDetailsController (US 01.01.05, US 01.01.06): loading a campsite for an entrant,
+ * finding the lottery they can join, and checking waitlist membership and join eligibility.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -9,7 +9,9 @@ package com.example.vipers.ui.campsites
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.repository.CampsiteRepository
 import kotlinx.coroutines.awaitCancellation
@@ -20,6 +22,7 @@ import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -67,11 +70,14 @@ class CampsiteDetailsControllerTest {
     private fun loadedController(
         campsiteId: String = "hinton",
         lotteries: List<Lottery> = emptyList(),
+        currentUserId: String = "",
+        entries: List<LotteryEntry> = emptyList(),
     ): CampsiteDetailsController = runBlocking {
         val controller = CampsiteDetailsController(
             FakeCampsiteRepository(listOf(hinton, removed)),
-            FakeLotteryRepository(lotteries),
+            FakeLotteryRepository(lotteries, entries),
             campsiteId,
+            currentUserId,
         )
         controller.fetchData(now)
         controller
@@ -191,5 +197,98 @@ class CampsiteDetailsControllerTest {
         )
         val overController = loadedController(lotteries = listOf(overCapacity))
         assertEquals(0, overController.spotsLeft)
+    }
+
+    @Test
+    fun canJoin_whenEntrantWithOpenLottery_returnsTrue() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00")
+        val controller = loadedController(
+            lotteries = listOf(open),
+            currentUserId = "entrant-1",
+        )
+        assertTrue(controller.canJoin)
+        assertFalse(controller.isOwner)
+        assertFalse(controller.isJoined)
+        assertFalse(controller.isFull)
+    }
+
+    @Test
+    fun canJoin_whenUserIsCampsiteOwner_returnsFalse() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00")
+        val controller = loadedController(
+            lotteries = listOf(open),
+            currentUserId = "owner-priya",
+        )
+        assertFalse(controller.canJoin)
+        assertTrue(controller.isOwner)
+    }
+
+    @Test
+    fun canJoin_whenUserIsLotteryOwner_returnsFalse() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00").copy(
+            ownerId = "custom-lottery-owner"
+        )
+        val controller = loadedController(
+            lotteries = listOf(open),
+            currentUserId = "custom-lottery-owner",
+        )
+        assertFalse(controller.canJoin)
+        assertTrue(controller.isOwner)
+    }
+
+    @Test
+    fun canJoin_whenUserIsAlreadyJoinedViaEntry_returnsFalse() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00")
+        val entry = LotteryEntry(
+            id = "open_entrant-1",
+            lotteryId = "open",
+            userId = "entrant-1",
+            status = EntryStatus.WAITING,
+        )
+        val controller = loadedController(
+            lotteries = listOf(open),
+            currentUserId = "entrant-1",
+            entries = listOf(entry),
+        )
+        assertFalse(controller.canJoin)
+        assertTrue(controller.isJoined)
+        assertEquals(entry, controller.userEntry)
+    }
+
+    @Test
+    fun canJoin_whenUserIsAlreadyJoinedViaWaitingUserIds_returnsFalse() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00").copy(
+            waitingUserIds = listOf("entrant-1", "entrant-2"),
+        )
+        val controller = loadedController(
+            lotteries = listOf(open),
+            currentUserId = "entrant-1",
+        )
+        assertFalse(controller.canJoin)
+        assertTrue(controller.isJoined)
+    }
+
+    @Test
+    fun canJoin_whenWaitlistIsFull_returnsFalse() {
+        val full = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00").copy(
+            waitlistCapacity = 2,
+            waitingUserIds = listOf("u1", "u2"),
+        )
+        val controller = loadedController(
+            lotteries = listOf(full),
+            currentUserId = "entrant-new",
+        )
+        assertFalse(controller.canJoin)
+        assertTrue(controller.isFull)
+    }
+
+    @Test
+    fun canJoin_whenNoActiveLottery_returnsFalse() {
+        val controller = loadedController(
+            lotteries = emptyList(),
+            currentUserId = "entrant-1",
+        )
+        assertFalse(controller.canJoin)
+        assertNull(controller.activeLottery)
     }
 }

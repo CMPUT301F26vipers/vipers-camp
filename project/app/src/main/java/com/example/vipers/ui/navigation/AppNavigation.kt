@@ -87,6 +87,10 @@ fun AppNavigation(
                 CampsiteDetailsScreen(
                     campsiteId = campsiteId,
                     onBack = { navController.popBackStack() },
+                    onJoinClick = { lotteryId ->
+                        val route = Routes.LOTTERY_DETAILS.replace("{lotteryId}", lotteryId)
+                        navController.navigate(route)
+                    },
                 )
             }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
