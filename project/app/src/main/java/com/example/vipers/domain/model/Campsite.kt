@@ -2,8 +2,8 @@
  * Campsite.kt
  * A campsite an owner lists so entrants can find it and join its lotteries.
  * Stored in the Firestore "campsites" collection.
- * Known issues: price, rules, cancellation policy, photo and map location are stored but not
- * yet filled in by the Add Campsite form.
+ * Known issues: price, photo and map location are stored but not yet filled in by the Add
+ * Campsite form.
  */
 package com.example.vipers.domain.model
 
