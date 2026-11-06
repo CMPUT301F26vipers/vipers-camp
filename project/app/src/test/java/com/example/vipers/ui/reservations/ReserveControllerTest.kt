@@ -1,8 +1,8 @@
 /*
  * ReserveControllerTest.kt
  * Unit tests for ReserveController (US 01.04.01): which nights a winner can pick, where the win
- * stands during and after the booking period, picking nights in a row, and the total, using the
- * fake campsite and lottery repositories.
+ * stands during and after the booking period, picking nights in a row, and the total, and declining
+ * the win (US 01.04.03), using the fake campsite and lottery repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -292,5 +292,117 @@ class ReserveControllerTest {
         controller.fetchData(duringBooking)
 
         assertEquals(listOf("2027-05-22"), controller.selectedNights)
+    }
+
+    // US 01.04.03: declining the win
+
+    /** Counts declineTransaction calls on [lotteries], so a test can see a second tap made none. */
+    private class CountingLotteryRepository(private val lotteries: LotteryRepository) :
+        LotteryRepository by lotteries {
+        var declineCalls = 0
+
+        override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean {
+            declineCalls++
+            return lotteries.declineTransaction(lotteryId, userId)
+        }
+    }
+
+    /** Sam's [status] entry in [lottery], held in a counting fake so tests can check what was saved. */
+    private fun lotteriesWith(status: EntryStatus) =
+        CountingLotteryRepository(FakeLotteryRepository(listOf(lottery), listOf(entry(status))))
+
+    /** A controller for Sam's win, loaded from [lotteries] during booking. */
+    private suspend fun loadedFrom(lotteries: LotteryRepository): ReserveController {
+        val campsites = FakeCampsiteRepository(listOf(hinton))
+        campsites.saveAvailability(hintonCalendar)
+        val controller = ReserveController(campsites, lotteries, "user-sam", "lot-may", "hinton")
+        controller.fetchData(duringBooking)
+        return controller
+    }
+
+    @Test
+    fun decline_wonEntry_setsDeclinedAndCanDeclineFalse() = runBlocking {
+        val lotteries = lotteriesWith(EntryStatus.WON)
+        val controller = loadedFrom(lotteries)
+        assertTrue(controller.canDecline)
+
+        controller.decline(duringBooking)
+
+        assertEquals(EntryStatus.DECLINED, lotteries.getEntry("lot-may", "user-sam")?.status)
+        assertEquals(EntryStatus.DECLINED, controller.entry?.status)
+        assertFalse(controller.canDecline)
+        assertNull(controller.declineError)
+        assertFalse(controller.isDeclining)
+    }
+
+    @Test
+    fun decline_calledTwice_changesNothingMore() = runBlocking {
+        val lotteries = lotteriesWith(EntryStatus.WON)
+        val controller = loadedFrom(lotteries)
+
+        controller.decline(duringBooking)
+        controller.decline(duringBooking)
+
+        // the second call sees the reloaded DECLINED entry and doesn't write again
+        assertEquals(1, lotteries.declineCalls)
+        assertEquals(EntryStatus.DECLINED, lotteries.getEntry("lot-may", "user-sam")?.status)
+        assertFalse(controller.canDecline)
+        assertNull(controller.declineError)
+    }
+
+    @Test
+    fun decline_reservedEntry_changesNothing() = runBlocking {
+        val lotteries = lotteriesWith(EntryStatus.RESERVED)
+        val controller = loadedFrom(lotteries)
+        assertFalse(controller.canDecline)
+
+        controller.decline(duringBooking)
+
+        assertEquals(0, lotteries.declineCalls)
+        assertEquals(EntryStatus.RESERVED, lotteries.getEntry("lot-may", "user-sam")?.status)
+        assertEquals(OfferState.USED, controller.offerState)
+    }
+
+    @Test
+    fun decline_wonEntry_canNoLongerReserveFromThisWin() = runBlocking {
+        val controller = loadedFrom(lotteriesWith(EntryStatus.WON))
+
+        controller.decline(duringBooking)
+
+        val declined = controller.entry!!
+        assertFalse(declined.canReserve(controller.lottery!!, duringBooking))
+        assertEquals(OfferState.USED, controller.offerState)
+        // nights can't be picked any more either
+        controller.onNightTap("2027-05-22")
+        assertTrue(controller.selectedNights.isEmpty())
+    }
+
+    @Test
+    fun decline_outsideBooking_changesNothing() = runBlocking {
+        val lotteries = lotteriesWith(EntryStatus.WON)
+        val controller = loadedFrom(lotteries)
+
+        // the screen was left open until booking ended
+        controller.decline(at("2027-06-01T08:00"))
+
+        assertEquals(0, lotteries.declineCalls)
+        assertEquals(EntryStatus.WON, lotteries.getEntry("lot-may", "user-sam")?.status)
+    }
+
+    @Test
+    fun decline_whenTheRepositoryFails_setsDeclineErrorAndKeepsTheWin() = runBlocking {
+        val failing = object : LotteryRepository by lotteriesWith(EntryStatus.WON) {
+            override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean =
+                throw IllegalStateException("offline")
+        }
+        val controller = loadedFrom(failing)
+
+        controller.decline(duringBooking)
+
+        assertEquals("Unable to decline your win. Please try again.", controller.declineError)
+        assertEquals(EntryStatus.WON, failing.getEntry("lot-may", "user-sam")?.status)
+        assertTrue(controller.canDecline)
+        assertFalse(controller.isDeclining)
+        assertNull(controller.error) // the rest of the screen stays on show
     }
 }
