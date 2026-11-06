@@ -7,6 +7,8 @@
  */
 package com.example.vipers.domain.model
 
+import java.time.LocalDate
+
 /**
  * A lottery for some nights at one or more campsites.
  * Period start and end times are milliseconds since 1970; nights are "yyyy-MM-dd" strings.
@@ -90,4 +92,15 @@ data class Lottery(
      */
     fun isBookingExpired(now: Long = System.currentTimeMillis()): Boolean =
         bookingStart > 0L && bookingEnd > bookingStart && now > bookingEnd
+
+    /**
+     * The nights this lottery offers that a winner can still pick at one campsite, in date order
+     * (US 01.04.01): nights in [nightsOffered] that are open and not booked in [calendar], and not
+     * before [today].
+     */
+    fun freeNights(calendar: AvailabilityCalendar, today: LocalDate): List<String> =
+        nightsOffered
+            .filter { calendar.isFree(it) && !calendar.isPast(it, today) }
+            .distinct()
+            .sorted()
 }
