@@ -93,4 +93,92 @@ class LotteryTest {
         val reversed = Lottery(registrationStart = 2000L, registrationEnd = 1000L)
         assertFalse(reversed.canEntrantJoin(1500L))
     }
+
+    @Test
+    fun isBookingOpen_returnsFalseBeforeBookingPeriod() {
+        assertFalse(lottery.isBookingOpen(at("2027-05-11T23:59")))
+    }
+
+    @Test
+    fun isBookingOpen_returnsTrueExactlyAtBookingStart() {
+        assertTrue(lottery.isBookingOpen(at("2027-05-12T00:00")))
+    }
+
+    @Test
+    fun isBookingOpen_returnsTrueDuringBookingPeriod() {
+        assertTrue(lottery.isBookingOpen(at("2027-05-20T12:00")))
+    }
+
+    @Test
+    fun isBookingOpen_returnsTrueExactlyAtBookingEnd() {
+        assertTrue(lottery.isBookingOpen(at("2027-05-31T23:59")))
+    }
+
+    @Test
+    fun isBookingOpen_returnsFalseAfterBookingEnd() {
+        assertFalse(lottery.isBookingOpen(at("2027-06-01T00:00")))
+    }
+
+    @Test
+    fun isBookingOpen_returnsFalseWhenBookingTimesNotSet() {
+        assertFalse(Lottery().isBookingOpen(at("2027-05-20T12:00")))
+    }
+
+    @Test
+    fun isBookingOpen_returnsFalseWhenPeriodIsReversed() {
+        val reversed = Lottery(bookingStart = 2000L, bookingEnd = 1000L)
+        assertFalse(reversed.isBookingOpen(1500L))
+    }
+
+    @Test
+    fun isBookingOpen_returnsFalseWhenBookingStartAndEndAreEqual() {
+        val equalTimes = Lottery(bookingStart = 2000L, bookingEnd = 2000L)
+        assertFalse(equalTimes.isBookingOpen(2000L))
+    }
+
+    @Test
+    fun isBookingOpen_returnsFalseWhenRemoved() {
+        val removedLottery = lottery.copy(removed = true)
+        assertFalse(removedLottery.isBookingOpen(at("2027-05-20T12:00")))
+    }
+
+    @Test
+    fun isBookingExpired_returnsFalseBeforeAndDuringBooking() {
+        assertFalse(lottery.isBookingExpired(at("2027-05-11T23:59")))
+        assertFalse(lottery.isBookingExpired(at("2027-05-12T00:00")))
+        assertFalse(lottery.isBookingExpired(at("2027-05-20T12:00")))
+    }
+
+    @Test
+    fun isBookingExpired_returnsFalseExactlyAtBookingEnd() {
+        assertFalse(lottery.isBookingExpired(at("2027-05-31T23:59")))
+    }
+
+    @Test
+    fun isBookingExpired_returnsTrueStrictlyAfterBookingEnd() {
+        assertTrue(lottery.isBookingExpired(at("2027-06-01T00:00")))
+    }
+
+    @Test
+    fun isBookingExpired_returnsFalseWhenTimesNotSet() {
+        assertFalse(Lottery().isBookingExpired(at("2027-06-01T00:00")))
+    }
+
+    @Test
+    fun isBookingExpired_returnsFalseWhenPeriodIsReversed() {
+        val reversed = Lottery(bookingStart = 2000L, bookingEnd = 1000L)
+        assertFalse(reversed.isBookingExpired(2500L))
+    }
+
+    @Test
+    fun isBookingExpired_returnsFalseWhenBookingStartAndEndAreEqual() {
+        val equalTimes = Lottery(bookingStart = 2000L, bookingEnd = 2000L)
+        assertFalse(equalTimes.isBookingExpired(2500L))
+    }
+
+    @Test
+    fun isBookingExpired_returnsFalseWhenBookingStartNotSet() {
+        val noStart = Lottery(bookingStart = 0L, bookingEnd = 1000L)
+        assertFalse(noStart.isBookingExpired(1500L))
+    }
 }

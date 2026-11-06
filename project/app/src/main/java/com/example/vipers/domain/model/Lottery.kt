@@ -61,4 +61,20 @@ data class Lottery(
      */
     fun canEntrantJoin(now: Long = System.currentTimeMillis()): Boolean =
         status(now) == LotteryStatus.OPEN
+
+    /**
+     * Checks if the booking period is currently open at time [now] (milliseconds since 1970).
+     * Reserving is open between [bookingStart] and [bookingEnd] (inclusive) when the lottery has
+     * not been removed and booking timestamps are valid ([bookingEnd] > [bookingStart] > 0).
+     */
+    fun isBookingOpen(now: Long = System.currentTimeMillis()): Boolean =
+        !removed && bookingStart > 0L && bookingEnd > 0L && bookingEnd > bookingStart && now in bookingStart..bookingEnd
+
+    /**
+     * Checks if the booking period has expired at time [now] (milliseconds since 1970).
+     * Expired when a valid booking period exists ([bookingStart] > 0 and [bookingEnd] > [bookingStart])
+     * and [now] is strictly after [bookingEnd].
+     */
+    fun isBookingExpired(now: Long = System.currentTimeMillis()): Boolean =
+        bookingStart > 0L && bookingEnd > bookingStart && now > bookingEnd
 }

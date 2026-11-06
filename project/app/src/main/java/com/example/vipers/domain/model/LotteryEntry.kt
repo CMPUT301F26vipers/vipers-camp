@@ -25,6 +25,20 @@ data class LotteryEntry(
     val joinedAt: Long = 0,
     val status: EntryStatus = EntryStatus.WAITING,
 ) {
+    /**
+     * Tells whether this win can still be used to reserve at time [now] (milliseconds since 1970).
+     * Returns true only when [status] is [EntryStatus.WON] and [lottery] booking is currently open.
+     */
+    fun canReserve(lottery: Lottery, now: Long = System.currentTimeMillis()): Boolean =
+        status == EntryStatus.WON && lottery.isBookingOpen(now)
+
+    /**
+     * Tells whether this win has expired at time [now] (milliseconds since 1970).
+     * Returns true only when [status] is [EntryStatus.WON] and [lottery] booking has expired.
+     */
+    fun isExpired(lottery: Lottery, now: Long = System.currentTimeMillis()): Boolean =
+        status == EntryStatus.WON && lottery.isBookingExpired(now)
+
     companion object {
         /** The entry ID for [userId] in [lotteryId]. */
         fun idFor(lotteryId: String, userId: String): String = "${lotteryId}_$userId"
