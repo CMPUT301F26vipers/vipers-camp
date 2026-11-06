@@ -98,6 +98,7 @@ class RulesAndPolicyTest {
         composeRule.onNodeWithTag("field_region").performScrollTo().performClick()
         composeRule.onNodeWithText("Hinton").performClick()
         type("field_max_guests", "6")
+        type("field_price", "65") // required since T-09
         type("field_rules", "Quiet hours after 10 PM")
         type("field_cancellation_policy", "Free up to 7 days before")
         composeRule.onNodeWithTag("button_publish").performClick()

@@ -2,10 +2,9 @@
  * CampsiteFormScreen.kt
  * The Add Campsite screen (mockup O02), opened from the "+" on My Campsites (US 02.01.01,
  * 02.01.02a), and the Edit Campsite screen (mockup O05), opened from Edit on My Campsite
- * (US 02.01.03). CampsiteController checks and saves what the owner types, including the optional
- * rules and cancellation policy (T-11).
- * Known issues: photo (02.01.02b), Find location (02.01.02c) and price (T-09) are added by those
- * stories.
+ * (US 02.01.03). CampsiteController checks and saves what the owner types, including the nightly
+ * price (T-09) and the optional rules and cancellation policy (T-11).
+ * Known issues: photo (02.01.02b) and Find location (02.01.02c) are added by those stories.
  */
 package com.example.vipers.ui.campsites
 
@@ -153,6 +152,7 @@ fun CampsiteFormScreen(
                 error = controller.errors["address"],
                 tag = "field_address",
             )
+            // Region, Max guests and Price / night share a row, as in mockups O02 and O05
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RegionDropdown(
                     selected = controller.region,
@@ -168,6 +168,16 @@ fun CampsiteFormScreen(
                     error = controller.errors["maxOccupancy"],
                     tag = "field_max_guests",
                     keyboardType = KeyboardType.Number,
+                    modifier = Modifier.weight(1f),
+                )
+                FormField(
+                    label = "Price / night",
+                    value = controller.price,
+                    onValueChange = controller::onPriceChange,
+                    placeholder = "$50",
+                    error = controller.errors["pricePerNightCents"],
+                    tag = "field_price",
+                    keyboardType = KeyboardType.Decimal,
                     modifier = Modifier.weight(1f),
                 )
             }
