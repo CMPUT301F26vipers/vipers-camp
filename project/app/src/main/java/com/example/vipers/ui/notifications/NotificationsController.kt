@@ -90,7 +90,10 @@ class NotificationsController(
             initializer {
                 val app = this[APPLICATION_KEY] as CampApp
                 NotificationsController(
-                    NotificationService(app.container.notificationRepository),
+                    NotificationService(
+                        app.container.notificationRepository,
+                        app.container.campsiteRepository,
+                    ),
                     app.container.deviceId,
                 )
             }

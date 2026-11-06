@@ -156,6 +156,12 @@ writing the same IDs again overwrites them instead of adding copies. If a later 
 ones stay saved, so call it again with the same list to finish. Set the `id` yourself; a blank `id`
 throws `IllegalArgumentException` and nothing is saved.
 
+A draw's results (US 01.03.01) use the ID `draw_<lotteryId>_<userId>`, so each entrant gets one per
+draw however often it runs. A win is `WON` from `"system"` with `lotteryId` set, `campsiteId` set only
+when the lottery covers one campsite, the title "You won the lottery!" and the message "You won a spot
+at <campsite names>. Reserve your nights before <booking end>." `NotificationService.sendDrawResults`
+builds them. `batchId` stays `null` for draws; it only groups owner broadcasts.
+
 The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
 that user's notifications, newest first, straight away and on every change, until the returned
 `Subscription` is cancelled. If the inbox can't be loaded (e.g. permission denied) it gets
