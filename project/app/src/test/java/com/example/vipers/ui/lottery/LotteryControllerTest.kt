@@ -419,10 +419,11 @@ class LotteryControllerTest {
         assertTrue(lotteryRepository.getLotteriesForCampsite(campsiteId).isEmpty())
     }
 
-    @Test
-    fun saveLottery_zeroWinnersCount_preventsSavingAndReportsError() = runTest {
+    private var saveCalled = false
+
+    private suspend fun fillValidLotteryForm() {
         setupCampsiteAndController()
-        var saveCalled = false
+        saveCalled = false
         val trackingRepo = object : LotteryRepository by lotteryRepository {
             override suspend fun addLottery(lottery: Lottery): String {
                 saveCalled = true
@@ -446,7 +447,11 @@ class LotteryControllerTest {
         controller.setRegistrationEnd(now + 200_000)
         controller.setBookingStart(now + 200_000)
         controller.setBookingEnd(now + 300_000)
+    }
 
+    @Test
+    fun saveLottery_zeroWinnersCount_preventsSavingAndReportsError() = runTest {
+        fillValidLotteryForm()
         controller.onWinnersCountChange("0")
         controller.saveLottery()
 
@@ -458,32 +463,7 @@ class LotteryControllerTest {
 
     @Test
     fun saveLottery_negativeWinnersCount_preventsSavingAndReportsError() = runTest {
-        setupCampsiteAndController()
-        var saveCalled = false
-        val trackingRepo = object : LotteryRepository by lotteryRepository {
-            override suspend fun addLottery(lottery: Lottery): String {
-                saveCalled = true
-                return lotteryRepository.addLottery(lottery)
-            }
-        }
-        controller = LotteryController(
-            campsiteRepository = campsiteRepository,
-            lotteryRepository = trackingRepo,
-            ownerId = ownerId,
-            campsiteId = campsiteId
-        )
-
-        controller.onRangeStartChange("2026-01-01")
-        controller.onRangeEndChange("2026-01-02")
-        controller.loadSelectedRange()
-        controller.toggleNight("2026-01-01", true)
-
-        val now = System.currentTimeMillis()
-        controller.setRegistrationStart(now + 100_000)
-        controller.setRegistrationEnd(now + 200_000)
-        controller.setBookingStart(now + 200_000)
-        controller.setBookingEnd(now + 300_000)
-
+        fillValidLotteryForm()
         controller.onWinnersCountChange("-1")
         controller.saveLottery()
 
@@ -495,32 +475,7 @@ class LotteryControllerTest {
 
     @Test
     fun saveLottery_alphabeticWinnersCount_preventsSavingAndReportsError() = runTest {
-        setupCampsiteAndController()
-        var saveCalled = false
-        val trackingRepo = object : LotteryRepository by lotteryRepository {
-            override suspend fun addLottery(lottery: Lottery): String {
-                saveCalled = true
-                return lotteryRepository.addLottery(lottery)
-            }
-        }
-        controller = LotteryController(
-            campsiteRepository = campsiteRepository,
-            lotteryRepository = trackingRepo,
-            ownerId = ownerId,
-            campsiteId = campsiteId
-        )
-
-        controller.onRangeStartChange("2026-01-01")
-        controller.onRangeEndChange("2026-01-02")
-        controller.loadSelectedRange()
-        controller.toggleNight("2026-01-01", true)
-
-        val now = System.currentTimeMillis()
-        controller.setRegistrationStart(now + 100_000)
-        controller.setRegistrationEnd(now + 200_000)
-        controller.setBookingStart(now + 200_000)
-        controller.setBookingEnd(now + 300_000)
-
+        fillValidLotteryForm()
         controller.onWinnersCountChange("abc")
         controller.saveLottery()
 
@@ -532,32 +487,7 @@ class LotteryControllerTest {
 
     @Test
     fun saveLottery_emptyWinnersCount_preventsSavingAndReportsError() = runTest {
-        setupCampsiteAndController()
-        var saveCalled = false
-        val trackingRepo = object : LotteryRepository by lotteryRepository {
-            override suspend fun addLottery(lottery: Lottery): String {
-                saveCalled = true
-                return lotteryRepository.addLottery(lottery)
-            }
-        }
-        controller = LotteryController(
-            campsiteRepository = campsiteRepository,
-            lotteryRepository = trackingRepo,
-            ownerId = ownerId,
-            campsiteId = campsiteId
-        )
-
-        controller.onRangeStartChange("2026-01-01")
-        controller.onRangeEndChange("2026-01-02")
-        controller.loadSelectedRange()
-        controller.toggleNight("2026-01-01", true)
-
-        val now = System.currentTimeMillis()
-        controller.setRegistrationStart(now + 100_000)
-        controller.setRegistrationEnd(now + 200_000)
-        controller.setBookingStart(now + 200_000)
-        controller.setBookingEnd(now + 300_000)
-
+        fillValidLotteryForm()
         controller.onWinnersCountChange("")
         controller.saveLottery()
 
