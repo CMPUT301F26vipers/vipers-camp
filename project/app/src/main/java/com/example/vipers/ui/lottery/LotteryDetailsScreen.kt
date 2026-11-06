@@ -55,15 +55,16 @@ import java.util.Date
  *
  * @param lotteryId ID of the lottery being inspected.
  * @param onBack Callback triggered when navigating back.
+ * @param onViewWaitingList Opens the owner's Waiting List screen (O11, US 02.09.01).
  * @param controller ViewModel managing lottery details and waitlist state.
  */
 @Composable
 fun LotteryDetailsScreen(
     lotteryId: String,
     onBack: () -> Unit,
+    onViewWaitingList: () -> Unit = {},
     controller: LotteryDetailsController = viewModel(factory = LotteryDetailsController.factory(lotteryId))
 ) {
-    var showWaitingList by remember { mutableStateOf(false) }
     var showJoinDialog by remember { mutableStateOf(false) }
     var showLeaveDialog by remember { mutableStateOf(false) }
     var groupSizeText by remember { mutableStateOf("1") }
@@ -183,7 +184,7 @@ fun LotteryDetailsScreen(
                                     }
 
                                     Button(
-                                        onClick = { showWaitingList = true },
+                                        onClick = onViewWaitingList,
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Text("View Waiting List")
@@ -433,44 +434,6 @@ fun LotteryDetailsScreen(
             dismissButton = {
                 TextButton(onClick = { showLeaveDialog = false }) {
                     Text("Stay")
-                }
-            }
-        )
-    }
-
-    if (showWaitingList) {
-        AlertDialog(
-            onDismissRequest = { showWaitingList = false },
-            title = { Text("Waiting List") },
-            text = {
-                val displayEntries = if (controller.lottery?.drawnAt != null) controller.allEntries else controller.waitingEntries
-                if (displayEntries.isEmpty()) {
-                    Text("There are no entrants on the waiting list.")
-                } else {
-                    LazyColumn {
-                        items(displayEntries) { entry ->
-                            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                                val name = controller.userNames[entry.userId] ?: "Unknown User"
-                                Text(name)
-                                val statusLabel = when (entry.status) {
-                                    EntryStatus.WON -> "Won"
-                                    EntryStatus.LOST -> "Lost"
-                                    EntryStatus.WAITING -> "Waiting"
-                                    EntryStatus.DECLINED -> "Declined"
-                                    EntryStatus.RESERVED -> "Reserved"
-                                    EntryStatus.EXPIRED -> "Expired"
-                                    EntryStatus.REMOVED -> "Removed"
-                                }
-                                Text("Group size: ${entry.groupSize} · Status: $statusLabel")
-                                HorizontalDivider()
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showWaitingList = false }) {
-                    Text("Close")
                 }
             }
         )

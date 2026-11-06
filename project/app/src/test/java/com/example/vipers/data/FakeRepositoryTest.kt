@@ -19,9 +19,12 @@ import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.JoinWaitingListResult
+import com.example.vipers.ui.lottery.LotteryDrawer
+import java.util.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -266,6 +269,71 @@ class FakeRepositoryTest {
         // user-2 is removed by an admin or leaves
         repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.REMOVED))
         assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
+    }
+
+    /** A lottery whose registration is open at [openNow], for the observeEntries tests. */
+    private val openNow = 1_500L
+    private val openLottery = Lottery(
+        id = "lottery-1",
+        ownerId = "owner-1",
+        campsiteIds = listOf("camp-1"),
+        registrationStart = 1_000L,
+        registrationEnd = 2_000L,
+        bookingStart = 3_000L,
+        bookingEnd = 4_000L,
+        winnersCount = 1,
+    )
+
+    @Test
+    fun observeEntries_sendsTheListAgainWhenSomeoneJoins() = runBlocking {
+        val repo = FakeLotteryRepository(listOf(openLottery))
+        val updates = repo.observeEntries("lottery-1")
+        assertEquals(emptyList<LotteryEntry>(), updates.first())
+
+        repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-1"), now = openNow)
+        // an entry in another lottery doesn't show up
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-2", userId = "user-2"))
+
+        assertEquals(listOf("user-1"), updates.first().map { it.userId })
+    }
+
+    @Test
+    fun observeEntries_sendsTheListAgainWhenSomeoneLeaves() = runBlocking {
+        val repo = FakeLotteryRepository(listOf(openLottery))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1"))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"))
+
+        repo.leaveWaitingList("lottery-1", "user-2")
+
+        assertEquals(listOf("user-1"), repo.observeEntries("lottery-1").first().map { it.userId })
+    }
+
+    @Test
+    fun observeEntries_sendsTheDrawResults() = runBlocking {
+        val repo = FakeLotteryRepository(listOf(openLottery))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1"))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"))
+        val drawer = LotteryDrawer(
+            lotteryRepository = repo,
+            notificationRepository = FakeNotificationRepository(),
+            campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "camp-1", name = "Pine Ridge"))),
+            random = Random(42),
+        )
+
+        drawer.drawLottery("lottery-1", now = 5_000L)
+
+        val statuses = repo.observeEntries("lottery-1").first().map { it.status }
+        assertEquals(setOf(EntryStatus.WON, EntryStatus.LOST), statuses.toSet())
+    }
+
+    @Test
+    fun observeEntries_sendsTheListAgainWhenAWinIsUpdated() = runBlocking {
+        val repo = FakeLotteryRepository(listOf(openLottery))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1", status = EntryStatus.WON))
+
+        repo.updateEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1", status = EntryStatus.RESERVED))
+
+        assertEquals(listOf(EntryStatus.RESERVED), repo.observeEntries("lottery-1").first().map { it.status })
     }
 
     /** Keeps every inbox it is sent, oldest call first (T-13). */
