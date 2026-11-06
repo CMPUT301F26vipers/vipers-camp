@@ -4,12 +4,15 @@
  * collection (Repository pattern).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  * The inbox is sorted in the app instead of with orderBy, which would need an extra Firestore index.
+ * If the live inbox listener gets an error, the listener isn't told and keeps the last inbox.
  */
 package com.example.vipers.data.firestore
 
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
+import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
+import com.example.vipers.domain.repository.Subscription
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -35,6 +38,21 @@ class FirestoreNotificationRepository(
 
     override suspend fun markRead(id: String) {
         collection.document(id).update("read", true).await()
+    }
+
+    override fun listenToInbox(recipientId: String, listener: InboxListener): Subscription {
+        // Only filters by recipientId and sorts on the device: adding orderBy("createdAt") to a
+        // whereEqualTo query would need a composite Firestore index.
+        val registration = collection
+            .whereEqualTo("recipientId", recipientId)
+            .addSnapshotListener { snapshot, error ->
+                // on an error (e.g. permission denied) keep showing the last inbox sent
+                if (error != null || snapshot == null) return@addSnapshotListener
+                listener.onInboxChanged(
+                    snapshot.documents.map { it.toNotification() }.sortedByDescending { it.createdAt },
+                )
+            }
+        return Subscription { registration.remove() }
     }
 }
 

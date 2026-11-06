@@ -149,6 +149,12 @@ Computed, never stored (T-13): `target` is the screen a tap opens, a `Notificati
 `displayCategory` is the label the inbox shows: "Won", "Not selected", "Reservation",
 "Owner message", "Message" or "Campsite removed".
 
+The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
+that user's notifications, newest first, straight away and on every change, until the returned
+`Subscription` is cancelled. Firestore filters only by `recipientId` and sorts by `createdAt` on
+the device, so no composite index is needed. `Subscription` keeps Firestore's
+`ListenerRegistration` out of `domain/`.
+
 ### `messages`: `Message`
 Not used by a repository yet (added by the messaging story).
 
