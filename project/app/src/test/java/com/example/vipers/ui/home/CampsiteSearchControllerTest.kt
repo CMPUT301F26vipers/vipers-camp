@@ -177,6 +177,18 @@ class CampsiteSearchControllerTest {
     }
 
     @Test
+    fun filter_byDateRangeHandlesInvalidDateGracefully() {
+        val calendars = listOf(
+            AvailabilityCalendar(campsiteId = "1", openNights = listOf("2027-06-01", "2027-06-02")),
+        )
+        val controller = loadedController(calendars = calendars)
+
+        // Invalid dates (e.g. "May 8" or "2027-13-45") do not crash results
+        controller.applyFilters(startDate = "May 8", endDate = "2027-13-45")
+        assertTrue(controller.results.isEmpty())
+    }
+
+    @Test
     fun filter_combinesRegionGuestsAndDateRange() {
         val calendars = listOf(
             AvailabilityCalendar(campsiteId = "1", openNights = listOf("2027-06-01", "2027-06-02")),

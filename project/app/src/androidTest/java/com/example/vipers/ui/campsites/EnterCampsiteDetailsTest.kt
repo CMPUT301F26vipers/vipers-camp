@@ -51,7 +51,7 @@ class EnterCampsiteDetailsTest {
     @Test
     fun formHasEveryDetailField() {
         openForm()
-        for (tag in listOf("field_name", "field_address", "field_region", "field_max_guests", "field_description", "field_tag")) {
+        for (tag in listOf("field_name", "field_address", "field_region", "field_max_guests", "field_price", "field_description", "field_tag")) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }
     }
@@ -73,6 +73,7 @@ class EnterCampsiteDetailsTest {
         composeRule.onNodeWithTag("field_region").performClick()
         composeRule.onNodeWithText("Hinton").performClick()
         type("field_max_guests", "6")
+        type("field_price", "65")
         type("field_description", "Outdoor cookhouse and tennis court")
         addTag("Cookhouse")
         addTag("Tennis court")
@@ -84,6 +85,7 @@ class EnterCampsiteDetailsTest {
         assertEquals("Hinton, AB", saved.address)
         assertEquals(Region.HINTON, saved.region)
         assertEquals(6, saved.maxOccupancy)
+        assertEquals(6500L, saved.pricePerNightCents)
         assertEquals("Outdoor cookhouse and tennis court", saved.description)
         assertEquals(listOf("Cookhouse", "Tennis court"), saved.tags)
     }

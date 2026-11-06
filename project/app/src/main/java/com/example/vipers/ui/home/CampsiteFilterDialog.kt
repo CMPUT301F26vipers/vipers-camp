@@ -78,6 +78,7 @@ fun CampsiteFilterDialog(
     var startDate by remember { mutableStateOf(currentStartDate ?: "") }
     var endDate by remember { mutableStateOf(currentEndDate ?: "") }
     var guestsCount by remember { mutableStateOf(currentMinGuests?.takeIf { it > 0 }) }
+    var dateError by remember { mutableStateOf<String?>(null) }
 
     var datesRawText by remember {
         val initialText = when {
@@ -159,12 +160,14 @@ fun CampsiteFilterDialog(
                 // 2. Dates
                 DatesSection(
                     datesText = datesRawText,
+                    error = dateError,
                     onDatesTextChange = { newText ->
                         datesRawText = newText
                         val trimmed = newText.trim()
                         if (trimmed.isEmpty()) {
                             startDate = ""
                             endDate = ""
+                            dateError = null
                         } else {
                             val dateMatches = Regex("""\d{4}-\d{2}-\d{2}""").findAll(trimmed).map { it.value }.toList()
                             if (dateMatches.size >= 2) {
@@ -183,6 +186,9 @@ fun CampsiteFilterDialog(
                                     endDate = trimmed
                                 }
                             }
+                            val sValid = try { LocalDate.parse(startDate); true } catch (_: Exception) { false }
+                            val eValid = try { LocalDate.parse(endDate); true } catch (_: Exception) { false }
+                            dateError = if (!sValid || !eValid) "Enter valid dates (yyyy-MM-dd)" else null
                         }
                     },
                     onOpenPicker = { openDateRangePicker() },
@@ -190,6 +196,7 @@ fun CampsiteFilterDialog(
                         datesRawText = ""
                         startDate = ""
                         endDate = ""
+                        dateError = null
                     },
                 )
 
@@ -228,6 +235,7 @@ fun CampsiteFilterDialog(
                     onClick = {
                         onApply(selectedRegion, startDate, endDate, guestsCount)
                     },
+                    enabled = dateError == null,
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     modifier = Modifier
@@ -312,6 +320,7 @@ private fun DatesSection(
     onDatesTextChange: (String) -> Unit,
     onOpenPicker: () -> Unit,
     onClearDates: () -> Unit,
+    error: String? = null,
 ) {
     Column {
         Text(
@@ -325,6 +334,8 @@ private fun DatesSection(
             onValueChange = onDatesTextChange,
             placeholder = { Text("Pick dates") },
             singleLine = true,
+            isError = error != null,
+            supportingText = error?.let { { Text(it) } },
             shape = InputShape,
             modifier = Modifier
                 .fillMaxWidth()

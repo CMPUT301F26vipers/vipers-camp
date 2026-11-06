@@ -7,6 +7,7 @@ package com.example.vipers.ui.lottery
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -219,6 +220,48 @@ class LotteryIntentTest {
         val calendar = runBlocking { campsiteRepository.getAvailability("c-123") }
         assertEquals(originalOpenNights, calendar.openNights)
         assertEquals(originalHeldNights, calendar.heldNights)
+    }
+
+    @Test
+    fun lotteryForm_waitlistCapacityInput_showsInlineErrorOnInvalidInput() {
+        val controller = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = lotteryRepository,
+            ownerId = ownerId,
+            campsiteId = "c-123"
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(
+                    campsiteId = "c-123",
+                    onBack = {},
+                    controller = controller
+                )
+            }
+        }
+
+        // Initially field is displayed with no error
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().assertIsDisplayed()
+
+        // Enter non-numeric text
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("abc")
+        composeRule.onNodeWithText("Waitlist limit must be a whole number at least 1").performScrollTo().assertIsDisplayed()
+
+        // Clear and enter zero
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextClearance()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("0")
+        composeRule.onNodeWithText("Waitlist limit must be a whole number at least 1").performScrollTo().assertIsDisplayed()
+
+        // Clear and enter decimal
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextClearance()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("3.5")
+        composeRule.onNodeWithText("Waitlist limit must be a whole number at least 1").performScrollTo().assertIsDisplayed()
+
+        // Clear and enter valid positive integer
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextClearance()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("25")
+        composeRule.onAllNodesWithText("Waitlist limit must be a whole number at least 1").assertCountEquals(0)
     }
 
     @Test

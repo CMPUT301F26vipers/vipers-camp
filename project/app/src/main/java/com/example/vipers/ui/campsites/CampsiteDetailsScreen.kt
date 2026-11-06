@@ -99,7 +99,7 @@ fun CampsiteDetailsScreen(
                     Text(campsite.summaryText(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(ratingWithCount(campsite))
                 }
-                LotteryBox(controller.activeLottery)
+                LotteryBox(controller.activeLottery, controller.spotsLeft)
                 CampsiteDetails(campsite, showSummary = false)
             }
         }
@@ -113,11 +113,14 @@ private fun ratingWithCount(campsite: Campsite): String {
 }
 
 /**
- * The green box with the active [lottery]'s registration deadline and nights (E05), or a grey
- * "No active lottery" box when there is none (E05b).
+ * The green box with the active [lottery]'s registration deadline, remaining waiting list spots,
+ * and nights (E05), or a grey "No active lottery" box when there is none (E05b).
  */
 @Composable
-private fun LotteryBox(lottery: Lottery?) {
+private fun LotteryBox(
+    lottery: Lottery?,
+    spotsLeft: Int? = null,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -129,8 +132,14 @@ private fun LotteryBox(lottery: Lottery?) {
         if (lottery == null) {
             Text("No active lottery", color = TextMuted, fontWeight = FontWeight.SemiBold)
         } else {
+            val headline = if (spotsLeft != null) {
+                val spotsText = if (spotsLeft == 1) "1 spot left" else "$spotsLeft spots left"
+                "Lottery open until ${formatDate(lottery.registrationEnd)} · $spotsText"
+            } else {
+                "Lottery open until ${formatDate(lottery.registrationEnd)}"
+            }
             Text(
-                "Lottery open until ${formatDate(lottery.registrationEnd)}",
+                headline,
                 color = Primary,
                 fontWeight = FontWeight.SemiBold,
             )

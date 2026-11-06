@@ -1,7 +1,7 @@
 /*
  * AvailabilityCalendarTest.kt
- * Unit tests for opening and closing nights in AvailabilityCalendar (T-10), using the May 2027
- * weekends from scenario 2 in the project description.
+ * Unit tests for opening and closing nights and finding free nights in AvailabilityCalendar
+ * (T-10), using the May 2027 weekends from scenario 2 in the project description.
  * Known issues: none.
  */
 package com.example.vipers.domain.model
@@ -87,29 +87,39 @@ class AvailabilityCalendarTest {
     }
 
     @Test
-    fun hasAvailableNight_trueWhenRangeContainsFreeOpenNight() {
-        assertTrue(calendar.hasAvailableNight("2027-05-01", "2027-05-03"))
-        assertTrue(calendar.hasAvailableNight("2027-05-02", "2027-05-02"))
+    fun closeRange_closesEveryNightIncludingBothEnds() {
+        val nights = listOf("2027-05-07", "2027-05-08", "2027-05-09", "2027-05-10")
+        val open = AvailabilityCalendar(openNights = nights)
+        val closed = open.closeRange("2027-05-08", "2027-05-10", today)
+        assertEquals(listOf("2027-05-07"), closed.openNights)
     }
 
     @Test
-    fun hasAvailableNight_falseWhenAllNightsInRangeAreHeld() {
-        assertFalse(calendar.hasAvailableNight("2027-05-01", "2027-05-01"))
+    fun closeRange_worksWhenTheEndsAreTappedBackwards() {
+        val open = AvailabilityCalendar(openNights = listOf("2027-05-08", "2027-05-09"))
+        val closed = open.closeRange("2027-05-09", "2027-05-08", today)
+        assertEquals(emptyList<String>(), closed.openNights)
     }
 
     @Test
-    fun hasAvailableNight_falseWhenNoOpenNightsInRange() {
-        assertFalse(calendar.hasAvailableNight("2027-05-05", "2027-05-10"))
+    fun closeRange_keepsBookedAndPastNightsOpen() {
+        val withPast = calendar.copy(openNights = listOf("2027-04-27") + calendar.openNights)
+        val closed = withPast.closeRange("2027-04-26", "2027-05-03", today)
+        // April 27 is past and the Saturday is booked; only the Sunday closes
+        assertEquals(listOf("2027-04-27", "2027-05-01"), closed.openNights)
+        assertEquals(listOf("2027-05-01"), closed.heldNights)
     }
 
     @Test
-    fun hasAvailableNight_worksWhenDatesAreReversed() {
-        assertTrue(calendar.hasAvailableNight("2027-05-03", "2027-05-01"))
+    fun freeNights_givesTheOpenNightsNobodyReserved() {
+        // the Saturday is booked, so only the Sunday is free
+        assertEquals(listOf("2027-05-02"), calendar.freeNights("2027-04-30", "2027-05-03"))
+        assertEquals(listOf("2027-05-02"), calendar.freeNights("2027-05-03", "2027-04-30"))
     }
 
     @Test
-    fun hasAvailableNight_falseWhenDatesAreBlank() {
-        assertFalse(calendar.hasAvailableNight("", "2027-05-02"))
-        assertFalse(calendar.hasAvailableNight("2027-05-01", ""))
+    fun freeNights_isEmptyWhenNoNightInTheRangeIsFree() {
+        assertEquals(emptyList<String>(), calendar.freeNights("2027-05-08", "2027-05-09"))
+        assertEquals(emptyList<String>(), calendar.freeNights("2027-05-01", "2027-05-01"))
     }
 }

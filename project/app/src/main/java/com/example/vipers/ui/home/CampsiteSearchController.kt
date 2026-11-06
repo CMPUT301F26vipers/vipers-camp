@@ -104,7 +104,11 @@ class CampsiteSearchController(
                         true
                     } else {
                         val calendar = availabilityByCampsiteId[campsite.id]
-                        calendar?.hasAvailableNight(effectiveStart!!, effectiveEnd!!) == true
+                        try {
+                            calendar?.freeNights(effectiveStart!!, effectiveEnd!!).orEmpty().isNotEmpty()
+                        } catch (_: Exception) {
+                            false
+                        }
                     }
                 }
                 .sortedBy { it.name.lowercase() }
