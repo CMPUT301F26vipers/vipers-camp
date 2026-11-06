@@ -366,11 +366,14 @@ class ReserveControllerTest {
     }
 
     @Test
-    fun reserveNights_conflict_failsAndRefreshesCalendarWhenAnotherWinnerBooksSameNights() = runBlocking {
+    fun reserveNights_conflict_refreshesCalendarWhenAnotherWinnerBooksSameNights() = runBlocking {
         val campsites = FakeCampsiteRepository(listOf(hinton, jasper))
         campsites.saveAvailability(hintonCalendar)
         val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
-        val reservations = FakeReservationRepository(campsiteRepository = campsites, lotteryRepository = lotteries)
+        val reservations = FakeReservationRepository(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+        )
         val controller = ReserveController(
             campsiteRepository = campsites,
             lotteryRepository = lotteries,
@@ -391,7 +394,9 @@ class ReserveControllerTest {
         val result = controller.reserveNights(duringBooking)
         assertEquals(ReserveResult.Conflict, result)
         assertNotNull(controller.reserveError)
-        assertTrue(controller.reserveError!!.contains("These nights were just booked by another winner"))
+        assertTrue(
+            controller.reserveError!!.contains("These nights were just booked by another winner"),
+        )
 
         // Calendar refreshed: May 22 is no longer free, pick was cleared
         assertFalse("2027-05-22" in controller.freeNights)
@@ -403,6 +408,30 @@ class ReserveControllerTest {
         val controller = loaded(status = EntryStatus.LOST)
         val result = controller.reserveNights(duringBooking)
         assertEquals(ReserveResult.NotEligible, result)
-        assertEquals("Only winners with an open booking period can reserve.", controller.reserveError)
+        assertEquals(
+            "Only winners with an open booking period can reserve.",
+            controller.reserveError,
+        )
+    }
+
+    @Test
+    fun dismissConfirmation_clearsConfirmedReservation() = runBlocking {
+        val controller = loaded()
+        controller.onNightTap("2027-05-22")
+        controller.reserveNights(duringBooking)
+        assertNotNull(controller.confirmedReservation)
+
+        controller.dismissConfirmation()
+        assertNull(controller.confirmedReservation)
+    }
+
+    @Test
+    fun clearReserveError_clearsError() = runBlocking {
+        val controller = loaded()
+        controller.reserveNights(duringBooking)
+        assertEquals("Please pick at least one night.", controller.reserveError)
+
+        controller.clearReserveError()
+        assertNull(controller.reserveError)
     }
 }

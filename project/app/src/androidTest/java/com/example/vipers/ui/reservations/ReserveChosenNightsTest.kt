@@ -12,9 +12,11 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.example.vipers.data.fake.FakeCampsiteRepository
@@ -84,24 +86,32 @@ class ReserveChosenNightsTest {
         theLottery: Lottery = lottery,
         theCalendar: AvailabilityCalendar = calendar,
         status: EntryStatus = EntryStatus.WON,
-        reservations: FakeReservationRepository = FakeReservationRepository(),
-    ) {
+        reservations: FakeReservationRepository? = null,
+    ): ReserveController {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         runBlocking { campsites.saveAvailability(theCalendar) }
+        val lotteries = FakeLotteryRepository(listOf(theLottery), listOf(samsEntry(status)))
+        val resRepo = reservations ?: FakeReservationRepository(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+        )
         val controller = ReserveController(
             campsites,
-            FakeLotteryRepository(listOf(theLottery), listOf(samsEntry(status))),
+            lotteries,
             userId = "test-device",
             lotteryId = "lot-summer",
             campsiteId = "hinton",
-            reservationRepository = reservations,
+            reservationRepository = resRepo,
         )
         composeRule.setContent {
             VipersTheme {
                 ReserveScreen("lot-summer", "hinton", onBack = {}, controller = controller)
             }
         }
+        return controller
     }
+
+    private fun night(index: Int) = composeRule.onNodeWithTag("night_${nights[index]}")
 
     @Test
     fun groupSizeSelector_displaysInitialCountAndMaxOccupancy() {
@@ -170,5 +180,34 @@ class ReserveChosenNightsTest {
         composeRule.onNodeWithTag("reserve_error_message").performScrollTo()
             .assertIsDisplayed()
             .assertTextEquals("Please pick at least one night.")
+    }
+
+    @Test
+    fun successfulReservation_showsConfirmationDialogWithAllDetails() {
+        openReserve()
+
+        // Pick 2 free nights: night 0 and night 1
+        night(0).performClick()
+        night(1).performClick()
+
+        // Set group size to 2
+        composeRule.onNodeWithTag("reserve_guests_increase").performScrollTo().performClick()
+
+        // Tap Reserve
+        composeRule.onNodeWithTag("button_reserve").performScrollTo().performClick()
+
+        // Confirmation dialog is shown (US 01.05.01)
+        composeRule.onNodeWithTag("dialog_reservation_confirmed").assertIsDisplayed()
+        composeRule.onNodeWithText("Reservation Confirmed!").assertIsDisplayed()
+        composeRule.onNodeWithTag("confirm_campsite_name")
+            .assertTextEquals("Hinton Ridge Campground")
+        composeRule.onNodeWithTag("confirm_guests").assertTextEquals("2 guests")
+        composeRule.onNodeWithTag("confirm_total_price").assertTextEquals("$100")
+        composeRule.onNodeWithTag("confirm_reservation_number")
+            .assertTextContains("R-", substring = true)
+
+        // Dismiss confirmation
+        composeRule.onNodeWithTag("button_confirm_done").performClick()
+        composeRule.onNodeWithTag("dialog_reservation_confirmed").assertDoesNotExist()
     }
 }
