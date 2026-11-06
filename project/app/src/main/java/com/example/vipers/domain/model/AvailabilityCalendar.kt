@@ -55,16 +55,39 @@ data class AvailabilityCalendar(
      * whole weekend at once. Nights that can't change (past or booked) are skipped.
      */
     fun openRange(first: String, last: String, today: LocalDate): AvailabilityCalendar {
-        var start = LocalDate.parse(first)
-        var end = LocalDate.parse(last)
-        if (end.isBefore(start)) start = end.also { end = start }
-        val added = mutableListOf<String>()
-        var day = start
+        val added = nightsBetween(first, last).filter { canChange(it, today) }
+        return copy(openNights = (openNights + added).distinct().sorted())
+    }
+
+    /**
+     * Closes every night from [first] to [last], counting both ends and in either order. Nights
+     * that can't change (past or booked) stay as they are.
+     */
+    fun closeRange(first: String, last: String, today: LocalDate): AvailabilityCalendar {
+        val removed = nightsBetween(first, last).filter { canChange(it, today) }
+        return copy(openNights = openNights - removed.toSet())
+    }
+
+    /**
+     * The nights from [first] to [last] (both ends, in either order) that are open and not booked,
+     * in date order. The date filter (01.01.02) and the Reserve screen use this.
+     */
+    fun freeNights(first: String, last: String): List<String> {
+        return nightsBetween(first, last).filter { isFree(it) }
+    }
+
+    // Every night from first to last, counting both ends, in date order. The two ends can come in
+    // either order, e.g. when the owner taps the last night first.
+    private fun nightsBetween(first: String, last: String): List<String> {
+        val a = LocalDate.parse(first)
+        val b = LocalDate.parse(last)
+        val end = if (a.isAfter(b)) a else b
+        var day = if (a.isAfter(b)) b else a
+        val nights = mutableListOf<String>()
         while (!day.isAfter(end)) {
-            val night = day.toString()
-            if (canChange(night, today)) added.add(night)
+            nights.add(day.toString())
             day = day.plusDays(1)
         }
-        return copy(openNights = (openNights + added).distinct().sorted())
+        return nights
     }
 }
