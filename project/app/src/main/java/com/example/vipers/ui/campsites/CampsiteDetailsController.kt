@@ -55,6 +55,7 @@ class CampsiteDetailsController(
      */
     val spotsLeft: Int?
         get() {
+            if (activeLottery?.drawnAt != null) return null
             val capacity = activeLottery?.waitlistCapacity ?: return null
             val count = activeLottery?.waitingUserIds?.size ?: 0
             return maxOf(0, capacity - count)
@@ -68,6 +69,7 @@ class CampsiteDetailsController(
     /** True if the active lottery has a waitlist limit and it has reached or exceeded it. */
     val isFull: Boolean
         get() {
+            if (activeLottery?.drawnAt != null) return false
             val capacity = activeLottery?.waitlistCapacity ?: return false
             val count = activeLottery?.waitingUserIds?.size ?: 0
             return count >= capacity
@@ -79,7 +81,7 @@ class CampsiteDetailsController(
 
     /** True if the entrant is eligible to join the active lottery. */
     val canJoin: Boolean
-        get() = activeLottery != null && !isOwner && !isJoined && !isFull
+        get() = activeLottery != null && activeLottery?.drawnAt == null && !isOwner && !isJoined && !isFull
 
     /** True while the campsite is loading. */
     var loading by mutableStateOf(true)
@@ -97,8 +99,8 @@ class CampsiteDetailsController(
     /**
      * Gets the campsite and its lottery that is open at time [now] (milliseconds since 1970), and
      * sets [loading] and [error]. If several are open, the one whose registration closes first is
-     * shown. [loadData] runs this in the background; unit tests call it directly and pass their
-     * own [now].
+     * shown. If none are open, finds the entrant's completed draw result if available.
+     * [loadData] runs this in the background; unit tests call it directly and pass their own [now].
      */
     suspend fun fetchData(now: Long = System.currentTimeMillis()) {
         loading = true
@@ -106,20 +108,42 @@ class CampsiteDetailsController(
         try {
             // a removed campsite counts as not found, like in search
             val found = campsiteRepository.getCampsite(campsiteId)?.takeIf { !it.removed }
-            val active = if (found == null) {
-                null
+            val candidateLotteries = if (found == null) {
+                emptyList()
             } else {
-                lotteryRepository.getLotteriesForCampsite(campsiteId)
-                    .filter { it.canEntrantJoin(now) }
-                    .minByOrNull { it.registrationEnd }
+                lotteryRepository.getLotteriesForCampsite(campsiteId).filter { !it.removed }
             }
-            activeLottery = active
+            val active = candidateLotteries
+                .filter { it.canEntrantJoin(now) }
+                .minByOrNull { it.registrationEnd }
+
+            if (active != null) {
+                activeLottery = active
+                userEntry = if (currentUserId.isNotBlank()) {
+                    lotteryRepository.getEntry(active.id, currentUserId)
+                } else {
+                    null
+                }
+            } else {
+                val drawnWithEntry = if (currentUserId.isNotBlank()) {
+                    candidateLotteries
+                        .filter { it.drawnAt != null }
+                        .mapNotNull { lottery ->
+                            val entry = lotteryRepository.getEntry(lottery.id, currentUserId)
+                            if (entry != null && (entry.status == EntryStatus.WON || entry.status == EntryStatus.LOST)) {
+                                lottery to entry
+                            } else {
+                                null
+                            }
+                        }
+                        .maxByOrNull { it.first.drawnAt ?: 0L }
+                } else {
+                    null
+                }
+                activeLottery = drawnWithEntry?.first
+                userEntry = drawnWithEntry?.second
+            }
             campsite = found
-            userEntry = if (active != null && currentUserId.isNotBlank()) {
-                lotteryRepository.getEntry(active.id, currentUserId)
-            } else {
-                null
-            }
         } catch (e: CancellationException) {
             // the load was stopped on purpose (the controller is gone), so it didn't fail
             throw e

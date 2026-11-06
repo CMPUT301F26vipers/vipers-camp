@@ -271,7 +271,7 @@ class ViewCampsiteDetailsTest {
             entries = listOf(entry),
         )
         composeRule.onNodeWithTag("joined_lottery_button").assertIsDisplayed()
-        assertShown("On Waiting List")
+        assertShown("On Waiting List · View")
         composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
     }
 
@@ -357,6 +357,54 @@ class ViewCampsiteDetailsTest {
         // 8. Campsite Details has refreshed on resume: spots left is now 4, shows "On Waiting List"
         assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 4 spots left")
         composeRule.onNodeWithTag("joined_lottery_button").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun drawnLotteryWithWonEntryShowsYouWonAndReserveButton() {
+        val drawn = openLottery.copy(
+            id = "drawn-win",
+            drawnAt = now - day,
+            bookingStart = now - day,
+            bookingEnd = now + 7 * day,
+        )
+        val entry = LotteryEntry(
+            id = "drawn-win_test-device",
+            lotteryId = "drawn-win",
+            userId = "test-device",
+            status = EntryStatus.WON,
+        )
+        openScreen(
+            lotteries = listOf(drawn),
+            entries = listOf(entry),
+        )
+        assertShown("You won! Reserve by ${formatDate(drawn.bookingEnd)}")
+        composeRule.onNodeWithTag("reserve_button").performScrollTo().assertIsDisplayed()
+        assertShown("Reserve")
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun drawnLotteryWithLostEntryShowsNotSelectedThisTime() {
+        val drawn = openLottery.copy(
+            id = "drawn-lost",
+            drawnAt = now - day,
+            bookingStart = now - day,
+            bookingEnd = now + 7 * day,
+        )
+        val entry = LotteryEntry(
+            id = "drawn-lost_test-device",
+            lotteryId = "drawn-lost",
+            userId = "test-device",
+            status = EntryStatus.LOST,
+        )
+        openScreen(
+            lotteries = listOf(drawn),
+            entries = listOf(entry),
+        )
+        assertShown("Not selected this time")
+        assertShown("The draw ran on ${formatDate(drawn.drawnAt!!)}")
+        composeRule.onNodeWithTag("reserve_button").assertDoesNotExist()
         composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
     }
 }

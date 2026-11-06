@@ -291,4 +291,54 @@ class CampsiteDetailsControllerTest {
         assertFalse(controller.canJoin)
         assertNull(controller.activeLottery)
     }
+
+    @Test
+    fun fetchData_whenEntrantHasWonEntryAfterDraw_selectsDrawnLotteryAndWonEntry() {
+        val drawn = lottery("drawn", "2027-04-01T09:00", "2027-04-10T15:00").copy(
+            drawnAt = at("2027-04-11T10:00"),
+            bookingStart = at("2027-04-12T00:00"),
+            bookingEnd = at("2027-05-31T23:59"),
+        )
+        val entry = LotteryEntry(
+            id = "drawn_winner-1",
+            lotteryId = "drawn",
+            userId = "winner-1",
+            status = EntryStatus.WON,
+        )
+        val controller = loadedController(
+            lotteries = listOf(drawn),
+            currentUserId = "winner-1",
+            entries = listOf(entry),
+        )
+        assertEquals("drawn", controller.activeLottery?.id)
+        assertEquals(entry, controller.userEntry)
+        assertEquals(EntryStatus.WON, controller.userEntry?.status)
+        assertFalse(controller.canJoin)
+        assertFalse(controller.isJoined)
+    }
+
+    @Test
+    fun fetchData_whenEntrantHasLostEntryAfterDraw_selectsDrawnLotteryAndLostEntry() {
+        val drawn = lottery("drawn", "2027-04-01T09:00", "2027-04-10T15:00").copy(
+            drawnAt = at("2027-04-11T10:00"),
+            bookingStart = at("2027-04-12T00:00"),
+            bookingEnd = at("2027-05-31T23:59"),
+        )
+        val entry = LotteryEntry(
+            id = "drawn_loser-1",
+            lotteryId = "drawn",
+            userId = "loser-1",
+            status = EntryStatus.LOST,
+        )
+        val controller = loadedController(
+            lotteries = listOf(drawn),
+            currentUserId = "loser-1",
+            entries = listOf(entry),
+        )
+        assertEquals("drawn", controller.activeLottery?.id)
+        assertEquals(entry, controller.userEntry)
+        assertEquals(EntryStatus.LOST, controller.userEntry?.status)
+        assertFalse(controller.canJoin)
+        assertFalse(controller.isJoined)
+    }
 }
