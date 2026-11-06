@@ -2,10 +2,11 @@
  * CampsiteController.kt
  * The controller (a ViewModel) behind the Add Campsite form (US 02.01.01, 02.01.02a). It holds
  * what the owner has typed, checks it, and saves the campsite with the owner's device ID. It can
- * also fill the form from a saved campsite and save its owner's changes (US 02.01.03).
- * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
- * cancellation policy (T-11) are added to the form by those stories. Until then an edit keeps their
- * saved values, and those stories need to add their fields to withFormValues.
+ * also fill the form from a saved campsite and save its owner's changes (US 02.01.03), including
+ * its optional rules and cancellation policy (T-11).
+ * Known issues: photo (02.01.02b), Find location (02.01.02c) and price (T-09) are added to the form
+ * by those stories. Until then an edit keeps their saved values, and those stories need to add
+ * their fields to withFormValues.
  */
 package com.example.vipers.ui.campsites
 
@@ -71,6 +72,14 @@ class CampsiteController(
     var tags by mutableStateOf(emptyList<String>())
         private set
 
+    /** Campsite rules as typed; optional, so empty means none (T-11). */
+    var rules by mutableStateOf("")
+        private set
+
+    /** Cancellation policy as typed; optional, so empty means none (T-11). */
+    var cancellationPolicy by mutableStateOf("")
+        private set
+
     /** Error message for each field that's wrong, keyed by field name ("name", "region"...). */
     var errors by mutableStateOf(emptyMap<String, String>())
         private set
@@ -94,6 +103,12 @@ class CampsiteController(
     fun onMaxGuestsChange(text: String) { maxGuests = text; clearError("maxOccupancy") }
     fun onDescriptionChange(text: String) { description = text }
     fun onTagInputChange(text: String) { tagInput = text }
+
+    /** Updates the rules as the owner types (T-11). */
+    fun onRulesChange(text: String) { rules = text }
+
+    /** Updates the cancellation policy as the owner types (T-11). */
+    fun onCancellationPolicyChange(text: String) { cancellationPolicy = text }
 
     /** Adds the typed tag, unless it's empty or already added (ignoring case). */
     fun addTag() {
@@ -120,7 +135,8 @@ class CampsiteController(
                 return loaded.withFormValues(toCampsite()) != loaded
             }
             return name.isNotBlank() || address.isNotBlank() || region != null ||
-                maxGuests.isNotBlank() || description.isNotBlank() || tags.isNotEmpty()
+                maxGuests.isNotBlank() || description.isNotBlank() || tags.isNotEmpty() ||
+                rules.isNotBlank() || cancellationPolicy.isNotBlank()
         }
 
     /**
@@ -221,6 +237,8 @@ class CampsiteController(
         maxGuests = campsite.maxOccupancy.toString()
         description = campsite.description
         tags = campsite.tags
+        rules = campsite.rules
+        cancellationPolicy = campsite.cancellationPolicy
     }
 
     /** The campsite the form describes right now. */
@@ -232,6 +250,8 @@ class CampsiteController(
         description = description.trim(),
         maxOccupancy = maxGuests.trim().toIntOrNull() ?: 0,
         tags = tags,
+        rules = rules.trim(),
+        cancellationPolicy = cancellationPolicy.trim(),
     )
 
     // This campsite with the fields the form has replaced by those in form.
@@ -242,6 +262,8 @@ class CampsiteController(
         description = form.description,
         maxOccupancy = form.maxOccupancy,
         tags = form.tags,
+        rules = form.rules,
+        cancellationPolicy = form.cancellationPolicy,
     )
 
     private fun clearError(field: String) {
