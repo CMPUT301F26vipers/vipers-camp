@@ -36,6 +36,7 @@ import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
 import com.example.vipers.ui.reservations.OwnerReservationDetailsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
+import com.example.vipers.ui.reservations.ReservationDetailsScreen
 import com.example.vipers.ui.reservations.ReserveScreen
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
@@ -120,6 +121,16 @@ fun AppNavigation(
                 )
             }
             composable(Routes.RESERVATIONS) { MyReservationsScreen() }
+            composable(
+                route = Routes.RESERVATION_DETAILS,
+                arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val reservationId = backStackEntry.arguments?.getString("reservationId") ?: ""
+                ReservationDetailsScreen(
+                    reservationId = reservationId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(Routes.CAMPSITES) {
                 MyCampsitesScreen(
                     onAddCampsite = { navController.navigate(Routes.ADD_CAMPSITE) },
@@ -244,8 +255,14 @@ fun AppNavigation(
                     onOpenCampsite = { campsiteId ->
                         navController.navigate(Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId))
                     },
-                    // no entrant reservation details route yet
-                    onOpenReservation = {},
+                    // the entrant's reservation details (US 01.05.01)
+                    onOpenReservation = { reservationId ->
+                        val route = Routes.RESERVATION_DETAILS.replace(
+                            "{reservationId}",
+                            reservationId,
+                        )
+                        navController.navigate(route)
+                    },
                     // no message thread screen yet
                     onOpenThread = {},
                 )
