@@ -156,9 +156,11 @@ private fun LotteryBox(
     isFull: Boolean = false,
     onJoinClick: (String) -> Unit = {},
 ) {
+    val now = System.currentTimeMillis()
     val isLost = userEntry?.status == EntryStatus.LOST
     val isWon = userEntry?.status == EntryStatus.WON && lottery?.drawnAt != null
-    val boxColor = if (lottery != null && !isLost) GreenFill else Divider
+    val isExpired = isWon && userEntry?.isExpired(lottery!!, now) == true
+    val boxColor = if (lottery != null && !isLost && !isExpired) GreenFill else Divider
 
     Column(
         modifier = Modifier
@@ -173,30 +175,45 @@ private fun LotteryBox(
                 Text("No active lottery", color = TextMuted, fontWeight = FontWeight.SemiBold)
             }
             isWon -> {
-                Text(
-                    "You won! Reserve by ${formatDate(lottery.bookingEnd)}",
-                    color = Primary,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                lottery.nightsDescription?.let { nights ->
+                if (isExpired) {
                     Text(
-                        "Available: $nights",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Primary,
+                        "This offer has expired",
+                        color = TextMuted,
+                        fontWeight = FontWeight.SemiBold,
                     )
-                }
-                Button(
-                    onClick = { /* placeholder until T-03 / US 01.04.01 */ },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .testTag("reserve_button"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Text("Reserve")
+                    lottery.nightsDescription?.let { nights ->
+                        Text(
+                            "Available: $nights",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                } else {
+                    Text(
+                        "You won! Reserve by ${formatDate(lottery.bookingEnd)}",
+                        color = Primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    lottery.nightsDescription?.let { nights ->
+                        Text(
+                            "Available: $nights",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Primary,
+                        )
+                    }
+                    Button(
+                        onClick = { /* placeholder until T-03 / US 01.04.01 */ },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .testTag("reserve_button"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Text("Reserve")
+                    }
                 }
             }
             isLost -> {

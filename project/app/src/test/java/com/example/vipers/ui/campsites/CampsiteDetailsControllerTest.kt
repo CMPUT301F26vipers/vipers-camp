@@ -341,4 +341,53 @@ class CampsiteDetailsControllerTest {
         assertFalse(controller.canJoin)
         assertFalse(controller.isJoined)
     }
+
+    @Test
+    fun fetchData_whenEntrantHasActiveWinningOffer_prioritizesWinOverNewOpenLottery() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00")
+        val drawn = lottery("drawn", "2027-04-01T09:00", "2027-04-10T15:00").copy(
+            drawnAt = at("2027-04-11T10:00"),
+            bookingStart = at("2027-04-12T00:00"),
+            bookingEnd = at("2027-05-31T23:59"),
+        )
+        val winEntry = LotteryEntry(
+            id = "drawn_winner-1",
+            lotteryId = "drawn",
+            userId = "winner-1",
+            status = EntryStatus.WON,
+        )
+        val controller = loadedController(
+            lotteries = listOf(open, drawn),
+            currentUserId = "winner-1",
+            entries = listOf(winEntry),
+        )
+        assertEquals("drawn", controller.activeLottery?.id)
+        assertEquals(winEntry, controller.userEntry)
+        assertEquals(EntryStatus.WON, controller.userEntry?.status)
+        assertFalse(controller.canJoin)
+    }
+
+    @Test
+    fun fetchData_whenEntrantHasExpiredWinningOffer_doesNotPrioritizeOverNewOpenLottery() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00")
+        val expiredDrawn = lottery("expired-drawn", "2027-03-01T09:00", "2027-03-10T15:00").copy(
+            drawnAt = at("2027-03-11T10:00"),
+            bookingStart = at("2027-03-12T00:00"),
+            bookingEnd = at("2027-04-01T23:59"), // now is April 28, 2027
+        )
+        val expiredEntry = LotteryEntry(
+            id = "expired-drawn_winner-1",
+            lotteryId = "expired-drawn",
+            userId = "winner-1",
+            status = EntryStatus.WON,
+        )
+        val controller = loadedController(
+            lotteries = listOf(open, expiredDrawn),
+            currentUserId = "winner-1",
+            entries = listOf(expiredEntry),
+        )
+        assertEquals("open", controller.activeLottery?.id)
+        assertNull(controller.userEntry)
+        assertTrue(controller.canJoin)
+    }
 }

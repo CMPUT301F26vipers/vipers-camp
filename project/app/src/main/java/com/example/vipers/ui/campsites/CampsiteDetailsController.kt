@@ -113,35 +113,58 @@ class CampsiteDetailsController(
             } else {
                 lotteryRepository.getLotteriesForCampsite(campsiteId).filter { !it.removed }
             }
-            val active = candidateLotteries
-                .filter { it.canEntrantJoin(now) }
-                .minByOrNull { it.registrationEnd }
 
-            if (active != null) {
-                activeLottery = active
-                userEntry = if (currentUserId.isNotBlank()) {
-                    lotteryRepository.getEntry(active.id, currentUserId)
-                } else {
-                    null
-                }
-            } else {
-                val drawnWithEntry = if (currentUserId.isNotBlank()) {
-                    candidateLotteries
-                        .filter { it.drawnAt != null }
-                        .mapNotNull { lottery ->
-                            val entry = lotteryRepository.getEntry(lottery.id, currentUserId)
-                            if (entry != null && (entry.status == EntryStatus.WON || entry.status == EntryStatus.LOST)) {
-                                lottery to entry
-                            } else {
-                                null
-                            }
+            // Prioritize an existing valid winning entry whose booking period is still active
+            val activeWin = if (currentUserId.isNotBlank()) {
+                candidateLotteries
+                    .filter { it.drawnAt != null }
+                    .mapNotNull { lottery ->
+                        val entry = lotteryRepository.getEntry(lottery.id, currentUserId)
+                        if (entry != null && entry.status == EntryStatus.WON && (entry.canReserve(lottery, now) || !entry.isExpired(lottery, now))) {
+                            lottery to entry
+                        } else {
+                            null
                         }
-                        .maxByOrNull { it.first.drawnAt ?: 0L }
+                    }
+                    .maxByOrNull { it.first.drawnAt ?: 0L }
+            } else {
+                null
+            }
+
+            if (activeWin != null) {
+                activeLottery = activeWin.first
+                userEntry = activeWin.second
+            } else {
+                val active = candidateLotteries
+                    .filter { it.canEntrantJoin(now) }
+                    .minByOrNull { it.registrationEnd }
+
+                if (active != null) {
+                    activeLottery = active
+                    userEntry = if (currentUserId.isNotBlank()) {
+                        lotteryRepository.getEntry(active.id, currentUserId)
+                    } else {
+                        null
+                    }
                 } else {
-                    null
+                    val drawnWithEntry = if (currentUserId.isNotBlank()) {
+                        candidateLotteries
+                            .filter { it.drawnAt != null }
+                            .mapNotNull { lottery ->
+                                val entry = lotteryRepository.getEntry(lottery.id, currentUserId)
+                                if (entry != null && (entry.status == EntryStatus.WON || entry.status == EntryStatus.LOST)) {
+                                    lottery to entry
+                                } else {
+                                    null
+                                }
+                            }
+                            .maxByOrNull { it.first.drawnAt ?: 0L }
+                    } else {
+                        null
+                    }
+                    activeLottery = drawnWithEntry?.first
+                    userEntry = drawnWithEntry?.second
                 }
-                activeLottery = drawnWithEntry?.first
-                userEntry = drawnWithEntry?.second
             }
             campsite = found
         } catch (e: CancellationException) {

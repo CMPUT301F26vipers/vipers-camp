@@ -407,4 +407,56 @@ class ViewCampsiteDetailsTest {
         composeRule.onNodeWithTag("reserve_button").assertDoesNotExist()
         composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
     }
+
+    @Test
+    fun drawnLotteryWithExpiredWonEntryShowsThisOfferHasExpired() {
+        val drawn = openLottery.copy(
+            id = "drawn-expired",
+            drawnAt = now - 10 * day,
+            bookingStart = now - 8 * day,
+            bookingEnd = now - 2 * day,
+        )
+        val entry = LotteryEntry(
+            id = "drawn-expired_test-device",
+            lotteryId = "drawn-expired",
+            userId = "test-device",
+            status = EntryStatus.WON,
+        )
+        openScreen(
+            lotteries = listOf(drawn),
+            entries = listOf(entry),
+        )
+        assertShown("This offer has expired")
+        composeRule.onNodeWithText("You won! Reserve by", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("reserve_button").assertDoesNotExist()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun activeWinningOfferTakesPriorityOverNewOpenLottery() {
+        val activeWonLottery = openLottery.copy(
+            id = "drawn-won-active",
+            drawnAt = now - day,
+            bookingStart = now - day,
+            bookingEnd = now + 7 * day,
+        )
+        val newOpenLottery = openLottery.copy(
+            id = "new-open",
+            registrationStart = now - day,
+            registrationEnd = now + 5 * day,
+        )
+        val winEntry = LotteryEntry(
+            id = "drawn-won-active_test-device",
+            lotteryId = "drawn-won-active",
+            userId = "test-device",
+            status = EntryStatus.WON,
+        )
+        openScreen(
+            lotteries = listOf(newOpenLottery, activeWonLottery),
+            entries = listOf(winEntry),
+        )
+        assertShown("You won! Reserve by ${formatDate(activeWonLottery.bookingEnd)}")
+        composeRule.onNodeWithTag("reserve_button").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
 }
