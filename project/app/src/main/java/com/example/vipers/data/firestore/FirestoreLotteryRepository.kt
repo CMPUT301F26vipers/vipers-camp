@@ -155,6 +155,20 @@ class FirestoreLotteryRepository(
         }.await()
     }
 
+    override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean {
+        val entryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+
+        return db.runTransaction { tx ->
+            val snap = tx.get(entryDoc)
+            if (!snap.exists() || snap.getString("status") != EntryStatus.WON.name) {
+                return@runTransaction false
+            }
+            // only the status, so groupSize and joinedAt keep their saved values
+            tx.update(entryDoc, "status", EntryStatus.DECLINED.name)
+            true
+        }.await()
+    }
+
     override suspend fun seedEntry(entry: LotteryEntry) {
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
         val entryRef = entries.document(id)

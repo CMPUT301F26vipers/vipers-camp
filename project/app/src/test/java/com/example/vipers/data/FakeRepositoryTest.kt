@@ -268,6 +268,55 @@ class FakeRepositoryTest {
         assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
     }
 
+    // US 01.04.03: declining a win
+
+    /** A fake holding Sam's entry in lottery-1 with [status]. */
+    private fun repoWithSamsEntry(status: EntryStatus) = FakeLotteryRepository(
+        initialLotteries = listOf(Lottery(id = "lottery-1")),
+        initialEntries = listOf(
+            LotteryEntry(
+                id = LotteryEntry.idFor("lottery-1", "sam"), lotteryId = "lottery-1",
+                userId = "sam", groupSize = 4, joinedAt = 100L, status = status,
+            ),
+        ),
+    )
+
+    @Test
+    fun declineTransaction_wonEntry_setsDeclinedAndReturnsTrue() = runBlocking {
+        val repo = repoWithSamsEntry(EntryStatus.WON)
+
+        assertTrue(repo.declineTransaction("lottery-1", "sam"))
+        val entry = repo.getEntry("lottery-1", "sam")
+        assertEquals(EntryStatus.DECLINED, entry?.status)
+        assertEquals(4, entry?.groupSize) // only the status changes
+        assertEquals(100L, entry?.joinedAt)
+    }
+
+    @Test
+    fun declineTransaction_calledTwice_secondReturnsFalse() = runBlocking {
+        val repo = repoWithSamsEntry(EntryStatus.WON)
+
+        assertTrue(repo.declineTransaction("lottery-1", "sam"))
+        assertFalse(repo.declineTransaction("lottery-1", "sam"))
+        assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "sam")?.status)
+    }
+
+    @Test
+    fun declineTransaction_reservedEntry_staysReservedAndReturnsFalse() = runBlocking {
+        val repo = repoWithSamsEntry(EntryStatus.RESERVED)
+
+        assertFalse(repo.declineTransaction("lottery-1", "sam"))
+        assertEquals(EntryStatus.RESERVED, repo.getEntry("lottery-1", "sam")?.status)
+    }
+
+    @Test
+    fun declineTransaction_noEntry_returnsFalseAndAddsNothing() = runBlocking {
+        val repo = repoWithSamsEntry(EntryStatus.WON)
+
+        assertFalse(repo.declineTransaction("lottery-1", "alex"))
+        assertNull(repo.getEntry("lottery-1", "alex"))
+    }
+
     /** Keeps every inbox it is sent, oldest call first (T-13). */
     private class RecordingInboxListener : InboxListener {
         val calls = mutableListOf<List<Notification>>()

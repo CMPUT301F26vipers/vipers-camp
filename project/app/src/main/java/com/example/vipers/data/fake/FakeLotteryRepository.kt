@@ -120,6 +120,14 @@ class FakeLotteryRepository(
         entries[id] = entry.copy(id = id)
     }
 
+    override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean = mutex.withLock {
+        val id = LotteryEntry.idFor(lotteryId, userId)
+        val entry = entries[id]
+        if (entry == null || entry.status != EntryStatus.WON) return@withLock false
+        entries[id] = entry.copy(status = EntryStatus.DECLINED)
+        true
+    }
+
     override suspend fun seedEntry(entry: LotteryEntry): Unit = mutex.withLock {
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
         entries[id] = entry.copy(id = id)
