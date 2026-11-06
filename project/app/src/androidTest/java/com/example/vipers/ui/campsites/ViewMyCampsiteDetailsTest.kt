@@ -190,7 +190,7 @@ class ViewMyCampsiteDetailsTest {
 
     @Test
     fun priceIsLeftOutWhileItIsZero() {
-        // campsites added in the app have no price until T-09 adds it to the form
+        // campsites added before the form asked for a price (T-09) still have 0
         openScreen(FakeCampsiteRepository(listOf(hinton.copy(pricePerNightCents = 0))))
         assertShown("Hinton, AB · Up to 8 guests")
         composeRule.onNodeWithText("$0", substring = true).assertDoesNotExist()
