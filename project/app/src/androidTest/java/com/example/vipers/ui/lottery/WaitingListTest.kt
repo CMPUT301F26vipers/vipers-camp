@@ -85,7 +85,7 @@ class WaitingListTest {
         composeRule.onNodeWithText(text).assertIsDisplayed()
 
     @Test
-    fun showsEachEntrantsNameGroupSizeAndJoinDate() {
+    fun waitingList_showsEachEntrantsNameGroupSizeAndJoinDate() {
         openWaitingList(FakeLotteryRepository(listOf(openLottery), listOf(sam, aisha)))
 
         assertShown("Sam Patel")
@@ -95,7 +95,7 @@ class WaitingListTest {
     }
 
     @Test
-    fun showsTheTotalAgainstTheLimit() {
+    fun waitingList_showsTheTotalAgainstTheLimit() {
         openWaitingList(FakeLotteryRepository(listOf(openLottery), listOf(sam, aisha)))
 
         composeRule.onNodeWithTag("waiting_list_count").assertIsDisplayed()
@@ -103,14 +103,14 @@ class WaitingListTest {
     }
 
     @Test
-    fun showsTheTotalOnlyWhenThereIsNoLimit() {
+    fun waitingList_showsOnlyTheTotalWhenThereIsNoLimit() {
         openWaitingList(FakeLotteryRepository(listOf(openLottery.copy(waitlistCapacity = null)), listOf(sam)))
 
         assertShown("1 joined")
     }
 
     @Test
-    fun afterTheDrawShowsEachEntrantsResult() {
+    fun waitingList_afterTheDrawShowsEachEntrantsResult() {
         val drawn = openLottery.copy(drawnAt = now - day / 2)
         openWaitingList(
             FakeLotteryRepository(
@@ -130,13 +130,13 @@ class WaitingListTest {
     }
 
     @Test
-    fun newEntrantAppearsWithoutReopeningTheScreen() {
+    fun waitingList_showsANewEntrantWithoutReopening() {
         val repo = FakeLotteryRepository(listOf(openLottery), listOf(sam))
         openWaitingList(repo)
         assertShown("1 of 10 joined")
 
         // Liam joins from another phone while the owner is watching
-        runBlocking { repo.saveEntry(entry("liam", now, groupSize = 3)) }
+        runBlocking { repo.joinWaitingList(entry("liam", now, groupSize = 3)) }
 
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Liam Chen").fetchSemanticsNodes().isNotEmpty()
@@ -146,12 +146,12 @@ class WaitingListTest {
     }
 
     @Test
-    fun entrantWhoLeavesDisappearsFromTheList() {
+    fun waitingList_dropsAnEntrantWhoLeaves() {
         val repo = FakeLotteryRepository(listOf(openLottery), listOf(sam, aisha))
         openWaitingList(repo)
         assertShown("Aisha Khan")
 
-        runBlocking { repo.saveEntry(aisha.copy(status = EntryStatus.REMOVED)) }
+        runBlocking { repo.leaveWaitingList("hinton-may", "aisha") }
 
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Aisha Khan").fetchSemanticsNodes().isEmpty()
@@ -160,7 +160,7 @@ class WaitingListTest {
     }
 
     @Test
-    fun emptyWaitingListSaysNoOneHasJoined() {
+    fun waitingList_whenEmpty_saysNoOneHasJoined() {
         openWaitingList(FakeLotteryRepository(listOf(openLottery)))
 
         assertShown("0 of 10 joined")
@@ -168,7 +168,7 @@ class WaitingListTest {
     }
 
     @Test
-    fun viewWaitingListOnLotteryDetailsOpensTheWaitingList() {
+    fun viewWaitingListButton_opensTheWaitingList() {
         var opened = false
         val controller = LotteryDetailsController(
             lotteryRepository = FakeLotteryRepository(listOf(openLottery), listOf(sam)),

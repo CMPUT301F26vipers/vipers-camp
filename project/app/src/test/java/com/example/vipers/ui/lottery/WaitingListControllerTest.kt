@@ -13,6 +13,7 @@ import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -46,6 +47,9 @@ class WaitingListControllerTest {
         waitlistCapacity = 10,
     )
 
+    /** A time while [lottery]'s registration is open, for joining in tests. */
+    private val duringRegistration = lottery.registrationStart + 1_000L
+
     private val profiles = FakeProfileRepository(
         listOf(
             UserProfile(id = "sam", name = "Sam Patel"),
@@ -64,7 +68,8 @@ class WaitingListControllerTest {
             status = status,
         )
 
-    private fun controllerFor(repo: LotteryRepository) = WaitingListController(repo, profiles, lotteryId)
+    private fun controllerFor(repo: LotteryRepository, names: ProfileRepository = profiles) =
+        WaitingListController(repo, names, lotteryId)
 
     @Before
     fun setUp() {
@@ -77,7 +82,7 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun showsEntrantsOldestFirstWithNamesAndGroupSizes() = runTest {
+    fun watch_showsEntrantsOldestFirstWithNamesAndGroupSizes() = runTest {
         val repo = FakeLotteryRepository(
             listOf(lottery),
             listOf(entry("aisha", joinedAt = 2_000, groupSize = 4), entry("sam", joinedAt = 1_000, groupSize = 2)),
@@ -93,13 +98,13 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun countIncludesTheLimitWhenOneIsSet() = runTest {
+    fun countLabel_includesTheLimitWhenOneIsSet() = runTest {
         val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000), entry("aisha", 2_000)))
         assertEquals("2 of 10 joined", controllerFor(repo).countLabel)
     }
 
     @Test
-    fun countHasNoLimitWhenCapacityIsUnlimited() = runTest {
+    fun countLabel_hasNoLimitWhenCapacityIsUnlimited() = runTest {
         val repo = FakeLotteryRepository(
             listOf(lottery.copy(waitlistCapacity = null)),
             listOf(entry("sam", 1_000)),
@@ -108,7 +113,7 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun removedEntriesAreNotShownOrCounted() = runTest {
+    fun watch_leavesOutRemovedEntries() = runTest {
         val repo = FakeLotteryRepository(
             listOf(lottery),
             listOf(entry("sam", 1_000), entry("aisha", 2_000, status = EntryStatus.REMOVED)),
@@ -120,7 +125,7 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun afterTheDrawEachEntrantsResultIsShown() = runTest {
+    fun watch_afterTheDrawKeepsEachEntrantsResult() = runTest {
         val repo = FakeLotteryRepository(
             listOf(lottery.copy(drawnAt = 1_806_650_000_000L)),
             listOf(
@@ -139,18 +144,18 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun beforeTheDrawIsDrawnIsFalse() = runTest {
+    fun isDrawn_isFalseBeforeTheDraw() = runTest {
         val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000)))
         assertFalse(controllerFor(repo).isDrawn)
     }
 
     @Test
-    fun listUpdatesLiveWhenAnEntrantJoins() = runTest {
+    fun watch_addsAnEntrantWhoJoinsWhileTheScreenIsOpen() = runTest {
         val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000)))
         val controller = controllerFor(repo)
         assertEquals(1, controller.entries.size)
 
-        repo.saveEntry(entry("liam", 5_000, groupSize = 3))
+        repo.joinWaitingList(entry("liam", 5_000, groupSize = 3), now = duringRegistration)
 
         assertEquals(listOf("sam", "liam"), controller.entries.map { it.userId })
         assertEquals("Liam Chen", controller.names["liam"])
@@ -158,33 +163,51 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun listUpdatesLiveWhenAnEntrantLeaves() = runTest {
+    fun watch_dropsAnEntrantWhoLeavesWhileTheScreenIsOpen() = runTest {
         val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000), entry("aisha", 2_000)))
         val controller = controllerFor(repo)
 
-        repo.saveEntry(entry("aisha", 2_000, status = EntryStatus.REMOVED))
+        repo.leaveWaitingList(lotteryId, "aisha")
 
         assertEquals(listOf("sam"), controller.entries.map { it.userId })
     }
 
     @Test
-    fun listUpdatesLiveWhenTheDrawResultsArrive() = runTest {
-        val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000)))
+    fun watch_showsAStatusChangeWhileTheScreenIsOpen() = runTest {
+        val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000, status = EntryStatus.WON)))
         val controller = controllerFor(repo)
 
-        repo.saveEntry(entry("sam", 1_000, status = EntryStatus.WON))
+        repo.updateEntry(entry("sam", 1_000, status = EntryStatus.RESERVED))
 
-        assertEquals(EntryStatus.WON, controller.entries.single().status)
+        assertEquals(EntryStatus.RESERVED, controller.entries.single().status)
     }
 
     @Test
-    fun entrantWithoutAProfileShowsDeletedUser() = runTest {
+    fun watch_showsDeletedUserForAnEntrantWithoutAProfile() = runTest {
         val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("gone", 1_000)))
         assertEquals("Deleted user", controllerFor(repo).names["gone"])
     }
 
     @Test
-    fun emptyWaitingListShowsNoEntrants() = runTest {
+    fun watch_showsUnknownAndKeepsListeningWhenANameLookupFails() = runTest {
+        val flakyNames = object : ProfileRepository by profiles {
+            override suspend fun getDisplayName(id: String): String =
+                if (id == "aisha") throw IllegalStateException("offline") else profiles.getDisplayName(id)
+        }
+        val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000), entry("aisha", 2_000)))
+        val controller = controllerFor(repo, flakyNames)
+
+        assertNull(controller.error)
+        assertEquals("Unknown", controller.names["aisha"])
+        assertEquals("Sam Patel", controller.names["sam"])
+
+        // the list is still live after the failed lookup
+        repo.joinWaitingList(entry("liam", 5_000), now = duringRegistration)
+        assertEquals(listOf("sam", "aisha", "liam"), controller.entries.map { it.userId })
+    }
+
+    @Test
+    fun watch_showsAnEmptyListWhenNoOneHasJoined() = runTest {
         val controller = controllerFor(FakeLotteryRepository(listOf(lottery)))
 
         assertFalse(controller.loading)
@@ -193,7 +216,7 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun missingLotteryShowsAnError() = runTest {
+    fun watch_showsAnErrorWhenTheLotteryIsMissing() = runTest {
         val controller = controllerFor(FakeLotteryRepository())
 
         assertFalse(controller.loading)
@@ -201,7 +224,7 @@ class WaitingListControllerTest {
     }
 
     @Test
-    fun failedLoadShowsAnError() = runTest {
+    fun watch_showsAnErrorWhenLoadingFails() = runTest {
         val failing = object : LotteryRepository by FakeLotteryRepository(listOf(lottery)) {
             override suspend fun getLottery(id: String): Lottery? = throw IllegalStateException("offline")
         }

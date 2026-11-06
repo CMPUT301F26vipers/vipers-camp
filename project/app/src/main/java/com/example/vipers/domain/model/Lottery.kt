@@ -25,6 +25,11 @@ package com.example.vipers.domain.model
  * @property drawnAt When the draw ran, or null if it hasn't.
  * @property removed True once an admin removes it.
  * @property waitingUserIds Device IDs of entrants currently on the waiting list.
+ * @property entriesVersion Counter incremented on waiting-list membership changes.
+ * @property committedDrawId ID of the authoritative draw manifest, or null if not yet drawn.
+ * @property manifestChunkCount Number of manifest chunks saved for this draw.
+ * @property participantCount Total eligible participants in this draw.
+ * @property winnerCount Total winners selected in this draw.
  */
 data class Lottery(
     val id: String = "",
@@ -41,6 +46,11 @@ data class Lottery(
     val drawnAt: Long? = null,
     val removed: Boolean = false,
     val waitingUserIds: List<String> = emptyList(),
+    val entriesVersion: Long = 0L,
+    val committedDrawId: String? = null,
+    val manifestChunkCount: Int = 0,
+    val participantCount: Int = 0,
+    val winnerCount: Int = 0,
 ) {
 
     /**

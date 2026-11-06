@@ -202,7 +202,20 @@ fun AppNavigation(
                 val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
                 WaitingListScreen(lotteryId = lotteryId, onBack = { navController.popBackStack() })
             }
-            composable(Routes.NOTIFICATIONS) { NotificationsScreen() }
+            composable(Routes.NOTIFICATIONS) {
+                NotificationsScreen(
+                    // no Reserve route yet (01.04.01 / T-03); a win tap only marks it read
+                    onOpenReserve = {},
+                    // the entrant's campsite details (E05), never OWNER_CAMPSITE
+                    onOpenCampsite = { campsiteId ->
+                        navController.navigate(Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId))
+                    },
+                    // no entrant reservation details route yet
+                    onOpenReservation = {},
+                    // no message thread screen yet
+                    onOpenThread = {},
+                )
+            }
             composable(Routes.PROFILE) {
                 ProfileScreen(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },

@@ -47,6 +47,11 @@ class LotteryMappingTest {
         assertEquals(25, map["waitlistCapacity"])
         assertNull(map["drawnAt"])
         assertEquals(false, map["removed"])
+        assertEquals(0L, map["entriesVersion"])
+        assertNull(map["committedDrawId"])
+        assertEquals(0, map["manifestChunkCount"])
+        assertEquals(0, map["participantCount"])
+        assertEquals(0, map["winnerCount"])
     }
 
     @Test

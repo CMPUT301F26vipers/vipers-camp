@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryStatus
 import com.example.vipers.ui.common.TopBar
 import java.text.DateFormat
@@ -87,7 +88,7 @@ fun LotteryDetailsScreen(
                         LotteryStatus.DRAWN -> "Drawn"
                         LotteryStatus.CLOSED -> "Closed"
                     }
-                    val joinedCount = controller.waitingEntries.size
+                    val joinedCount = if (currentLottery.drawnAt != null) controller.allEntries.size else controller.waitingEntries.size
                     val capacityLabel = currentLottery.waitlistCapacity?.toString() ?: "No limit"
 
                     LazyColumn(
