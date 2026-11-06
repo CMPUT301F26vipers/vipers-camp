@@ -549,10 +549,7 @@ class LotteryIntentTest {
         )
         // A repo that fails when saving an entry
         val failingRepo = object : LotteryRepository by FakeLotteryRepository(initialLotteries = listOf(lottery)) {
-            override suspend fun saveEntry(entry: LotteryEntry) {
-                throw IllegalStateException("Network failure")
-            }
-            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
+            override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult {
                 throw IllegalStateException("Network failure")
             }
         }
