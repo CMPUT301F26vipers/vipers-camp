@@ -788,4 +788,178 @@ class LotteryDetailsControllerTest {
         val wonCount = controller.allEntries.count { it.status == EntryStatus.WON }
         assertEquals(3, wonCount)
     }
+
+    @Test
+    fun performLeave_whenUserOnWaitlist_succeedsAndUpdatesState() = runTest {
+        setupData()
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertTrue(controller.isJoined)
+        assertTrue(controller.canLeave)
+        assertEquals(2, controller.waitingEntries.size)
+
+        val result = controller.performLeave()
+        assertTrue(result)
+        assertTrue(controller.leaveSuccess)
+        assertNull(controller.joinError)
+        assertFalse(controller.isJoined)
+        assertNull(controller.userEntry)
+        assertEquals(1, controller.waitingEntries.size)
+        assertFalse(controller.waitingEntries.any { it.userId == "user-1" })
+
+        // Verify repository state
+        assertNull(lotteryRepository.getEntry(lotteryId, "user-1"))
+        val updatedLottery = lotteryRepository.getLottery(lotteryId)!!
+        assertFalse(updatedLottery.waitingUserIds.contains("user-1"))
+    }
+
+    @Test
+    fun performLeave_whenUserNotOnWaitlist_failsAndSetsError() = runTest {
+        setupData()
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "unjoined-user",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertFalse(controller.isJoined)
+        val result = controller.performLeave()
+        assertFalse(result)
+        assertFalse(controller.leaveSuccess)
+        assertEquals("Not on the waiting list.", controller.joinError)
+    }
+
+    @Test
+    fun performLeave_whenLotteryAlreadyDrawn_failsAndSetsError() = runTest {
+        val now = System.currentTimeMillis()
+        val drawnLottery = Lottery(
+            id = "drawn-lottery",
+            ownerId = "owner-1",
+            campsiteIds = listOf(campsiteId),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now - 5_000,
+            bookingStart = now - 4_000,
+            bookingEnd = now + 100_000,
+            drawnAt = now - 3_000,
+        )
+        val entry = LotteryEntry(
+            id = LotteryEntry.idFor("drawn-lottery", "user-1"),
+            lotteryId = "drawn-lottery",
+            userId = "user-1",
+            status = EntryStatus.WAITING,
+        )
+        val repo = FakeLotteryRepository(
+            initialLotteries = listOf(drawnLottery),
+            initialEntries = listOf(entry),
+        )
+        val controller = LotteryDetailsController(
+            lotteryRepository = repo,
+            profileRepository = profileRepository,
+            lotteryId = "drawn-lottery",
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertFalse(controller.canLeave)
+        val result = controller.performLeave()
+        assertFalse(result)
+        assertFalse(controller.leaveSuccess)
+        assertEquals("Cannot leave after the lottery has been drawn.", controller.joinError)
+    }
+
+    @Test
+    fun performLeave_whenRepositoryThrowsException_setsErrorAndPreservesState() = runTest {
+        setupData()
+        val failingRepo = object : LotteryRepository by lotteryRepository {
+            override suspend fun leaveWaitingList(lotteryId: String, userId: String) {
+                throw Exception("Network failure")
+            }
+        }
+        val controller = LotteryDetailsController(
+            lotteryRepository = failingRepo,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertTrue(controller.isJoined)
+        val result = controller.performLeave()
+        assertFalse(result)
+        assertFalse(controller.leaveSuccess)
+        assertEquals("Network failure", controller.joinError)
+        assertTrue(controller.isJoined)
+    }
+
+    @Test
+    fun performLeave_whenRefreshFailsAfterSuccessfulLeave_stillReflectsLeaveSuccessAndUnjoinedState() = runTest {
+        setupData()
+        var leaveCalled = false
+        val repoWithFailingRefresh = object : LotteryRepository by lotteryRepository {
+            override suspend fun leaveWaitingList(lotteryId: String, userId: String) {
+                lotteryRepository.leaveWaitingList(lotteryId, userId)
+                leaveCalled = true
+            }
+
+            override suspend fun getEntries(lotteryId: String): List<LotteryEntry> {
+                if (leaveCalled) {
+                    throw RuntimeException("Network dropped during refresh")
+                }
+                return lotteryRepository.getEntries(lotteryId)
+            }
+        }
+        val controller = LotteryDetailsController(
+            lotteryRepository = repoWithFailingRefresh,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertTrue(controller.isJoined)
+        val result = controller.performLeave()
+        assertTrue(result)
+        assertTrue(controller.leaveSuccess)
+        assertFalse(controller.isJoined)
+        assertNull(controller.userEntry)
+        assertFalse(controller.waitingEntries.any { it.userId == "user-1" })
+        assertNull(controller.error)
+    }
+
+    @Test
+    fun canLeave_evaluatesCorrectly() = runTest {
+        setupData()
+        val joinedController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+        )
+        assertTrue(joinedController.canLeave)
+
+        val ownerController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "owner-1",
+        )
+        assertFalse(ownerController.canLeave)
+
+        val nonJoinedController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "random-user",
+        )
+        assertFalse(nonJoinedController.canLeave)
+    }
 }

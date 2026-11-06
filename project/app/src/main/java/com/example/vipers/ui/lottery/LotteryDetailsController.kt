@@ -1,7 +1,7 @@
 /*
  * LotteryDetailsController.kt
- * The controller (a ViewModel) handling data fetching, states, and joining logic for a specific lottery's detail screen.
- * Known issues: none. Waiting-list capacity is enforced atomically in a Firestore transaction via LotteryRepository.
+ * The controller (a ViewModel) handling data fetching, states, joining, and leaving logic for a specific lottery's detail screen.
+ * Known issues: none. Waiting-list capacity and leaving are enforced atomically in a Firestore transaction via LotteryRepository.
  */
 package com.example.vipers.ui.lottery
 
@@ -67,10 +67,16 @@ class LotteryDetailsController(
         private set
     var joinError by mutableStateOf<String?>(null)
         private set
+    var leaveSuccess by mutableStateOf(false)
+        private set
 
     /** True if the current user is already on the waiting list. */
     val isJoined: Boolean
         get() = userEntry?.status == EntryStatus.WAITING
+
+    /** True if the current user can leave the waiting list. */
+    val canLeave: Boolean
+        get() = isJoined && lottery?.drawnAt == null && !isOwner
 
     /** True if the lottery has a waitlist limit and the number of waiting entrants has reached or exceeded it. */
     val isFull: Boolean
@@ -171,6 +177,7 @@ class LotteryDetailsController(
         isJoining = true
         joinError = null
         joinSuccess = false
+        leaveSuccess = false
 
         val existing = try {
             userEntry ?: lotteryRepository.getEntry(lotteryId, currentUserId)
@@ -283,10 +290,62 @@ class LotteryDetailsController(
         return true
     }
 
-    /** Clears transient join feedback state. */
+    /** Clears transient feedback state. */
     fun clearJoinState() {
         joinSuccess = false
+        leaveSuccess = false
         joinError = null
+    }
+
+    /** Leaves the waiting list in the background for the current user. */
+    fun leaveWaitingList() {
+        viewModelScope.launch { performLeave() }
+    }
+
+    /**
+     * Executes the leave waiting list operation and refreshes state.
+     *
+     * @return True if leaving succeeded, false otherwise.
+     */
+    suspend fun performLeave(): Boolean {
+        if (currentUserId.isBlank() || !isJoined) {
+            joinError = "Not on the waiting list."
+            return false
+        }
+        if (lottery?.drawnAt != null) {
+            joinError = "Cannot leave after the lottery has been drawn."
+            return false
+        }
+
+        joinError = null
+        joinSuccess = false
+        leaveSuccess = false
+
+        return try {
+            lotteryRepository.leaveWaitingList(lotteryId, currentUserId)
+            userEntry = null
+            waitingEntries = waitingEntries.filter { it.userId != currentUserId }
+            allEntries = allEntries.filter { it.userId != currentUserId }
+            lottery = lottery?.let { l ->
+                l.copy(waitingUserIds = l.waitingUserIds.filter { it != currentUserId })
+            }
+            leaveSuccess = true
+
+            val prevError = error
+            fetchData()
+            if (error != null) {
+                error = prevError
+            }
+            userEntry = null
+            waitingEntries = waitingEntries.filter { it.userId != currentUserId }
+            allEntries = allEntries.filter { it.userId != currentUserId }
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            joinError = e.message ?: "Unable to leave waiting list."
+            false
+        }
     }
 
     /**

@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -62,6 +64,7 @@ fun LotteryDetailsScreen(
 ) {
     var showWaitingList by remember { mutableStateOf(false) }
     var showJoinDialog by remember { mutableStateOf(false) }
+    var showLeaveDialog by remember { mutableStateOf(false) }
     var groupSizeText by remember { mutableStateOf("1") }
 
     Column(
@@ -223,6 +226,22 @@ fun LotteryDetailsScreen(
                                         }
                                     }
 
+                                    if (controller.leaveSuccess) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "Successfully left the waiting list.",
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.padding(12.dp)
+                                            )
+                                        }
+                                    }
+
                                     when {
                                         controller.isJoined -> {
                                             Surface(
@@ -230,7 +249,10 @@ fun LotteryDetailsScreen(
                                                 color = MaterialTheme.colorScheme.secondaryContainer,
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Column(modifier = Modifier.padding(16.dp)) {
+                                                Column(
+                                                    modifier = Modifier.padding(16.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
                                                     Text(
                                                         text = "On Waiting List",
                                                         style = MaterialTheme.typography.titleMedium,
@@ -243,6 +265,20 @@ fun LotteryDetailsScreen(
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         color = MaterialTheme.colorScheme.onSecondaryContainer
                                                     )
+                                                    if (controller.canLeave) {
+                                                        Button(
+                                                            onClick = { showLeaveDialog = true },
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .testTag("leave_lottery_button"),
+                                                            colors = ButtonDefaults.buttonColors(
+                                                                containerColor = MaterialTheme.colorScheme.error,
+                                                                contentColor = MaterialTheme.colorScheme.onError
+                                                            )
+                                                        ) {
+                                                            Text("Leave Waiting List")
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -365,6 +401,36 @@ fun LotteryDetailsScreen(
                     onClick = { showJoinDialog = false },
                     enabled = !controller.isJoining
                 ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showLeaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showLeaveDialog = false },
+            title = { Text("Leave Waiting List") },
+            text = {
+                Text("Are you sure you want to leave the waiting list? You will give up your place in this lottery.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLeaveDialog = false
+                        controller.leaveWaitingList()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ),
+                    modifier = Modifier.testTag("confirm_leave_button")
+                ) {
+                    Text("Leave")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveDialog = false }) {
                     Text("Cancel")
                 }
             }
