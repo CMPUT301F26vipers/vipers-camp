@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.ui.common.TopBar
@@ -341,12 +343,16 @@ fun LotteryFormScreen(
                     )
 
                     // 6. List Limit (optional)
-                    Text("Waiting List Limit (Optional)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Waiting List Capacity (Optional)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
                         value = controller.waitlistCapacityText,
                         onValueChange = { controller.onWaitlistCapacityChange(it) },
-                        label = { Text("Max capacity (leave blank for no limit)") },
+                        label = { Text("Waiting List Capacity (Optional)") },
                         placeholder = { Text("No limit") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = controller.waitlistCapacityError != null,
+                        supportingText = controller.waitlistCapacityError?.let { { Text(it) } },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("tag_waitlist_limit")
