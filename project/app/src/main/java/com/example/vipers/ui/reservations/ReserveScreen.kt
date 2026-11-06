@@ -1,12 +1,12 @@
 /*
  * ReserveScreen.kt
- * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details when the user won a
- * lottery there. It shows the reserve-by date, the campsite, the lottery's nights with the taken
+ * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details or the win
+ * notification when the user won a lottery. It shows the reserve-by date, the campsite, the lottery's nights with the taken
  * ones greyed out, the nightly price times the picked nights and the total, and the campsite's
  * rules and cancellation policy. A winner can decline the win here (US 01.04.03, mockup E12).
  * ReserveController does the work.
  * Known issues: the Reserve button, the guests field and the "I accept the campsite rules" box
- * come with T-03 and 02.11.01; opening this screen from the win notification comes with T-13 (#77).
+ * come with T-03 and 02.11.01. Declining doesn't pick a replacement winner yet (T-12).
  */
 package com.example.vipers.ui.reservations
 
