@@ -3,10 +3,11 @@
  * The Home tab (mockups E02, E02b, E02c), where the app opens. The entrant searches campsites by
  * name here (US 01.01.01) and filters them by region, date range, and guests (US 01.01.02). Each
  * result shows a summary card (US 01.01.04), and tapping a card opens its Campsite Details
- * (US 01.01.05); CampsiteSearchController does the searching and filtering.
- * Known issues: the result count and loading indicator (01.01.03) and Scan QR (01.12.01) are
- * added by those stories. The picture on each card is a placeholder until campsites have promo
- * images (02.01.02b), and preferred tags / "% match" on the mockup are the WOW factor (W-01).
+ * (US 01.01.05); CampsiteSearchController does the searching and filtering. The number of results
+ * and a loading indicator are shown (US 01.01.03).
+ * Known issues: Scan QR (01.12.01) is added by that story. The picture on each card is a
+ * placeholder until campsites have promo images (02.01.02b), and preferred tags / "% match" on
+ * the mockup are the WOW factor (W-01).
  */
 package com.example.vipers.ui.home
 
@@ -31,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -147,27 +149,50 @@ fun HomeScreen(
         }
 
         when {
+            // show loading indicator while loading (US 01.01.03)
+            controller.isLoading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.testTag("loading_indicator"),
+                        color = Primary,
+                    )
+                }
+            }
             // only show an error if there is nothing from an earlier load to show
             controller.loadFailed && results.isEmpty() ->
                 EmptyResults("Couldn't load campsites", "Check your connection and open Home again.")
-            // wait for the first load before saying nothing was found
-            controller.isLoading && results.isEmpty() -> {}
             results.isEmpty() ->
                 EmptyResults(
                     "No campsites found",
                     if (controller.hasActiveFilters) "Try adjusting or clearing your filters."
                     else "Check the spelling, or clear the search.",
                 )
-            else -> LazyColumn(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(results, key = { it.id }) { campsite ->
-                    CampsiteResultRow(
-                        campsite,
-                        hasOpenLottery = controller.hasOpenLottery(campsite),
-                        onClick = { onOpenCampsite(campsite.id) },
-                    )
+            else -> {
+                Text(
+                    text = controller.resultCountText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .testTag("text_result_count"),
+                )
+                LazyColumn(
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.testTag("campsite_list"),
+                ) {
+                    items(results, key = { it.id }) { campsite ->
+                        CampsiteResultRow(
+                            campsite,
+                            hasOpenLottery = controller.hasOpenLottery(campsite),
+                            onClick = { onOpenCampsite(campsite.id) },
+                        )
+                    }
                 }
             }
         }
