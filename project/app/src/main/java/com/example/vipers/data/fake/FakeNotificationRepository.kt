@@ -33,6 +33,22 @@ class FakeNotificationRepository(initial: List<Notification> = emptyList()) : No
         return id
     }
 
+    override suspend fun addAll(notifications: List<Notification>) {
+        // check every ID first, so a bad one means nothing is written, like Firestore
+        require(notifications.none { it.id.isBlank() }) { "Every notification needs an id" }
+        for (notification in notifications) {
+            // a notification sent again keeps whether it was read or shown on the phone
+            val saved = this.notifications[notification.id]
+            this.notifications[notification.id] =
+                if (saved == null) notification
+                else notification.copy(read = saved.read, shownOnDevice = saved.shownOnDevice)
+        }
+        // each changed inbox hears once, after the whole batch
+        for (recipientId in notifications.map { it.recipientId }.distinct()) {
+            notifyListeners(recipientId)
+        }
+    }
+
     override suspend fun getNotificationsFor(recipientId: String): List<Notification> = inboxOf(recipientId)
 
     override suspend fun markRead(id: String) {
