@@ -164,6 +164,29 @@ class CampsiteTest {
     }
 
     @Test
+
+    fun hasRules_emptyOrBlank_isFalse() {
+        assertFalse(Campsite(rules = "").hasRules)
+        assertFalse(Campsite(rules = "   ").hasRules)
+    }
+
+    @Test
+    fun hasRules_withText_isTrue() {
+        assertTrue(Campsite(rules = "Quiet hours after 10 PM").hasRules)
+    }
+
+    @Test
+    fun hasCancellationPolicy_emptyOrBlank_isFalse() {
+        assertFalse(Campsite(cancellationPolicy = "").hasCancellationPolicy)
+        assertFalse(Campsite(cancellationPolicy = "   ").hasCancellationPolicy)
+    }
+
+    @Test
+    fun hasCancellationPolicy_withText_isTrue() {
+        assertTrue(Campsite(cancellationPolicy = "Free up to 7 days before").hasCancellationPolicy)
+    }
+
+    @Test
     fun matchesRegion_matchesWhenSameRegion() {
         val campsite = Campsite(region = Region.JASPER)
         assertTrue(campsite.matchesRegion(Region.JASPER))

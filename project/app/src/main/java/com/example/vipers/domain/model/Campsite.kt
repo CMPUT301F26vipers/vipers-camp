@@ -2,8 +2,7 @@
  * Campsite.kt
  * A campsite an owner lists so entrants can find it and join its lotteries.
  * Stored in the Firestore "campsites" collection.
- * Known issues: rules, cancellation policy, photo and map location are stored but not yet filled
- * in by the Add Campsite form.
+ * Known issues: photo and map location are stored but not yet filled in by the Add Campsite form.
  */
 package com.example.vipers.domain.model
 
@@ -51,6 +50,17 @@ data class Campsite(
     val ratingCount: Int = 0,
     val removed: Boolean = false,
 ) {
+    /** True if the owner has written rules; an empty or blank [rules] means none (T-11). */
+    val hasRules: Boolean
+        get() = rules.isNotBlank()
+
+    /**
+     * True if the owner has written a cancellation policy; an empty or blank [cancellationPolicy]
+     * means none (T-11).
+     */
+    val hasCancellationPolicy: Boolean
+        get() = cancellationPolicy.isNotBlank()
+
     /** The average star rating, or 0.0 if nobody has rated it yet. */
     fun averageRating(): Double {
         // avoid division by zero
