@@ -133,7 +133,7 @@ class ViewMyCampsiteDetailsTest {
         composeRule.onNodeWithText("Edit Campsite").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Back").performClick()
         tap("button_availability")
-        composeRule.onNodeWithText("+ Set a date range").assertIsDisplayed()
+        composeRule.onNodeWithText("+ Open a range").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNodeWithText("My Campsite").assertIsDisplayed()
     }
