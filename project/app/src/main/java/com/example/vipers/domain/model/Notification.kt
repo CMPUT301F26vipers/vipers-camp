@@ -2,7 +2,7 @@
  * Notification.kt
  * A message in a user's in-app inbox: lottery results, reservation updates and owner messages.
  * Stored in the Firestore "notifications" collection.
- * Known issues: none.
+ * Known issues: none. target and displayCategory are worked out from the type, never stored.
  */
 package com.example.vipers.domain.model
 
@@ -37,4 +37,38 @@ data class Notification(
     val shownOnDevice: Boolean = false,
     val batchId: String? = null,
     val createdAt: Long = 0,
-)
+) {
+    /**
+     * The screen tapping this notification opens (T-13): Reserve for a win, the reservation for
+     * reservation updates, its thread for a new message, and the campsite for everything else.
+     * Null if the ID that [type] needs is missing. Worked out, never stored.
+     */
+    val target: NotificationTarget?
+        get() = when (type) {
+            NotificationType.WON -> lotteryId?.let { NotificationTarget.OpenReserve(it) }
+            NotificationType.RESERVATION_CONFIRMED,
+            NotificationType.RESERVATION_CANCELLED,
+            NotificationType.RESERVATION_REJECTED ->
+                reservationId?.let { NotificationTarget.OpenReservation(it) }
+            NotificationType.NEW_MESSAGE -> reservationId?.let { NotificationTarget.OpenThread(it) }
+            NotificationType.OWNER_BROADCAST,
+            NotificationType.CAMPSITE_REMOVED,
+            NotificationType.NOT_SELECTED -> campsiteId?.let { NotificationTarget.OpenCampsite(it) }
+        }
+
+    /**
+     * The kind of notification as shown in the inbox, e.g. "Won" or "Reservation" (T-13,
+     * mockup E10). Worked out from [type], never stored.
+     */
+    val displayCategory: String
+        get() = when (type) {
+            NotificationType.WON -> "Won"
+            NotificationType.NOT_SELECTED -> "Not selected"
+            NotificationType.RESERVATION_CONFIRMED,
+            NotificationType.RESERVATION_CANCELLED,
+            NotificationType.RESERVATION_REJECTED -> "Reservation"
+            NotificationType.OWNER_BROADCAST -> "Owner message"
+            NotificationType.NEW_MESSAGE -> "Message"
+            NotificationType.CAMPSITE_REMOVED -> "Campsite removed"
+        }
+}

@@ -104,7 +104,7 @@ class AvailabilityControllerTest {
     @Test
     fun dateRange_opensEveryNightBetweenTheTwoTaps() {
         val controller = loadedController()
-        controller.startRange()
+        controller.startRange(open = true)
         assertTrue(controller.pickingRange)
         controller.onNightTap("2027-05-08", today)
         assertEquals("2027-05-08", controller.rangeStart)
@@ -115,12 +115,39 @@ class AvailabilityControllerTest {
         // the range is done, so the next tap toggles one night again
         assertFalse(controller.pickingRange)
         assertNull(controller.rangeStart)
+        assertNull(controller.message)
+    }
+
+    @Test
+    fun closeRange_closesEveryNightBetweenTheTwoTaps() {
+        val controller = loadedController()
+        controller.onNightTap("2027-05-08", today)
+        controller.onNightTap("2027-05-09", today)
+        controller.startRange(open = false)
+        assertFalse(controller.rangeOpens)
+        controller.onNightTap("2027-05-09", today)
+        controller.onNightTap("2027-05-08", today)
+        assertFalse(controller.calendar!!.isOpen("2027-05-08"))
+        assertFalse(controller.calendar!!.isOpen("2027-05-09"))
+        assertFalse(controller.pickingRange)
+        assertNull(controller.message)
+    }
+
+    @Test
+    fun closeRange_keepsBookedNightsOpenAndSaysSo() {
+        val controller = loadedController()
+        controller.startRange(open = false)
+        controller.onNightTap("2027-04-30", today)
+        controller.onNightTap("2027-05-03", today)
+        // the Saturday is booked, so it stays; the Sunday closes
+        assertEquals(listOf("2027-05-01"), controller.calendar!!.openNights)
+        assertEquals("Booked nights in that range stay open.", controller.message)
     }
 
     @Test
     fun cancelRange_changesNothing() {
         val controller = loadedController()
-        controller.startRange()
+        controller.startRange(open = true)
         controller.onNightTap("2027-05-08", today)
         controller.cancelRange()
         assertFalse(controller.pickingRange)
@@ -152,6 +179,19 @@ class AvailabilityControllerTest {
         val result = repository.getAvailability("hinton")
         assertEquals(listOf("2027-05-01", "2027-05-02"), result.heldNights)
         assertEquals(listOf("2027-05-01", "2027-05-02", "2027-05-08"), result.openNights)
+    }
+
+    @Test
+    fun saveCalendar_keepsANightOpenIfItWasBookedAfterTheOwnerClosedIt() = runBlocking {
+        val repository = repositoryWith(saved)
+        val controller = loadedController(repository)
+        // the owner closes Sunday the 2nd, then someone reserves it before the owner taps Save
+        controller.onNightTap("2027-05-02", today)
+        repository.saveAvailability(saved.copy(heldNights = listOf("2027-05-01", "2027-05-02")))
+        controller.saveCalendar()
+        val result = repository.getAvailability("hinton")
+        assertEquals(listOf("2027-05-01", "2027-05-02"), result.openNights)
+        assertEquals(listOf("2027-05-01", "2027-05-02"), result.heldNights)
     }
 
     @Test

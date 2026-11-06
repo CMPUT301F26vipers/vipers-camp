@@ -218,7 +218,7 @@ class ViewCampsiteDetailsTest {
 
     @Test
     fun campsiteSavedFromTheAddFormShowsCorrectly() {
-        // what the Add Campsite form saves today: no rules or policy yet (T-11)
+        // what the Add Campsite form saves when the optional rules and policy are left empty
         val fromForm = Campsite(
             id = "new", ownerId = "owner-daniel", name = "Kananaskis Lakes Sites",
             address = "Kananaskis Trail, AB", region = Region.KANANASKIS, maxOccupancy = 6,

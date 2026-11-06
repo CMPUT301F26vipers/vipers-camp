@@ -45,6 +45,10 @@ class AvailabilityController(
     var pickingRange by mutableStateOf(false)
         private set
 
+    /** True if the date range being chosen opens its nights, false if it closes them. */
+    var rangeOpens by mutableStateOf(true)
+        private set
+
     /** The first night of the date range being chosen, or null before it's tapped. */
     var rangeStart by mutableStateOf<String?>(null)
         private set
@@ -100,11 +104,19 @@ class AvailabilityController(
         month = month.plusMonths(1)
     }
 
-    /** Starts choosing a date range; the owner then taps its first and last nights. */
-    fun startRange() {
+    /**
+     * Starts choosing a date range that opens its nights, or closes them if [open] is false. The
+     * owner then taps its first and last nights.
+     */
+    fun startRange(open: Boolean) {
         pickingRange = true
+        rangeOpens = open
         rangeStart = null
-        message = "Tap the first night, then the last night."
+        message = if (open) {
+            "Tap the first night, then the last night, to open them."
+        } else {
+            "Tap the first night, then the last night, to close them."
+        }
     }
 
     /** Stops choosing a date range without changing anything. */
@@ -116,8 +128,8 @@ class AvailabilityController(
 
     /**
      * Handles a tap on [night] ("yyyy-MM-dd"). Normally it opens or closes that night; while
-     * [pickingRange] it records the range's first night, then opens the whole range. Past nights
-     * (before [today]) and booked nights don't change, and [message] says why.
+     * [pickingRange] it records the range's first night, then opens or closes the whole range.
+     * Past nights (before [today]) and booked nights don't change, and [message] says why.
      */
     fun onNightTap(night: String, today: LocalDate = LocalDate.now()) {
         val current = calendar ?: return
@@ -131,8 +143,7 @@ class AvailabilityController(
                 rangeStart = night
                 message = "Now tap the last night."
             } else {
-                calendar = current.openRange(start, night, today)
-                cancelRange()
+                finishRange(current, start, night, today)
             }
             return
         }
@@ -144,22 +155,47 @@ class AvailabilityController(
         message = null
     }
 
+    // Opens or closes every night from start to end, then stops choosing the range. Booked nights
+    // stay open, so when closing a range that has some, the message says so.
+    private fun finishRange(
+        current: AvailabilityCalendar,
+        start: String,
+        end: String,
+        today: LocalDate,
+    ) {
+        val closing = !rangeOpens
+        calendar = if (closing) {
+            current.closeRange(start, end, today)
+        } else {
+            current.openRange(start, end, today)
+        }
+        cancelRange()
+        // "yyyy-MM-dd" strings sort in date order, so they can be compared directly
+        val first = minOf(start, end)
+        val last = maxOf(start, end)
+        if (closing && current.heldNights.any { it >= first && it <= last }) {
+            message = "Booked nights in that range stay open."
+        }
+    }
+
     /** Saves the open nights in the background. The Save button calls this. */
     fun save() {
         viewModelScope.launch { saveCalendar() }
     }
 
     /**
-     * Saves the owner's open nights. It reads the calendar again first and keeps its booked nights,
-     * so a reservation made while the owner was editing isn't lost. [save] runs this in the
-     * background; unit tests call it directly.
+     * Saves the owner's open nights. It reads the calendar again first and keeps its booked nights
+     * booked and open, so a reservation made while the owner was editing isn't lost, even on a
+     * night the owner just closed. [save] runs this in the background; unit tests call it directly.
      */
     suspend fun saveCalendar() {
         val edited = calendar ?: return
         saving = true
         try {
             val latest = campsiteRepository.getAvailability(campsiteId)
-            val toSave = latest.copy(campsiteId = campsiteId, openNights = edited.openNights)
+            // a booked night is always open, even if the owner closed it before it was booked
+            val open = (edited.openNights + latest.heldNights).distinct().sorted()
+            val toSave = latest.copy(campsiteId = campsiteId, openNights = open)
             campsiteRepository.saveAvailability(toSave)
             calendar = toSave
             message = "Availability saved"

@@ -7,6 +7,7 @@ package com.example.vipers.ui.lottery
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
@@ -73,14 +74,14 @@ class LotteryDetailsControllerTest {
         profileRepository.saveProfile(UserProfile(id = "user-1", name = "Alice"))
         profileRepository.saveProfile(UserProfile(id = "user-2", name = "Bob"))
 
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-1", status = EntryStatus.WAITING, groupSize = 2)
         )
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-2", status = EntryStatus.WAITING, groupSize = 1)
         )
         // Add a non-waiting entry that should not appear in waitingEntries
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-3", status = EntryStatus.WON, groupSize = 4)
         )
 
@@ -273,7 +274,7 @@ class LotteryDetailsControllerTest {
     fun joinWaitingList_whenAlreadyOnWaitingList_isRejected() = runTest {
         setupOpenLottery()
         val entrantId = "user-entrant"
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(
                 id = "${lotteryId}_$entrantId",
                 lotteryId = lotteryId,
@@ -339,10 +340,10 @@ class LotteryDetailsControllerTest {
     @Test
     fun joinWaitingList_whenWaitingListAtCapacity_isRejected() = runTest {
         setupOpenLottery(waitlistCapacity = 2)
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-1", status = EntryStatus.WAITING)
         )
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-2", status = EntryStatus.WAITING)
         )
         val controller = LotteryDetailsController(
@@ -370,7 +371,7 @@ class LotteryDetailsControllerTest {
         val openLottery = setupOpenLottery(waitlistCapacity = 1)
         val fakeRepo = FakeLotteryRepository(listOf(openLottery))
         val fullRepo = object : LotteryRepository by fakeRepo {
-            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
+            override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult {
                 return JoinWaitingListResult.WaitlistFull
             }
         }
@@ -396,7 +397,7 @@ class LotteryDetailsControllerTest {
         val openLottery = setupOpenLottery(waitlistCapacity = 5)
         val fakeRepo = FakeLotteryRepository(listOf(openLottery))
         val conflictRepo = object : LotteryRepository by fakeRepo {
-            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
+            override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult {
                 return JoinWaitingListResult.AlreadyJoined
             }
         }
@@ -421,7 +422,7 @@ class LotteryDetailsControllerTest {
     fun joinWaitingList_whenCapacityIsUnlimited_allowsJoining() = runTest {
         setupOpenLottery(waitlistCapacity = null)
         for (i in 1..25) {
-            lotteryRepository.saveEntry(
+            lotteryRepository.seedEntry(
                 LotteryEntry(lotteryId = lotteryId, userId = "user-$i", status = EntryStatus.WAITING)
             )
         }
@@ -479,10 +480,7 @@ class LotteryDetailsControllerTest {
         )
         val fakeRepo = FakeLotteryRepository(listOf(openLottery))
         val failingRepo = object : LotteryRepository by fakeRepo {
-            override suspend fun saveEntry(entry: LotteryEntry) {
-                throw RuntimeException("Database error")
-            }
-            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
+            override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult {
                 throw RuntimeException("Database error")
             }
         }
@@ -755,5 +753,39 @@ class LotteryDetailsControllerTest {
         assertTrue(controller.isJoined)
         assertNull(controller.joinError)
         assertEquals(6, controller.userEntry?.groupSize)
+    }
+    @Test
+    fun fetchData_loadsAllEntriesIncludingNonWaiting() = runTest {
+        setupData()
+        val controller = LotteryDetailsController(lotteryRepository, profileRepository, lotteryId)
+
+        controller.fetchData()
+
+        assertEquals(2, controller.waitingEntries.size)
+        assertEquals(3, controller.allEntries.size)
+    }
+
+    @Test
+    fun drawLottery_executesDrawAndRefreshesData() = runTest {
+        setupData()
+        val drawer = LotteryDrawer(
+            lotteryRepository = lotteryRepository,
+            notificationRepository = FakeNotificationRepository(),
+            campsiteRepository = FakeCampsiteRepository(),
+        )
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            lotteryDrawer = drawer,
+        )
+
+        val result = controller.drawLottery()
+        assertTrue(result is LotteryDrawResult.Success)
+
+        assertEquals(0, controller.waitingEntries.size)
+        assertEquals(3, controller.allEntries.size)
+        val wonCount = controller.allEntries.count { it.status == EntryStatus.WON }
+        assertEquals(3, wonCount)
     }
 }

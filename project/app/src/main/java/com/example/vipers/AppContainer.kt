@@ -12,6 +12,7 @@ import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
+import com.example.vipers.ui.lottery.LotteryDrawer
 
 /**
  * Holds everything the screens need. CampApp makes one with the Firestore repositories;
@@ -27,4 +28,7 @@ class AppContainer(
 ) {
     /** Who the current user is. */
     val deviceIdentityManager = DeviceIdentityManager(deviceId, profileRepository)
+
+    /** Orchestrates lottery draws and recovery. */
+    val lotteryDrawer = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository)
 }

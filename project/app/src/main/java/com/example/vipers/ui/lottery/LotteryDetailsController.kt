@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
  * @param lotteryId ID of the lottery being inspected.
  * @param currentUserId Device ID of the current user (entrant or owner).
  * @param campsiteRepository Optional repository to fetch campsite occupancy.
+ * @param lotteryDrawer Optional drawer service to trigger or verify lottery draw.
  */
 class LotteryDetailsController(
     private val lotteryRepository: LotteryRepository,
@@ -40,11 +41,14 @@ class LotteryDetailsController(
     private val lotteryId: String,
     private val currentUserId: String = "",
     private val campsiteRepository: CampsiteRepository? = null,
+    private val lotteryDrawer: LotteryDrawer? = null,
 ) : ViewModel() {
 
     var lottery by mutableStateOf<Lottery?>(null)
         private set
     var waitingEntries by mutableStateOf<List<LotteryEntry>>(emptyList())
+        private set
+    var allEntries by mutableStateOf<List<LotteryEntry>>(emptyList())
         private set
     var loading by mutableStateOf(true)
         private set
@@ -88,6 +92,14 @@ class LotteryDetailsController(
         viewModelScope.launch { fetchData() }
     }
 
+    /** Triggers a lottery draw using the configured [LotteryDrawer], then refreshes data. */
+    suspend fun drawLottery(): LotteryDrawResult {
+        val drawer = lotteryDrawer ?: throw IllegalStateException("LotteryDrawer not configured")
+        val result = drawer.drawLottery(lotteryId)
+        fetchData()
+        return result
+    }
+
     /** Loads lottery details, waitlist entries, and the current user's entry. Unit tests can call it directly. */
     suspend fun fetchData() {
         loading = true
@@ -95,8 +107,9 @@ class LotteryDetailsController(
         try {
             val loadedLottery = lotteryRepository.getLottery(lotteryId)
             lottery = loadedLottery
-            val entries = lotteryRepository.getEntries(lotteryId)
-                .filter { it.status == EntryStatus.WAITING }
+            val all = lotteryRepository.getEntries(lotteryId)
+            allEntries = all
+            val entries = all.filter { it.status == EntryStatus.WAITING }
             waitingEntries = entries
 
             if (currentUserId.isNotBlank()) {
@@ -106,7 +119,8 @@ class LotteryDetailsController(
             maxOccupancy = resolveMaxOccupancy(loadedLottery)
 
             val names = mutableMapOf<String, String>()
-            for (entry in entries) {
+            val displayEntries = if (loadedLottery?.drawnAt != null) all else entries
+            for (entry in displayEntries) {
                 names[entry.userId] = profileRepository.getDisplayName(entry.userId)
             }
             if (currentUserId.isNotBlank() && currentUserId !in names) {
@@ -205,7 +219,7 @@ class LotteryDetailsController(
         )
 
         val joinResult = try {
-            lotteryRepository.joinWaitingList(newEntry)
+            lotteryRepository.joinWaitingList(newEntry, now)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -242,8 +256,9 @@ class LotteryDetailsController(
         }
 
         try {
-            val updatedEntries = lotteryRepository.getEntries(lotteryId)
-                .filter { it.status == EntryStatus.WAITING }
+            val all = lotteryRepository.getEntries(lotteryId)
+            allEntries = all
+            val updatedEntries = all.filter { it.status == EntryStatus.WAITING }
             waitingEntries = updatedEntries
 
             val names = userNames.toMutableMap()
@@ -257,6 +272,9 @@ class LotteryDetailsController(
             // Refreshing the list failed, but the entry was already successfully saved.
             if (waitingEntries.none { it.id == newEntry.id }) {
                 waitingEntries = waitingEntries + newEntry
+            }
+            if (allEntries.none { it.id == newEntry.id }) {
+                allEntries = allEntries + newEntry
             }
         } finally {
             isJoining = false
@@ -304,6 +322,7 @@ class LotteryDetailsController(
                     lotteryId = lotteryId,
                     currentUserId = app.container.deviceId,
                     campsiteRepository = app.container.campsiteRepository,
+                    lotteryDrawer = app.container.lotteryDrawer,
                 )
             }
         }

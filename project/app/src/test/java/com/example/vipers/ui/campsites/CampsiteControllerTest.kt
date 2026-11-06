@@ -1,7 +1,7 @@
 /*
  * CampsiteControllerTest.kt
- * Unit tests for CampsiteController (US 02.01.01, 02.01.02a, 02.01.03), using the fake campsite
- * repository.
+ * Unit tests for CampsiteController (US 02.01.01, 02.01.02a, 02.01.03, T-11), using the fake
+ * campsite repository.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -185,6 +185,8 @@ class CampsiteControllerTest {
         assertEquals("", form.price)
         assertEquals("", form.description)
         assertTrue(form.tags.isEmpty())
+        assertEquals("", form.rules)
+        assertEquals("", form.cancellationPolicy)
     }
 
     @Test
@@ -412,6 +414,73 @@ class CampsiteControllerTest {
         form.publish()
 
         assertFalse(form.hasUnsavedChanges)
+    }
+
+    @Test
+    fun publish_withRulesAndCancellationPolicy_savesBothTrimmed() = runBlocking {
+        fillValidForm()
+        controller.onRulesChange("  Quiet hours after 10 PM ")
+        controller.onCancellationPolicyChange(" Free up to 7 days before  ")
+        controller.publish()
+
+        val saved = repo.getCampsitesByOwner("my-phone").single()
+        assertEquals("Quiet hours after 10 PM", saved.rules)
+        assertEquals("Free up to 7 days before", saved.cancellationPolicy)
+        assertTrue(controller.published)
+        assertTrue(controller.errors.isEmpty())
+    }
+
+    @Test
+    fun publish_withoutRulesOrCancellationPolicy_succeedsWithBothEmpty() = runBlocking {
+        fillValidForm()
+        controller.publish()
+
+        val saved = repo.getCampsitesByOwner("my-phone").single()
+        assertEquals("", saved.rules)
+        assertEquals("", saved.cancellationPolicy)
+        assertTrue(controller.published)
+        assertTrue(controller.errors.isEmpty())
+    }
+
+    @Test
+    fun loadForEdit_owner_prefillsRulesAndCancellationPolicy() = runBlocking {
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+
+        assertEquals("Quiet hours after 10 PM", form.rules)
+        assertEquals("Free up to 7 days before", form.cancellationPolicy)
+    }
+
+    @Test
+    fun publish_editToRules_savesTheNewRulesAndKeepsEverythingElse() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = editForm(campsites)
+        form.onRulesChange(" No pets ")
+        form.publish()
+
+        assertEquals(hintonInFull.copy(rules = "No pets"), campsites.getCampsite("hinton"))
+        assertTrue(form.published)
+    }
+
+    @Test
+    fun hasUnsavedChanges_newFormAfterTypingRulesOrCancellationPolicy_isTrue() {
+        val rulesOnly = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        rulesOnly.onRulesChange("Quiet hours after 10 PM")
+        assertTrue(rulesOnly.hasUnsavedChanges)
+
+        val policyOnly = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        policyOnly.onCancellationPolicyChange("Free up to 7 days before")
+        assertTrue(policyOnly.hasUnsavedChanges)
+    }
+
+    @Test
+    fun hasUnsavedChanges_editAfterTypingRulesOrCancellationPolicy_isTrue() = runBlocking {
+        val rulesEdit = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        rulesEdit.onRulesChange("No pets")
+        assertTrue(rulesEdit.hasUnsavedChanges)
+
+        val policyEdit = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        policyEdit.onCancellationPolicyChange("No refunds")
+        assertTrue(policyEdit.hasUnsavedChanges)
     }
 
     @Test
