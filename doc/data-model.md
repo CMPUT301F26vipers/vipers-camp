@@ -24,6 +24,7 @@ your story needs a field or method that isn't here.
 |---|---|
 | `domain/model/` | The data classes and enums below. No Firebase or Android imports. |
 | `domain/repository/` | Repository interfaces: what you can do with the data. |
+| `domain/service/` | Logic shared by several screens, on top of the repositories (e.g. `NotificationService`). No Firebase or Android imports. |
 | `data/firestore/` | `Firestore…Repository`: the real versions, plus `toMap()` / `to…()` mappers. |
 | `data/fake/` | `Fake…Repository`: in-memory versions for unit and intent tests. |
 | `data/device/` | `DeviceIdentityManager`: the device ID is the user's ID. |
@@ -141,6 +142,20 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | shownOnDevice | bool | stops a phone notification showing twice |
 | batchId | string? | groups one owner broadcast |
 | createdAt | number | ms |
+
+Computed, never stored (T-13): `target` is the screen a tap opens, a `NotificationTarget`
+(`OpenReserve(lotteryId)` for `WON`, `OpenReservation(reservationId)` for `RESERVATION_*`,
+`OpenThread(reservationId)` for `NEW_MESSAGE`, `OpenCampsite(campsiteId)` for `NOT_SELECTED`,
+`OWNER_BROADCAST` and `CAMPSITE_REMOVED`), or `null` if the ID it needs is missing.
+`displayCategory` is the label the inbox shows: "Won", "Not selected", "Reservation",
+"Owner message", "Message" or "Campsite removed".
+
+The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
+that user's notifications, newest first, straight away and on every change, until the returned
+`Subscription` is cancelled. If the inbox can't be loaded (e.g. permission denied) it gets
+`onInboxError()` instead, and nothing more arrives. Firestore filters only by `recipientId` and sorts by `createdAt` on
+the device, so no composite index is needed. `Subscription` keeps Firestore's
+`ListenerRegistration` out of `domain/`.
 
 ### `messages`: `Message`
 Not used by a repository yet (added by the messaging story).

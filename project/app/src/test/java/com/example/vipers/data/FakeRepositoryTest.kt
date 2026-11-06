@@ -7,13 +7,17 @@ package com.example.vipers.data
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -261,5 +265,95 @@ class FakeRepositoryTest {
         // user-2 is removed by an admin or leaves
         repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.REMOVED))
         assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
+    }
+
+    /** Keeps every inbox it is sent, oldest call first (T-13). */
+    private class RecordingInboxListener : InboxListener {
+        val calls = mutableListOf<List<Notification>>()
+        override fun onInboxChanged(items: List<Notification>) {
+            calls.add(items)
+        }
+
+        // the fake never fails to load
+        override fun onInboxError() = throw AssertionError("the fake inbox never fails")
+    }
+
+    // Sam's win, sent at time 100
+    private val samsWin = Notification(
+        id = "win", recipientId = "sam", type = NotificationType.WON, createdAt = 100,
+    )
+
+    @Test
+    fun listenToInbox_atOnceAndAfterAddAndMarkRead_sendsTheInbox() = runBlocking {
+        val repo = FakeNotificationRepository(listOf(samsWin))
+        val listener = RecordingInboxListener()
+        repo.listenToInbox("sam", listener)
+
+        assertEquals(listOf(listOf("win")), listener.calls.map { inbox -> inbox.map { it.id } })
+
+        val id = repo.addNotification(
+            Notification(recipientId = "sam", type = NotificationType.NOT_SELECTED, createdAt = 200),
+        )
+        assertEquals(2, listener.calls.size)
+        assertEquals(listOf(id, "win"), listener.calls[1].map { it.id })
+
+        repo.markRead("win")
+        assertEquals(3, listener.calls.size)
+        assertTrue(listener.calls[2].single { it.id == "win" }.read)
+    }
+
+    @Test
+    fun listenToInbox_itemsOutOfOrder_sendsNewestFirst() = runBlocking {
+        val repo = FakeNotificationRepository(
+            listOf(
+                samsWin,
+                Notification(id = "newest", recipientId = "sam", createdAt = 300),
+                Notification(id = "oldest", recipientId = "sam", createdAt = 50),
+            )
+        )
+        val listener = RecordingInboxListener()
+        repo.listenToInbox("sam", listener)
+
+        assertEquals(listOf("newest", "win", "oldest"), listener.calls.last().map { it.id })
+    }
+
+    @Test
+    fun listenToInbox_otherUsersItems_neverAppear() = runBlocking {
+        val repo = FakeNotificationRepository(
+            listOf(samsWin, Notification(id = "alex-win", recipientId = "alex", createdAt = 200)),
+        )
+        val listener = RecordingInboxListener()
+        repo.listenToInbox("sam", listener)
+        repo.addNotification(Notification(recipientId = "alex", createdAt = 300))
+        repo.markRead("alex-win")
+        repo.addNotification(Notification(recipientId = "sam", createdAt = 400))
+
+        assertTrue(listener.calls.isNotEmpty())
+        assertTrue(listener.calls.all { inbox -> inbox.all { it.recipientId == "sam" } })
+    }
+
+    @Test
+    fun listenToInbox_afterSaveNotification_sendsTheInbox() = runBlocking {
+        val repo = FakeNotificationRepository(listOf(samsWin))
+        val listener = RecordingInboxListener()
+        repo.listenToInbox("sam", listener)
+
+        // e.g. the draw (02.05.01a) saving a result with its own ID
+        repo.saveNotification(Notification(id = "lost", recipientId = "sam", createdAt = 300))
+
+        assertEquals(listOf("lost", "win"), listener.calls.last().map { it.id })
+    }
+
+    @Test
+    fun listenToInbox_afterCancel_sendsNothingMore() = runBlocking {
+        val repo = FakeNotificationRepository(listOf(samsWin))
+        val listener = RecordingInboxListener()
+        val subscription = repo.listenToInbox("sam", listener)
+        subscription.cancel()
+
+        repo.addNotification(Notification(recipientId = "sam", createdAt = 200))
+        repo.markRead("win")
+
+        assertEquals(1, listener.calls.size) // only the first inbox, sent straight away
     }
 }

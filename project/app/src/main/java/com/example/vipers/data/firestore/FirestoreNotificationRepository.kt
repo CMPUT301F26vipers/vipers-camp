@@ -9,7 +9,9 @@ package com.example.vipers.data.firestore
 
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
+import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
+import com.example.vipers.domain.repository.Subscription
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -41,6 +43,24 @@ class FirestoreNotificationRepository(
 
     override suspend fun markRead(id: String) {
         collection.document(id).update("read", true).await()
+    }
+
+    override fun listenToInbox(recipientId: String, listener: InboxListener): Subscription {
+        // Only filters by recipientId and sorts on the device: adding orderBy("createdAt") to a
+        // whereEqualTo query would need a composite Firestore index.
+        val registration = collection
+            .whereEqualTo("recipientId", recipientId)
+            .addSnapshotListener { snapshot, error ->
+                // e.g. permission denied; Firestore stops this listener after an error
+                if (error != null || snapshot == null) {
+                    listener.onInboxError()
+                    return@addSnapshotListener
+                }
+                listener.onInboxChanged(
+                    snapshot.documents.map { it.toNotification() }.sortedByDescending { it.createdAt },
+                )
+            }
+        return Subscription { registration.remove() }
     }
 }
 
