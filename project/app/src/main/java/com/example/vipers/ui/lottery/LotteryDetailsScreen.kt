@@ -51,15 +51,16 @@ import java.util.Date
  *
  * @param lotteryId ID of the lottery being inspected.
  * @param onBack Callback triggered when navigating back.
+ * @param onViewWaitingList Opens the owner's Waiting List screen (O11, US 02.09.01).
  * @param controller ViewModel managing lottery details and waitlist state.
  */
 @Composable
 fun LotteryDetailsScreen(
     lotteryId: String,
     onBack: () -> Unit,
+    onViewWaitingList: () -> Unit = {},
     controller: LotteryDetailsController = viewModel(factory = LotteryDetailsController.factory(lotteryId))
 ) {
-    var showWaitingList by remember { mutableStateOf(false) }
     var showJoinDialog by remember { mutableStateOf(false) }
     var groupSizeText by remember { mutableStateOf("1") }
 
@@ -178,7 +179,7 @@ fun LotteryDetailsScreen(
                                     }
 
                                     Button(
-                                        onClick = { showWaitingList = true },
+                                        onClick = onViewWaitingList,
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Text("View Waiting List")
@@ -370,33 +371,6 @@ fun LotteryDetailsScreen(
         )
     }
 
-    if (showWaitingList) {
-        AlertDialog(
-            onDismissRequest = { showWaitingList = false },
-            title = { Text("Waiting List") },
-            text = {
-                if (controller.waitingEntries.isEmpty()) {
-                    Text("There are no entrants on the waiting list.")
-                } else {
-                    LazyColumn {
-                        items(controller.waitingEntries) { entry ->
-                            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                                val name = controller.userNames[entry.userId] ?: "Unknown User"
-                                Text(name)
-                                Text("Group size: ${entry.groupSize}")
-                                HorizontalDivider()
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showWaitingList = false }) {
-                    Text("Close")
-                }
-            }
-        )
-    }
 }
 
 private fun formatDate(timestamp: Long): String {
