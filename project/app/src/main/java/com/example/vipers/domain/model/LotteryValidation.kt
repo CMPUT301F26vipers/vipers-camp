@@ -69,6 +69,7 @@ fun validateLottery(lottery: Lottery, now: Long = System.currentTimeMillis()): L
  * @param existingEntry The entrant's existing entry in this lottery, if any.
  * @param waitingCount Current number of entrants on the waiting list.
  * @param groupSize The number of people in the entrant's group (must be at least 1).
+ * @param maxOccupancy The maximum occupancy allowed for the campsite(s) in this lottery, or null if unknown.
  * @param now Current timestamp in milliseconds (defaults to system time).
  * @return A list of validation error message strings. Empty if valid.
  */
@@ -77,13 +78,10 @@ fun validateJoinLottery(
     existingEntry: LotteryEntry? = null,
     waitingCount: Int = 0,
     groupSize: Int = 1,
+    maxOccupancy: Int? = null,
     now: Long = System.currentTimeMillis(),
 ): List<String> {
     val errors = mutableListOf<String>()
-
-    if (lottery.removed) {
-        errors.add("Lottery has been removed")
-    }
 
     when (lottery.status(now)) {
         LotteryStatus.UPCOMING -> errors.add("Registration has not started")
@@ -105,6 +103,12 @@ fun validateJoinLottery(
 
     if (groupSize < 1) {
         errors.add("Group size must be at least 1")
+    }
+
+    if (maxOccupancy == null) {
+        errors.add("Campsite occupancy information is unavailable")
+    } else if (groupSize > maxOccupancy) {
+        errors.add("Group size cannot exceed maximum occupancy of $maxOccupancy")
     }
 
     return errors

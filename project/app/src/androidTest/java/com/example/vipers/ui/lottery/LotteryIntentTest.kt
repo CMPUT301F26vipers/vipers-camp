@@ -314,12 +314,14 @@ class LotteryIntentTest {
         )
         val fakeLotteryRepo = FakeLotteryRepository(initialLotteries = listOf(lottery))
         val fakeProfileRepo = FakeProfileRepository()
+        val fakeCampsiteRepo = FakeCampsiteRepository(listOf(Campsite(id = "c-123", maxOccupancy = 6)))
 
         val controller = LotteryDetailsController(
             lotteryRepository = fakeLotteryRepo,
             profileRepository = fakeProfileRepo,
             lotteryId = "lottery-open-2",
             currentUserId = "entrant-phone",
+            campsiteRepository = fakeCampsiteRepo,
         )
 
         composeRule.setContent {
@@ -513,6 +515,7 @@ class LotteryIntentTest {
             profileRepository = FakeProfileRepository(),
             lotteryId = "lottery-error",
             currentUserId = "entrant-phone",
+            campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "c-123", maxOccupancy = 6))),
         )
 
         composeRule.setContent {

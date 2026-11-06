@@ -1,7 +1,10 @@
 /*
  * LotteryDetailsController.kt
  * The controller (a ViewModel) handling data fetching, states, and joining logic for a specific lottery's detail screen.
- * Known issues: none.
+ * Known issues: waiting-list capacity is currently checked client-side. Concurrent joins may both pass
+ * the capacity check and exceed the limit. Correct enforcement requires a Firestore transaction and
+ * an appropriate atomic count or data-model change, which is intentionally deferred to a follow-up
+ * GitHub issue as agreed by the reviewer.
  */
 package com.example.vipers.ui.lottery
 
@@ -18,6 +21,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.validateJoinLottery
+import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.CancellationException
@@ -30,12 +34,14 @@ import kotlinx.coroutines.launch
  * @param profileRepository Repository to fetch user display names.
  * @param lotteryId ID of the lottery being inspected.
  * @param currentUserId Device ID of the current user (entrant or owner).
+ * @param campsiteRepository Optional repository to fetch campsite occupancy.
  */
 class LotteryDetailsController(
     private val lotteryRepository: LotteryRepository,
     private val profileRepository: ProfileRepository,
     private val lotteryId: String,
-    val currentUserId: String = "",
+    private val currentUserId: String = "",
+    private val campsiteRepository: CampsiteRepository? = null,
 ) : ViewModel() {
 
     var lottery by mutableStateOf<Lottery?>(null)
@@ -47,6 +53,8 @@ class LotteryDetailsController(
     var error by mutableStateOf<String?>(null)
         private set
     var userNames by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+    var maxOccupancy by mutableStateOf<Int?>(null)
         private set
 
     var userEntry by mutableStateOf<LotteryEntry?>(null)
@@ -87,7 +95,8 @@ class LotteryDetailsController(
         loading = true
         error = null
         try {
-            lottery = lotteryRepository.getLottery(lotteryId)
+            val loadedLottery = lotteryRepository.getLottery(lotteryId)
+            lottery = loadedLottery
             val entries = lotteryRepository.getEntries(lotteryId)
                 .filter { it.status == EntryStatus.WAITING }
             waitingEntries = entries
@@ -95,6 +104,8 @@ class LotteryDetailsController(
             if (currentUserId.isNotBlank()) {
                 userEntry = lotteryRepository.getEntry(lotteryId, currentUserId)
             }
+
+            maxOccupancy = resolveMaxOccupancy(loadedLottery)
 
             val names = mutableMapOf<String, String>()
             for (entry in entries) {
@@ -160,11 +171,21 @@ class LotteryDetailsController(
             return false
         }
 
+        val limit = maxOccupancy ?: resolveMaxOccupancy(currentLottery)
+        if (limit == null) {
+            isJoining = false
+            joinSuccess = false
+            joinError = "Campsite occupancy information is unavailable. Please try again."
+            return false
+        }
+        maxOccupancy = limit
+
         val validationErrors = validateJoinLottery(
             lottery = currentLottery,
             existingEntry = existing,
             waitingCount = waitingEntries.size,
             groupSize = groupSize,
+            maxOccupancy = limit,
             now = now,
         )
 
@@ -229,6 +250,29 @@ class LotteryDetailsController(
         joinError = null
     }
 
+    /**
+     * Resolves the maximum occupancy across all campsites covered by [lottery].
+     * Returns null if any campsite lookup fails or is missing, ensuring incomplete data is not used.
+     */
+    private suspend fun resolveMaxOccupancy(lottery: Lottery?): Int? {
+        val repo = campsiteRepository ?: return null
+        val ids = lottery?.campsiteIds ?: return null
+        if (ids.isEmpty()) return null
+
+        val occupancies = mutableListOf<Int>()
+        for (cid in ids) {
+            try {
+                val campsite = repo.getCampsite(cid) ?: return null
+                occupancies.add(campsite.maxOccupancy)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return null
+            }
+        }
+        return occupancies.maxOrNull()
+    }
+
     companion object {
         fun factory(lotteryId: String) = viewModelFactory {
             initializer {
@@ -238,6 +282,7 @@ class LotteryDetailsController(
                     profileRepository = app.container.profileRepository,
                     lotteryId = lotteryId,
                     currentUserId = app.container.deviceId,
+                    campsiteRepository = app.container.campsiteRepository,
                 )
             }
         }

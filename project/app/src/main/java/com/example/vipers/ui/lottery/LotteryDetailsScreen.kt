@@ -305,8 +305,10 @@ fun LotteryDetailsScreen(
     }
 
     if (showJoinDialog) {
+        val maxOccupancy = controller.maxOccupancy
+        val isOccupancyAvailable = maxOccupancy != null && maxOccupancy > 0
         val groupSizeInt = groupSizeText.toIntOrNull()
-        val isValid = groupSizeInt != null && groupSizeInt > 0
+        val isValid = isOccupancyAvailable && groupSizeInt != null && groupSizeInt in 1..maxOccupancy!!
 
         AlertDialog(
             onDismissRequest = {
@@ -317,17 +319,29 @@ fun LotteryDetailsScreen(
             title = { Text("Join Waiting List") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Enter the number of people in your group:")
+                    val promptText = if (isOccupancyAvailable) {
+                        "Enter the number of people in your group (1 to $maxOccupancy people):"
+                    } else {
+                        "Enter the number of people in your group:"
+                    }
+                    Text(promptText)
                     OutlinedTextField(
                         value = groupSizeText,
                         onValueChange = { groupSizeText = it },
                         label = { Text("Group size") },
+                        placeholder = if (isOccupancyAvailable) {
+                            { Text("1 to $maxOccupancy") }
+                        } else null,
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        isError = groupSizeText.isNotBlank() && !isValid,
-                        supportingText = if (groupSizeText.isNotBlank() && !isValid) {
-                            { Text("Group size must be a positive integer") }
-                        } else null,
+                        isError = !isOccupancyAvailable || (groupSizeText.isNotBlank() && !isValid),
+                        supportingText = if (!isOccupancyAvailable) {
+                            { Text("Campsite occupancy information is unavailable.") }
+                        } else if (groupSizeText.isNotBlank() && !isValid) {
+                            { Text("Group size must be between 1 and $maxOccupancy") }
+                        } else {
+                            { Text("1 to $maxOccupancy people") }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

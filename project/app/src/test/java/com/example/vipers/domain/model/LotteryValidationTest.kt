@@ -170,6 +170,7 @@ class LotteryValidationTest {
             existingEntry = null,
             waitingCount = 5,
             groupSize = 2,
+            maxOccupancy = 6,
             now = 2000L
         )
         assertTrue(errors.isEmpty())
@@ -202,7 +203,7 @@ class LotteryValidationTest {
             lottery = lottery,
             now = 2000L
         )
-        assertTrue(errors.contains("Lottery has been removed"))
+        assertTrue(errors.contains("Registration is closed"))
     }
 
     @Test
@@ -211,6 +212,7 @@ class LotteryValidationTest {
         val errors = validateJoinLottery(
             lottery = lottery,
             waitingCount = 500,
+            maxOccupancy = 6,
             now = 2000L
         )
         assertTrue(errors.isEmpty())
@@ -222,6 +224,7 @@ class LotteryValidationTest {
         val errors = validateJoinLottery(
             lottery = lottery,
             waitingCount = 9,
+            maxOccupancy = 6,
             now = 2000L
         )
         assertTrue(errors.isEmpty())
@@ -297,5 +300,41 @@ class LotteryValidationTest {
             now = 2000L
         )
         assertTrue(negativeErrors.contains("Group size must be at least 1"))
+    }
+
+    @Test
+    fun validateJoinLottery_allowsGroupSizeWithinMaxOccupancy() {
+        val lottery = openLottery()
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            groupSize = 6,
+            maxOccupancy = 6,
+            now = 2000L
+        )
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsGroupSizeExceedingMaxOccupancy() {
+        val lottery = openLottery()
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            groupSize = 7,
+            maxOccupancy = 6,
+            now = 2000L
+        )
+        assertTrue(errors.contains("Group size cannot exceed maximum occupancy of 6"))
+    }
+
+    @Test
+    fun validateJoinLottery_rejectsWhenMaxOccupancyIsNull() {
+        val lottery = openLottery()
+        val errors = validateJoinLottery(
+            lottery = lottery,
+            groupSize = 2,
+            maxOccupancy = null,
+            now = 2000L
+        )
+        assertTrue(errors.contains("Campsite occupancy information is unavailable"))
     }
 }

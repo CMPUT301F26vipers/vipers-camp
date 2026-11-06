@@ -5,8 +5,10 @@
  */
 package com.example.vipers.ui.lottery
 
+import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeProfileRepository
+import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
@@ -33,6 +35,7 @@ class LotteryDetailsControllerTest {
 
     private lateinit var lotteryRepository: FakeLotteryRepository
     private lateinit var profileRepository: FakeProfileRepository
+    private lateinit var campsiteRepository: FakeCampsiteRepository
 
     private val lotteryId = "lottery-1"
     private val campsiteId = "camp-1"
@@ -42,6 +45,7 @@ class LotteryDetailsControllerTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         lotteryRepository = FakeLotteryRepository()
         profileRepository = FakeProfileRepository()
+        campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = campsiteId, maxOccupancy = 10)))
     }
 
     @After
@@ -219,6 +223,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = entrantId,
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -281,6 +286,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = entrantId,
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -299,6 +305,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -317,6 +324,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -341,6 +349,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-3",
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -366,6 +375,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-new",
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -387,6 +397,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -422,6 +433,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -442,6 +454,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -493,6 +506,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
         )
         // userEntry is null, so performJoin calls getEntry and encounters the exception
         controller.joinWaitingList(groupSize = 1)
@@ -522,6 +536,7 @@ class LotteryDetailsControllerTest {
             profileRepository,
             lotteryId,
             currentUserId = entrantId,
+            campsiteRepository = campsiteRepository,
         )
         controller.fetchData()
 
@@ -540,5 +555,147 @@ class LotteryDetailsControllerTest {
         val saved = fakeRepo.getEntry(lotteryId, entrantId)
         assertNotNull(saved)
         assertEquals(EntryStatus.WAITING, saved!!.status)
+    }
+
+    @Test
+    fun fetchData_loadsMaxOccupancyFromCampsiteRepository() = runTest {
+        val openLottery = setupOpenLottery()
+        val campsite = Campsite(id = campsiteId, maxOccupancy = 6)
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val controller = LotteryDetailsController(
+            lotteryRepository,
+            profileRepository,
+            lotteryId,
+            campsiteRepository = campsiteRepo,
+        )
+
+        controller.fetchData()
+
+        assertEquals(6, controller.maxOccupancy)
+    }
+
+    @Test
+    fun fetchData_usesMaximumOccupancyWhenMultipleCampsitesExist() = runTest {
+        val multiCampsiteLottery = setupOpenLottery().copy(
+            campsiteIds = listOf("camp-1", "camp-2")
+        )
+        val repo = FakeLotteryRepository(listOf(multiCampsiteLottery))
+        val campsite1 = Campsite(id = "camp-1", maxOccupancy = 4)
+        val campsite2 = Campsite(id = "camp-2", maxOccupancy = 8)
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite1, campsite2))
+        val controller = LotteryDetailsController(
+            repo,
+            profileRepository,
+            lotteryId,
+            campsiteRepository = campsiteRepo,
+        )
+
+        controller.fetchData()
+
+        assertEquals(8, controller.maxOccupancy)
+    }
+
+    @Test
+    fun fetchData_handlesMissingCampsiteSafelyWithoutAssumingArbitraryMaximum() = runTest {
+        val openLottery = setupOpenLottery()
+        val emptyCampsiteRepo = FakeCampsiteRepository(emptyList())
+        val controller = LotteryDetailsController(
+            lotteryRepository,
+            profileRepository,
+            lotteryId,
+            campsiteRepository = emptyCampsiteRepo,
+        )
+
+        controller.fetchData()
+
+        assertNull(controller.maxOccupancy)
+    }
+
+    @Test
+    fun fetchData_partiallyLoadedCampsitesLeavesMaxOccupancyNull() = runTest {
+        val multiCampsiteLottery = setupOpenLottery().copy(
+            campsiteIds = listOf("camp-1", "camp-2")
+        )
+        val repo = FakeLotteryRepository(listOf(multiCampsiteLottery))
+        // Only camp-1 exists in repository; camp-2 is missing
+        val campsite1 = Campsite(id = "camp-1", maxOccupancy = 4)
+        val partialRepo = FakeCampsiteRepository(listOf(campsite1))
+        val controller = LotteryDetailsController(
+            repo,
+            profileRepository,
+            lotteryId,
+            campsiteRepository = partialRepo,
+        )
+
+        controller.fetchData()
+
+        // Incomplete campsite lookups should explicitly leave maxOccupancy null
+        assertNull(controller.maxOccupancy)
+    }
+
+    @Test
+    fun joinWaitingList_whenOccupancyUnavailable_isRejected() = runTest {
+        setupOpenLottery()
+        val emptyCampsiteRepo = FakeCampsiteRepository(emptyList())
+        val entrantId = "user-entrant"
+        val controller = LotteryDetailsController(
+            lotteryRepository,
+            profileRepository,
+            lotteryId,
+            currentUserId = entrantId,
+            campsiteRepository = emptyCampsiteRepo,
+        )
+        controller.fetchData()
+
+        controller.joinWaitingList(groupSize = 2)
+
+        assertFalse(controller.joinSuccess)
+        assertFalse(controller.isJoined)
+        assertEquals("Campsite occupancy information is unavailable. Please try again.", controller.joinError)
+    }
+
+    @Test
+    fun joinWaitingList_rejectsGroupSizeExceedingCampsiteMaxOccupancy() = runTest {
+        setupOpenLottery()
+        val campsite = Campsite(id = campsiteId, maxOccupancy = 4)
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val entrantId = "user-entrant"
+        val controller = LotteryDetailsController(
+            lotteryRepository,
+            profileRepository,
+            lotteryId,
+            currentUserId = entrantId,
+            campsiteRepository = campsiteRepo,
+        )
+        controller.fetchData()
+
+        controller.joinWaitingList(groupSize = 5)
+
+        assertFalse(controller.joinSuccess)
+        assertFalse(controller.isJoined)
+        assertEquals("Group size cannot exceed maximum occupancy of 4", controller.joinError)
+    }
+
+    @Test
+    fun joinWaitingList_succeedsWhenGroupSizeWithinCampsiteMaxOccupancy() = runTest {
+        setupOpenLottery()
+        val campsite = Campsite(id = campsiteId, maxOccupancy = 6)
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val entrantId = "user-entrant"
+        val controller = LotteryDetailsController(
+            lotteryRepository,
+            profileRepository,
+            lotteryId,
+            currentUserId = entrantId,
+            campsiteRepository = campsiteRepo,
+        )
+        controller.fetchData()
+
+        controller.joinWaitingList(groupSize = 6)
+
+        assertTrue(controller.joinSuccess)
+        assertTrue(controller.isJoined)
+        assertNull(controller.joinError)
+        assertEquals(6, controller.userEntry?.groupSize)
     }
 }
