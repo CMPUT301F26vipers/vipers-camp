@@ -12,6 +12,9 @@ import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -26,6 +29,9 @@ class FakeLotteryRepository(
     private val entries = initialEntries.associateBy { it.id }.toMutableMap()
     private val manifestChunks = mutableMapOf<String, MutableList<DrawManifestChunk>>()
     private var nextId = 1
+
+    /** Every entry, sent again after each change so [observeEntries] behaves like a Firestore listener. */
+    private val allEntries = MutableStateFlow(entries.values.toList())
 
     init {
         for (entry in initialEntries) {
@@ -86,6 +92,7 @@ class FakeLotteryRepository(
 
         val saved = entry.copy(id = id, status = EntryStatus.WAITING)
         entries[id] = saved
+        publish()
         lotteries[entry.lotteryId] = lottery.copy(
             entriesVersion = lottery.entriesVersion + 1,
             waitingUserIds = (lottery.waitingUserIds + entry.userId).distinct()
@@ -102,6 +109,7 @@ class FakeLotteryRepository(
         if (entry.status != EntryStatus.WAITING) throw IllegalStateException("Entry is not WAITING")
 
         entries.remove(id)
+        publish()
         lotteries[lotteryId] = lottery.copy(
             entriesVersion = lottery.entriesVersion + 1,
             waitingUserIds = lottery.waitingUserIds.filter { it != userId }
@@ -118,6 +126,7 @@ class FakeLotteryRepository(
             throw IllegalStateException("Cannot transition entry from WAITING via updateEntry; use leaveWaitingList or draw reconciliation")
         }
         entries[id] = entry.copy(id = id)
+        publish()
     }
 
     override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean = mutex.withLock {
@@ -131,6 +140,7 @@ class FakeLotteryRepository(
     override suspend fun seedEntry(entry: LotteryEntry): Unit = mutex.withLock {
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
         entries[id] = entry.copy(id = id)
+        publish()
         val lottery = lotteries[entry.lotteryId]
         if (lottery != null) {
             val updatedWaitingIds = if (entry.status == EntryStatus.WAITING) {
@@ -262,8 +272,17 @@ class FakeLotteryRepository(
                 }
             }
         }
+        publish()
 
         val updatedWaitingUserIds = lottery.waitingUserIds.filter { it !in winnerSet && it !in loserSet }
         lotteries[lotteryId] = lottery.copy(waitingUserIds = updatedWaitingUserIds)
+    }
+
+    override fun observeEntries(lotteryId: String): Flow<List<LotteryEntry>> =
+        allEntries.map { all -> all.filter { it.lotteryId == lotteryId } }
+
+    /** Sends the current entries to [observeEntries] listeners; call after every change to [entries]. */
+    private fun publish() {
+        allEntries.value = entries.values.toList()
     }
 }

@@ -164,11 +164,14 @@ it on the phone twice. If a later transaction fails the earlier ones stay saved,
 the same list to finish. Transactions need a connection, so `addAll` fails offline. Set the `id`
 yourself; a blank `id` throws `IllegalArgumentException` and nothing is saved.
 
-A draw's results (US 01.03.01) use the ID `draw_<lotteryId>_<userId>`, so each entrant gets one per
-draw however often it runs. A win is `WON` from `"system"` with `lotteryId` set, `campsiteId` set only
-when the lottery covers one campsite, the title "You won the lottery!" and the message "You won a spot
-at <campsite names>. Reserve your nights before <booking end>." `NotificationService.sendDrawResults`
-builds them. `batchId` stays `null` for draws; it only groups owner broadcasts.
+A draw's results (US 01.03.01, 01.03.02) use the ID `draw_<lotteryId>_<userId>`, so each entrant gets
+one per draw however often it runs. Both kinds are from `"system"` with `lotteryId` set and `campsiteId`
+set only when the lottery covers one campsite. A win is `WON` with the title "You won the lottery!" and
+the message "You won a spot at <campsite names>. Reserve your nights before <booking end>." A loss is
+`NOT_SELECTED` with the title "Not selected this time" and the message "You weren't selected for
+<campsite names> this time." Someone in both lists only gets the win. `NotificationService.sendDrawResults`
+builds them all and saves them in one `addAll`. `batchId` stays `null` for draws; it only groups owner
+broadcasts.
 
 The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
 that user's notifications, newest first, straight away and on every change, until the returned
