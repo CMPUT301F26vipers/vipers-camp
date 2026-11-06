@@ -134,40 +134,6 @@ class FakeLotteryRepository(
         }
     }
 
-    override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult = mutex.withLock {
-        val lottery = lotteries[entry.lotteryId]
-            ?: return JoinWaitingListResult.Error("No lottery with ID ${entry.lotteryId}")
-
-        if (lottery.removed || !lottery.canEntrantJoin()) {
-            return JoinWaitingListResult.Error("Registration is closed")
-        }
-
-        val existing = entries[LotteryEntry.idFor(entry.lotteryId, entry.userId)]
-        if (existing != null) {
-            return if (existing.status == EntryStatus.WAITING) {
-                JoinWaitingListResult.AlreadyJoined
-            } else {
-                JoinWaitingListResult.Error("Cannot join with existing ${existing.status} entry")
-            }
-        }
-
-        if (entry.userId in lottery.waitingUserIds) {
-            return JoinWaitingListResult.AlreadyJoined
-        }
-
-        if (lottery.waitlistCapacity != null && lottery.waitingUserIds.size >= lottery.waitlistCapacity) {
-            return JoinWaitingListResult.WaitlistFull
-        }
-
-        val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
-        val saved = entry.copy(id = id, status = EntryStatus.WAITING)
-        entries[id] = saved
-        lotteries[entry.lotteryId] = lottery.copy(
-            waitingUserIds = (lottery.waitingUserIds + entry.userId).distinct()
-        )
-        JoinWaitingListResult.Success
-    }
-
     override suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry? = mutex.withLock {
         entries[LotteryEntry.idFor(lotteryId, userId)]
     }

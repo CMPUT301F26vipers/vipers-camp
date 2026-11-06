@@ -110,8 +110,6 @@ class LotteryDetailsController(
             val all = lotteryRepository.getEntries(lotteryId)
             allEntries = all
             val entries = all.filter { it.status == EntryStatus.WAITING }
-            val entries = lotteryRepository.getEntries(lotteryId)
-                .filter { it.status == EntryStatus.WAITING }
             waitingEntries = entries
 
             if (currentUserId.isNotBlank()) {
@@ -261,8 +259,6 @@ class LotteryDetailsController(
             val all = lotteryRepository.getEntries(lotteryId)
             allEntries = all
             val updatedEntries = all.filter { it.status == EntryStatus.WAITING }
-            val updatedEntries = lotteryRepository.getEntries(lotteryId)
-                .filter { it.status == EntryStatus.WAITING }
             waitingEntries = updatedEntries
 
             val names = userNames.toMutableMap()

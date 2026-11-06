@@ -3,6 +3,7 @@
  * The real LotteryRepository: lotteries in the Firestore "lotteries" collection and their
  * waiting-list entries in "lotteryEntries" (Repository pattern).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
+ * Draw transaction not tested against real Firestore yet.
  */
 package com.example.vipers.data.firestore
 
@@ -175,59 +176,6 @@ class FirestoreLotteryRepository(
                 }
             }
             null
-        }.await()
-    }
-
-    override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
-        val lotteryRef = lotteries.document(entry.lotteryId)
-        val entryRef = entries.document(LotteryEntry.idFor(entry.lotteryId, entry.userId))
-
-        // Preload/initialize waitingUserIds if a legacy document in Firestore didn't have it
-        val preloadedSnapshot = lotteryRef.get().await()
-        if (preloadedSnapshot.exists() && preloadedSnapshot.get("waitingUserIds") == null) {
-            val existingWaitingIds = entries
-                .whereEqualTo("lotteryId", entry.lotteryId)
-                .whereEqualTo("status", EntryStatus.WAITING.name)
-                .get().await()
-                .documents.mapNotNull { it.getString("userId") }
-            lotteryRef.update("waitingUserIds", existingWaitingIds).await()
-        }
-
-        return db.runTransaction { transaction ->
-            val lotterySnap = transaction.get(lotteryRef)
-            if (!lotterySnap.exists()) {
-                return@runTransaction JoinWaitingListResult.Error("No lottery with ID ${entry.lotteryId}")
-            }
-            val lottery = lotterySnap.toLottery()
-
-            if (lottery.removed || !lottery.canEntrantJoin()) {
-                return@runTransaction JoinWaitingListResult.Error("Registration is closed")
-            }
-
-            val entrySnap = transaction.get(entryRef)
-            if (entrySnap.exists()) {
-                val status = entrySnap.getString("status")
-                return@runTransaction if (status == EntryStatus.WAITING.name) {
-                    JoinWaitingListResult.AlreadyJoined
-                } else {
-                    JoinWaitingListResult.Error("Cannot join with existing $status entry")
-                }
-            }
-
-            val currentWaitingUserIds = lotterySnap.getStringList("waitingUserIds")
-            if (entry.userId in currentWaitingUserIds) {
-                return@runTransaction JoinWaitingListResult.AlreadyJoined
-            }
-
-            if (lottery.waitlistCapacity != null && currentWaitingUserIds.size >= lottery.waitlistCapacity) {
-                return@runTransaction JoinWaitingListResult.WaitlistFull
-            }
-
-            val updatedWaitingUserIds = (currentWaitingUserIds + entry.userId).distinct()
-            transaction.update(lotteryRef, "waitingUserIds", updatedWaitingUserIds)
-            transaction.set(entryRef, entry.copy(id = entryRef.id, status = EntryStatus.WAITING).toMap())
-
-            JoinWaitingListResult.Success
         }.await()
     }
 

@@ -250,7 +250,7 @@ class FakeRepositoryTest {
         assertEquals(JoinWaitingListResult.WaitlistFull, res2Blocked)
 
         // user-1 wins the draw (status changes from WAITING to WON)
-        repo.saveEntry(entry1.copy(status = EntryStatus.WON))
+        repo.seedEntry(entry1.copy(status = EntryStatus.WON))
         assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
 
         // Capacity is freed; user-2 can now successfully join
@@ -259,7 +259,7 @@ class FakeRepositoryTest {
         assertEquals(1, repo.getLottery("lottery-1")?.waitingUserIds?.size)
 
         // user-2 is removed by an admin or leaves
-        repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.REMOVED))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.REMOVED))
         assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
     }
 }

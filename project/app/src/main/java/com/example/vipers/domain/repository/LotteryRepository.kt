@@ -100,9 +100,4 @@ interface LotteryRepository {
      * Preserves progressed or terminal statuses (RESERVED, DECLINED, EXPIRED, REMOVED).
      */
     suspend fun reconcileEntryStatuses(lotteryId: String, committedDrawId: String)
-    /**
-     * Atomically adds [entry] to the lottery's waiting list in a transaction, enforcing
-     * [Lottery.waitlistCapacity] and preventing duplicate entries.
-     */
-    suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult
 }

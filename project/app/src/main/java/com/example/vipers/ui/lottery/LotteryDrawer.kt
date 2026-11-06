@@ -4,7 +4,7 @@
  * Randomly picks the set number of winners from WAITING entries, writes chunked manifests,
  * commits the atomic Phase 1 draw transaction, reconciles entry statuses, and dispatches
  * idempotent notifications.
- * Known issues: none.
+ * Known issues: Draw transaction not tested against real Firestore yet.
  */
 package com.example.vipers.ui.lottery
 
