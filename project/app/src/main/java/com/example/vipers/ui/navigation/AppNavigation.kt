@@ -222,8 +222,13 @@ fun AppNavigation(
             }
             composable(Routes.NOTIFICATIONS) {
                 NotificationsScreen(
-                    // no Reserve route yet (01.04.01 / T-03); a win tap only marks it read
-                    onOpenReserve = {},
+                    // a win opens Reserve (01.04.01); without a campsiteId it uses the lottery's first
+                    onOpenReserve = { lotteryId ->
+                        val route = Routes.RESERVE
+                            .replace("{lotteryId}", lotteryId)
+                            .replace("?campsiteId={campsiteId}", "")
+                        navController.navigate(route)
+                    },
                     // the entrant's campsite details (E05), never OWNER_CAMPSITE
                     onOpenCampsite = { campsiteId ->
                         navController.navigate(Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId))

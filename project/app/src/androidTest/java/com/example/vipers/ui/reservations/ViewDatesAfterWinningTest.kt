@@ -1,10 +1,10 @@
 /*
  * ViewDatesAfterWinningTest.kt
  * Intent tests for US 01.04.01: a winner opens the Reserve screen (mockup E11) from Campsite
- * Details and sees the reserve-by date, the lottery's nights with taken ones greyed out, and the
- * price and total for the nights they pick; plus the "no nights left" and "offer expired" cases.
- * Uses the fake repositories, so it doesn't touch Firestore.
- * Known issues: opening the screen from the win notification isn't wired up yet.
+ * Details or from the win notification, and sees the reserve-by date, the lottery's nights with
+ * taken ones greyed out, and the price and total for the nights they pick; plus the "no nights
+ * left" and "offer expired" cases. Uses the fake repositories, so it doesn't touch Firestore.
+ * Known issues: none.
  */
 package com.example.vipers.ui.reservations
 
@@ -33,10 +33,13 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.common.shortDate
 import com.example.vipers.ui.navigation.AppNavigation
+import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -120,6 +123,14 @@ class ViewDatesAfterWinningTest {
     private fun hasState(state: String) =
         SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, state)
 
+    // the win notification T-13 shows in the inbox (mockup E10)
+    private val winNotification = Notification(
+        id = "win", recipientId = "test-device", type = NotificationType.WON,
+        lotteryId = "lot-summer", campsiteId = "hinton", title = "You won the lottery!",
+        message = "Hinton Ridge Campground: reserve by ${shortDate(lottery.bookingEnd)}",
+        createdAt = now - 60 * 60 * 1000L,
+    )
+
     /** Starts the whole app for "test-device", whose entry in the lottery has [status]. */
     private fun startApp(status: EntryStatus) {
         val campsites = FakeCampsiteRepository(listOf(hinton))
@@ -134,7 +145,7 @@ class ViewDatesAfterWinningTest {
             campsiteRepository = campsites,
             lotteryRepository = FakeLotteryRepository(listOf(lottery), listOf(samsEntry(status))),
             reservationRepository = FakeReservationRepository(),
-            notificationRepository = FakeNotificationRepository(),
+            notificationRepository = FakeNotificationRepository(listOf(winNotification)),
         )
         composeRule.setContent {
             VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) }
@@ -157,6 +168,16 @@ class ViewDatesAfterWinningTest {
         composeRule.onNodeWithText("You won! Reserve by", substring = true).performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("reserve_button").performScrollTo().performClick()
+
+        assertReserveIsOpen()
+    }
+
+    @Test
+    fun winnerOpensReserveFromTheWinNotification() {
+        startApp(EntryStatus.WON)
+
+        composeRule.onNodeWithTag("tab_${Routes.NOTIFICATIONS}").performClick()
+        composeRule.onNodeWithText("You won the lottery!").performClick()
 
         assertReserveIsOpen()
     }
