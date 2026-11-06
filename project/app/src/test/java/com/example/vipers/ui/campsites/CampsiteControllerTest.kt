@@ -45,6 +45,7 @@ class CampsiteControllerTest {
         controller.onAddressChange("Hinton, AB")
         controller.onRegionChange(Region.HINTON)
         controller.onMaxGuestsChange("6")
+        controller.onPriceChange("65")
         controller.onDescriptionChange("Outdoor cookhouse")
         controller.onTagInputChange("Cookhouse")
         controller.addTag()
@@ -54,7 +55,10 @@ class CampsiteControllerTest {
     fun publish_withEmptyForm_showsAnErrorForEachRequiredFieldAndSavesNothing() = runBlocking {
         controller.publish()
 
-        assertEquals(setOf("name", "address", "region", "maxOccupancy"), controller.errors.keys)
+        assertEquals(
+            setOf("name", "address", "region", "maxOccupancy", "pricePerNightCents"),
+            controller.errors.keys,
+        )
         assertEquals("Enter max guests", controller.errors["maxOccupancy"])
         assertTrue(repo.getAllCampsites().isEmpty())
         assertFalse(controller.published)
@@ -178,6 +182,7 @@ class CampsiteControllerTest {
         assertEquals("", form.address)
         assertNull(form.region)
         assertEquals("", form.maxGuests)
+        assertEquals("", form.price)
         assertEquals("", form.description)
         assertTrue(form.tags.isEmpty())
     }
@@ -380,6 +385,7 @@ class CampsiteControllerTest {
             { it.onAddressChange("Jasper, AB") },
             { it.onRegionChange(Region.JASPER) },
             { it.onMaxGuestsChange("6") },
+            { it.onPriceChange("70") },
             { it.onDescriptionChange("Tennis court") },
             { it.removeTag("Cookhouse") },
         )
@@ -420,5 +426,109 @@ class CampsiteControllerTest {
         assertTrue(offlineController.saveFailed)
         assertFalse(offlineController.published)
         assertFalse(offlineController.isSaving)
+    }
+
+    // T-09: the nightly price
+
+    @Test
+    fun publish_savesThePriceInCents() = runBlocking {
+        fillValidForm()
+        controller.onPriceChange("65.5")
+        controller.publish()
+
+        assertEquals(6550L, repo.getCampsitesByOwner("my-phone").single().pricePerNightCents)
+        assertTrue(controller.published)
+    }
+
+    @Test
+    fun publish_acceptsWholeDollarsZeroAndADollarSign() = runBlocking {
+        val prices = mapOf("65" to 6500L, "0" to 0L, "$50" to 5000L, " 65.05 " to 6505L)
+        for ((typed, cents) in prices) {
+            val form = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+            form.onNameChange("Hinton Ridge Campground")
+            form.onAddressChange("Hinton, AB")
+            form.onRegionChange(Region.HINTON)
+            form.onMaxGuestsChange("6")
+            form.onPriceChange(typed)
+            form.publish()
+
+            assertTrue(typed, form.published)
+            assertEquals(typed, cents, form.toCampsite().pricePerNightCents)
+        }
+    }
+
+    @Test
+    fun publish_withNoPrice_asksForOne() = runBlocking {
+        fillValidForm()
+        controller.onPriceChange("  ")
+        controller.publish()
+
+        assertEquals("Enter a price", controller.errors["pricePerNightCents"])
+        assertTrue(repo.getAllCampsites().isEmpty())
+    }
+
+    @Test
+    fun publish_withAPriceThatIsNotDollarsAndCents_showsAnError() = runBlocking {
+        for (typed in listOf("-5", "65.505", "abc", "6.5.0", ".50", "1e3")) {
+            fillValidForm()
+            controller.onPriceChange(typed)
+            controller.publish()
+
+            assertEquals(typed, "Enter dollars, e.g. 65.50", controller.errors["pricePerNightCents"])
+        }
+        assertTrue(repo.getAllCampsites().isEmpty())
+    }
+
+    @Test
+    fun onPriceChange_clearsThePriceError() {
+        controller.publish()
+        controller.onPriceChange("65")
+
+        assertFalse("pricePerNightCents" in controller.errors)
+    }
+
+    @Test
+    fun hasUnsavedChanges_newFormWithOnlyAPrice_isTrue() {
+        controller.onPriceChange("65")
+        assertTrue(controller.hasUnsavedChanges)
+    }
+
+    @Test
+    fun loadForEdit_prefillsThePriceInDollars() = runBlocking {
+        assertEquals("65", editForm(FakeCampsiteRepository(listOf(hintonInFull))).price)
+        val withCents = hintonInFull.copy(pricePerNightCents = 6550)
+        assertEquals("65.50", editForm(FakeCampsiteRepository(listOf(withCents))).price)
+    }
+
+    @Test
+    fun publish_editToThePrice_savesItAndKeepsEverythingElse() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = editForm(campsites)
+        form.onPriceChange("70")
+        form.publish()
+
+        assertEquals(hintonInFull.copy(pricePerNightCents = 7000), campsites.getCampsite("hinton"))
+        assertTrue(form.published)
+    }
+
+    @Test
+    fun publish_editToThePrice_leavesReservationsAtTheOldPrice() = runBlocking {
+        // reserved for 2 nights at $65 before the owner raised the price
+        val booked = Reservation(
+            id = "r1",
+            userId = "sam",
+            ownerId = "my-phone",
+            campsiteId = "hinton",
+            checkIn = "2027-05-08",
+            checkOut = "2027-05-10",
+            totalPriceCents = hintonInFull.totalPriceCents(2),
+        )
+        val reservations = FakeReservationRepository(listOf(booked))
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        form.onPriceChange("80")
+        form.publish()
+
+        assertTrue(form.published)
+        assertEquals(13000L, reservations.getReservation("r1")?.totalPriceCents)
     }
 }
