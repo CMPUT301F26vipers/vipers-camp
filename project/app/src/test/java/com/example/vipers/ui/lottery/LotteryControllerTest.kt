@@ -420,6 +420,154 @@ class LotteryControllerTest {
     }
 
     @Test
+    fun saveLottery_zeroWinnersCount_preventsSavingAndReportsError() = runTest {
+        setupCampsiteAndController()
+        var saveCalled = false
+        val trackingRepo = object : LotteryRepository by lotteryRepository {
+            override suspend fun addLottery(lottery: Lottery): String {
+                saveCalled = true
+                return lotteryRepository.addLottery(lottery)
+            }
+        }
+        controller = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = trackingRepo,
+            ownerId = ownerId,
+            campsiteId = campsiteId
+        )
+
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        controller.onWinnersCountChange("0")
+        controller.saveLottery()
+
+        assertFalse(controller.saved)
+        assertEquals("At least one winner is required", controller.error)
+        assertFalse(saveCalled)
+        assertTrue(lotteryRepository.getLotteriesForCampsite(campsiteId).isEmpty())
+    }
+
+    @Test
+    fun saveLottery_negativeWinnersCount_preventsSavingAndReportsError() = runTest {
+        setupCampsiteAndController()
+        var saveCalled = false
+        val trackingRepo = object : LotteryRepository by lotteryRepository {
+            override suspend fun addLottery(lottery: Lottery): String {
+                saveCalled = true
+                return lotteryRepository.addLottery(lottery)
+            }
+        }
+        controller = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = trackingRepo,
+            ownerId = ownerId,
+            campsiteId = campsiteId
+        )
+
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        controller.onWinnersCountChange("-1")
+        controller.saveLottery()
+
+        assertFalse(controller.saved)
+        assertEquals("At least one winner is required", controller.error)
+        assertFalse(saveCalled)
+        assertTrue(lotteryRepository.getLotteriesForCampsite(campsiteId).isEmpty())
+    }
+
+    @Test
+    fun saveLottery_alphabeticWinnersCount_preventsSavingAndReportsError() = runTest {
+        setupCampsiteAndController()
+        var saveCalled = false
+        val trackingRepo = object : LotteryRepository by lotteryRepository {
+            override suspend fun addLottery(lottery: Lottery): String {
+                saveCalled = true
+                return lotteryRepository.addLottery(lottery)
+            }
+        }
+        controller = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = trackingRepo,
+            ownerId = ownerId,
+            campsiteId = campsiteId
+        )
+
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        controller.onWinnersCountChange("abc")
+        controller.saveLottery()
+
+        assertFalse(controller.saved)
+        assertEquals("At least one winner is required", controller.error)
+        assertFalse(saveCalled)
+        assertTrue(lotteryRepository.getLotteriesForCampsite(campsiteId).isEmpty())
+    }
+
+    @Test
+    fun saveLottery_emptyWinnersCount_preventsSavingAndReportsError() = runTest {
+        setupCampsiteAndController()
+        var saveCalled = false
+        val trackingRepo = object : LotteryRepository by lotteryRepository {
+            override suspend fun addLottery(lottery: Lottery): String {
+                saveCalled = true
+                return lotteryRepository.addLottery(lottery)
+            }
+        }
+        controller = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = trackingRepo,
+            ownerId = ownerId,
+            campsiteId = campsiteId
+        )
+
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        controller.onWinnersCountChange("")
+        controller.saveLottery()
+
+        assertFalse(controller.saved)
+        assertEquals("At least one winner is required", controller.error)
+        assertFalse(saveCalled)
+        assertTrue(lotteryRepository.getLotteriesForCampsite(campsiteId).isEmpty())
+    }
+
+    @Test
     fun invalidSelectionsCannotBeSaved() = runTest {
         setupCampsiteAndController()
         // Save without selecting any nights
