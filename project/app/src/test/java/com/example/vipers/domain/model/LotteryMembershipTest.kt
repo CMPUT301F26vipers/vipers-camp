@@ -69,15 +69,11 @@ class LotteryMembershipTest {
             now = now
         )
 
-        try {
-            repository.joinWaitingList(
-                LotteryEntry(lotteryId = lottery.id, userId = "user-1"),
-                now = now
-            )
-            fail("Expected IllegalStateException")
-        } catch (e: IllegalStateException) {
-            // expected
-        }
+        val secondResult = repository.joinWaitingList(
+            LotteryEntry(lotteryId = lottery.id, userId = "user-1"),
+            now = now
+        )
+        assertTrue(secondResult is com.example.vipers.domain.repository.JoinWaitingListResult.AlreadyJoined)
 
         // Version should not increment on failed duplicate
         val updated = repository.getLottery(lottery.id)!!
@@ -89,15 +85,11 @@ class LotteryMembershipTest {
         val lottery = createOpenLottery()
         val afterClose = regEnd + 1000
 
-        try {
-            repository.joinWaitingList(
-                LotteryEntry(lotteryId = lottery.id, userId = "user-1"),
-                now = afterClose
-            )
-            fail("Expected IllegalStateException")
-        } catch (e: IllegalStateException) {
-            // expected
-        }
+        val closeResult = repository.joinWaitingList(
+            LotteryEntry(lotteryId = lottery.id, userId = "user-1"),
+            now = afterClose
+        )
+        assertTrue(closeResult is com.example.vipers.domain.repository.JoinWaitingListResult.Error)
 
         val entries = repository.getEntries(lottery.id)
         assertTrue(entries.isEmpty())
@@ -118,15 +110,11 @@ class LotteryMembershipTest {
             now = regEnd + 1000,
         )
 
-        try {
-            repository.joinWaitingList(
-                LotteryEntry(lotteryId = lottery.id, userId = "user-1"),
-                now = now
-            )
-            fail("Expected IllegalStateException")
-        } catch (e: IllegalStateException) {
-            // expected
-        }
+        val secondResult = repository.joinWaitingList(
+            LotteryEntry(lotteryId = lottery.id, userId = "user-1"),
+            now = now
+        )
+        assertTrue(secondResult is com.example.vipers.domain.repository.JoinWaitingListResult.Error)
     }
 
     @Test

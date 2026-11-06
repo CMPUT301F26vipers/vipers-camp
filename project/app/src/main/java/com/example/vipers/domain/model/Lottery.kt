@@ -24,6 +24,7 @@ package com.example.vipers.domain.model
  * @property waitlistCapacity Most entrants allowed to join, or null for no limit.
  * @property drawnAt When the draw ran, or null if it hasn't.
  * @property removed True once an admin removes it.
+ * @property waitingUserIds Device IDs of entrants currently on the waiting list.
  * @property entriesVersion Counter incremented on waiting-list membership changes.
  * @property committedDrawId ID of the authoritative draw manifest, or null if not yet drawn.
  * @property manifestChunkCount Number of manifest chunks saved for this draw.
@@ -44,6 +45,7 @@ data class Lottery(
     val waitlistCapacity: Int? = null,
     val drawnAt: Long? = null,
     val removed: Boolean = false,
+    val waitingUserIds: List<String> = emptyList(),
     val entriesVersion: Long = 0L,
     val committedDrawId: String? = null,
     val manifestChunkCount: Int = 0,

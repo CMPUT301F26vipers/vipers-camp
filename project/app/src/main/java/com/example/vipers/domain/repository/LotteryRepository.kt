@@ -10,6 +10,14 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 
+/** Result of an atomic waiting list join operation. */
+sealed interface JoinWaitingListResult {
+    data object Success : JoinWaitingListResult
+    data object WaitlistFull : JoinWaitingListResult
+    data object AlreadyJoined : JoinWaitingListResult
+    data class Error(val message: String) : JoinWaitingListResult
+}
+
 /** Result of an atomic draw transaction attempt. */
 sealed class DrawTransactionResult {
     /** Transaction successfully committed the winner manifest for this draw. */
@@ -39,9 +47,10 @@ interface LotteryRepository {
 
     /**
      * Atomically adds an entrant to the lottery waiting list.
-     * Enforces that the lottery has not been drawn, registration is open, and increments entriesVersion.
+     * Enforces that the lottery has not been drawn, registration is open, waitlist capacity is not exceeded,
+     * prevents duplicate entries, and increments entriesVersion.
      */
-    suspend fun joinWaitingList(entry: LotteryEntry, now: Long = System.currentTimeMillis())
+    suspend fun joinWaitingList(entry: LotteryEntry, now: Long = System.currentTimeMillis()): JoinWaitingListResult
 
     /**
      * Atomically removes an entrant from the waiting list before the draw runs.

@@ -11,6 +11,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.DrawTransactionResult
+import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -41,25 +42,66 @@ class FirestoreLotteryRepository(
             .get().await()
             .documents.map { it.toLottery() }
 
-    override suspend fun joinWaitingList(entry: LotteryEntry, now: Long) {
-        val lotteryDoc = lotteries.document(entry.lotteryId)
-        val entryId = LotteryEntry.idFor(entry.lotteryId, entry.userId)
-        val entryDoc = entries.document(entryId)
+    override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult {
+        val lotteryRef = lotteries.document(entry.lotteryId)
+        val entryRef = entries.document(LotteryEntry.idFor(entry.lotteryId, entry.userId))
 
-        db.runTransaction { tx ->
-            val lotterySnap = tx.get(lotteryDoc)
-            if (!lotterySnap.exists()) throw NoSuchElementException("Lottery not found")
+        // Preload/initialize waitingUserIds if a legacy document in Firestore didn't have it
+        val preloadedSnapshot = lotteryRef.get().await()
+        if (preloadedSnapshot.exists() && preloadedSnapshot.get("waitingUserIds") == null) {
+            val existingWaitingIds = entries
+                .whereEqualTo("lotteryId", entry.lotteryId)
+                .whereEqualTo("status", EntryStatus.WAITING.name)
+                .get().await()
+                .documents.mapNotNull { it.getString("userId") }
+            lotteryRef.update("waitingUserIds", existingWaitingIds).await()
+        }
+
+        return db.runTransaction { transaction ->
+            val lotterySnap = transaction.get(lotteryRef)
+            if (!lotterySnap.exists()) {
+                return@runTransaction JoinWaitingListResult.Error("No lottery with ID ${entry.lotteryId}")
+            }
             val lottery = lotterySnap.toLottery()
-            if (lottery.drawnAt != null) throw IllegalStateException("Lottery already drawn")
-            if (!lottery.canEntrantJoin(now)) throw IllegalStateException("Registration is closed")
 
-            val existingSnap = tx.get(entryDoc)
-            if (existingSnap.exists() && existingSnap.getString("status") == EntryStatus.WAITING.name) {
-                throw IllegalStateException("Already on waiting list")
+            if (lottery.removed || !lottery.canEntrantJoin(now)) {
+                return@runTransaction JoinWaitingListResult.Error("Registration is closed")
             }
 
-            tx.set(entryDoc, entry.copy(id = entryId, status = EntryStatus.WAITING).toMap())
-            tx.update(lotteryDoc, "entriesVersion", lottery.entriesVersion + 1)
+            if (lottery.drawnAt != null) {
+                return@runTransaction JoinWaitingListResult.Error("Lottery already drawn")
+            }
+
+            val entrySnap = transaction.get(entryRef)
+            if (entrySnap.exists()) {
+                val status = entrySnap.getString("status")
+                return@runTransaction if (status == EntryStatus.WAITING.name) {
+                    JoinWaitingListResult.AlreadyJoined
+                } else {
+                    JoinWaitingListResult.Error("Cannot join with existing $status entry")
+                }
+            }
+
+            val currentWaitingUserIds = lotterySnap.getStringList("waitingUserIds")
+            if (entry.userId in currentWaitingUserIds) {
+                return@runTransaction JoinWaitingListResult.AlreadyJoined
+            }
+
+            if (lottery.waitlistCapacity != null && currentWaitingUserIds.size >= lottery.waitlistCapacity) {
+                return@runTransaction JoinWaitingListResult.WaitlistFull
+            }
+
+            val updatedWaitingUserIds = (currentWaitingUserIds + entry.userId).distinct()
+            transaction.update(
+                lotteryRef,
+                mapOf(
+                    "waitingUserIds" to updatedWaitingUserIds,
+                    "entriesVersion" to (lottery.entriesVersion + 1)
+                )
+            )
+            transaction.set(entryRef, entry.copy(id = entryRef.id, status = EntryStatus.WAITING).toMap())
+
+            JoinWaitingListResult.Success
         }.await()
     }
 
@@ -80,8 +122,17 @@ class FirestoreLotteryRepository(
                 throw IllegalStateException("Entry is not WAITING")
             }
 
+            val currentWaitingUserIds = lotterySnap.getStringList("waitingUserIds")
+            val updatedWaitingUserIds = currentWaitingUserIds.filter { it != userId }
+
             tx.delete(entryDoc)
-            tx.update(lotteryDoc, "entriesVersion", lottery.entriesVersion + 1)
+            tx.update(
+                lotteryDoc,
+                mapOf(
+                    "waitingUserIds" to updatedWaitingUserIds,
+                    "entriesVersion" to (lottery.entriesVersion + 1)
+                )
+            )
         }.await()
     }
 
@@ -105,7 +156,26 @@ class FirestoreLotteryRepository(
 
     override suspend fun seedEntry(entry: LotteryEntry) {
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
-        entries.document(id).set(entry.copy(id = id).toMap()).await()
+        val entryRef = entries.document(id)
+        val lotteryRef = lotteries.document(entry.lotteryId)
+
+        db.runTransaction { transaction ->
+            val lotterySnap = transaction.get(lotteryRef)
+            transaction.set(entryRef, entry.copy(id = id).toMap())
+
+            if (lotterySnap.exists()) {
+                val currentWaitingUserIds = lotterySnap.getStringList("waitingUserIds")
+                val newWaitingUserIds = if (entry.status == EntryStatus.WAITING) {
+                    (currentWaitingUserIds + entry.userId).distinct()
+                } else {
+                    currentWaitingUserIds.filter { it != entry.userId }
+                }
+                if (newWaitingUserIds != currentWaitingUserIds) {
+                    transaction.update(lotteryRef, "waitingUserIds", newWaitingUserIds)
+                }
+            }
+            null
+        }.await()
     }
 
     override suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry? {
@@ -268,6 +338,13 @@ class FirestoreLotteryRepository(
                 batch.commit().await()
             }
         }
+
+        val winnerOrLoserUserIds = winnerSet + loserSet
+        val currentWaiting = lottery.waitingUserIds
+        val newWaiting = currentWaiting.filter { it !in winnerOrLoserUserIds }
+        if (newWaiting != currentWaiting) {
+            lotteries.document(lotteryId).update("waitingUserIds", newWaiting).await()
+        }
     }
 }
 
@@ -286,6 +363,7 @@ fun Lottery.toMap(): Map<String, Any?> = mapOf(
     "waitlistCapacity" to waitlistCapacity,
     "drawnAt" to drawnAt,
     "removed" to removed,
+    "waitingUserIds" to waitingUserIds,
     "entriesVersion" to entriesVersion,
     "committedDrawId" to committedDrawId,
     "manifestChunkCount" to manifestChunkCount,
@@ -308,6 +386,7 @@ fun DocumentSnapshot.toLottery(): Lottery = Lottery(
     waitlistCapacity = getInt("waitlistCapacity"),
     drawnAt = getLong("drawnAt"),
     removed = getBoolean("removed") ?: false,
+    waitingUserIds = getStringList("waitingUserIds"),
     entriesVersion = getLong("entriesVersion") ?: 0L,
     committedDrawId = getString("committedDrawId"),
     manifestChunkCount = getInt("manifestChunkCount") ?: 0,
