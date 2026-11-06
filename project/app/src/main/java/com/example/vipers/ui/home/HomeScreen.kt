@@ -1,12 +1,12 @@
 /*
  * HomeScreen.kt
  * The Home tab (mockups E02, E02b, E02c), where the app opens. The entrant searches campsites by
- * name here (US 01.01.01), each result shows a summary card (US 01.01.04), and tapping a card
- * opens its Campsite Details (US 01.01.05); CampsiteSearchController does the searching.
- * Known issues: Filters (01.01.02), the result count and loading indicator (01.01.03) and Scan QR
- * (01.12.01) are added by those stories. The picture on
- * each card is a placeholder until campsites have promo images (02.01.02b), and the "% match"
- * on the mockup is the WOW factor (W-01).
+ * name here (US 01.01.01) and filters them by region, date range, and guests (US 01.01.02). Each
+ * result shows a summary card (US 01.01.04), and tapping a card opens its Campsite Details
+ * (US 01.01.05); CampsiteSearchController does the searching and filtering.
+ * Known issues: the result count and loading indicator (01.01.03) and Scan QR (01.12.01) are
+ * added by those stories. The picture on each card is a placeholder until campsites have promo
+ * images (02.01.02b), and preferred tags / "% match" on the mockup are the WOW factor (W-01).
  */
 package com.example.vipers.ui.home
 
@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -31,11 +33,16 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -45,10 +52,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.Region
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
@@ -67,20 +79,73 @@ fun HomeScreen(
     controller: CampsiteSearchController = viewModel(factory = CampsiteSearchController.Factory),
     onOpenCampsite: (String) -> Unit = {},
 ) {
+    var showFilterDialog by remember { mutableStateOf(false) }
+
     // load each time Home opens, so newly added campsites show up
     LaunchedEffect(Unit) { controller.loadCampsites() }
     val results = controller.results
 
     Column {
         TopBar(title = "Campsites")
-        SearchField(
-            text = controller.searchText,
-            onTextChange = controller::onSearchTextChange,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .testTag("search_field"),
-        )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SearchField(
+                text = controller.searchText,
+                onTextChange = controller::onSearchTextChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("search_field"),
+            )
+            OutlinedButton(
+                onClick = { showFilterDialog = true },
+                shape = InputShape,
+                modifier = Modifier
+                    .size(InputHeight)
+                    .semantics {
+                        contentDescription = "Filters"
+                    }
+                    .testTag("button_filters"),
+                contentPadding = PaddingValues(0.dp),
+                border = BorderStroke(
+                    1.dp,
+                    if (controller.hasActiveFilters) Primary else MaterialTheme.colorScheme.outlineVariant,
+                ),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_filter),
+                        contentDescription = "Filters",
+                        tint = if (controller.hasActiveFilters) Primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    if (controller.hasActiveFilters) {
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .align(Alignment.TopEnd)
+                                .background(Primary, CircleShape)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (controller.hasActiveFilters && !showFilterDialog) {
+            ActiveFiltersBar(
+                selectedRegion = controller.selectedRegion,
+                startDate = controller.filterStartDate,
+                endDate = controller.filterEndDate,
+                minGuests = controller.filterMinGuests,
+                onClearFilters = controller::clearFilters,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+
         when {
             // only show an error if there is nothing from an earlier load to show
             controller.loadFailed && results.isEmpty() ->
@@ -88,7 +153,11 @@ fun HomeScreen(
             // wait for the first load before saying nothing was found
             controller.isLoading && results.isEmpty() -> {}
             results.isEmpty() ->
-                EmptyResults("No campsites found", "Check the spelling, or clear the search.")
+                EmptyResults(
+                    "No campsites found",
+                    if (controller.hasActiveFilters) "Try adjusting or clearing your filters."
+                    else "Check the spelling, or clear the search.",
+                )
             else -> LazyColumn(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -101,6 +170,67 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+    }
+
+    if (showFilterDialog) {
+        CampsiteFilterDialog(
+            currentRegion = controller.selectedRegion,
+            currentStartDate = controller.filterStartDate,
+            currentEndDate = controller.filterEndDate,
+            currentMinGuests = controller.filterMinGuests,
+            onApply = { region, start, end, guests ->
+                controller.applyFilters(region, start, end, guests)
+                showFilterDialog = false
+            },
+            onClear = {
+                controller.clearFilters()
+                showFilterDialog = false
+            },
+            onDismiss = { showFilterDialog = false },
+        )
+    }
+}
+
+/**
+ * Summary bar shown below search when filters are active, displaying the active criteria
+ * and a quick "Clear filters" action.
+ */
+@Composable
+private fun ActiveFiltersBar(
+    selectedRegion: Region?,
+    startDate: String?,
+    endDate: String?,
+    minGuests: Int?,
+    onClearFilters: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        val filterSummaries = mutableListOf<String>()
+        if (selectedRegion != null) filterSummaries.add(selectedRegion.displayName)
+        if (!startDate.isNullOrBlank() || !endDate.isNullOrBlank()) {
+            filterSummaries.add("${startDate ?: "..."} to ${endDate ?: "..."}")
+        }
+        if (minGuests != null && minGuests > 0) {
+            filterSummaries.add("$minGuests+ guests")
+        }
+        Text(
+            text = "Active: " + filterSummaries.joinToString(", "),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            onClick = onClearFilters,
+            modifier = Modifier.testTag("button_clear_filters_bar"),
+        ) {
+            Text("Clear filters", style = MaterialTheme.typography.labelSmall)
         }
     }
 }

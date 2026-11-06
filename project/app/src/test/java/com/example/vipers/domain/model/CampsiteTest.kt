@@ -164,6 +164,7 @@ class CampsiteTest {
     }
 
     @Test
+
     fun hasRules_emptyOrBlank_isFalse() {
         assertFalse(Campsite(rules = "").hasRules)
         assertFalse(Campsite(rules = "   ").hasRules)
@@ -183,5 +184,44 @@ class CampsiteTest {
     @Test
     fun hasCancellationPolicy_withText_isTrue() {
         assertTrue(Campsite(cancellationPolicy = "Free up to 7 days before").hasCancellationPolicy)
+    }
+
+    @Test
+    fun matchesRegion_matchesWhenSameRegion() {
+        val campsite = Campsite(region = Region.JASPER)
+        assertTrue(campsite.matchesRegion(Region.JASPER))
+    }
+
+    @Test
+    fun matchesRegion_doesNotMatchWhenDifferentRegion() {
+        val campsite = Campsite(region = Region.JASPER)
+        assertFalse(campsite.matchesRegion(Region.BANFF))
+    }
+
+    @Test
+    fun matchesRegion_nullMatchesAnyRegion() {
+        assertTrue(Campsite(region = Region.HINTON).matchesRegion(null))
+        assertTrue(Campsite(region = Region.KANANASKIS).matchesRegion(null))
+    }
+
+    @Test
+    fun matchesGuests_matchesWhenOccupancyIsEqualOrGreater() {
+        val campsite = Campsite(maxOccupancy = 6)
+        assertTrue(campsite.matchesGuests(6))
+        assertTrue(campsite.matchesGuests(4))
+    }
+
+    @Test
+    fun matchesGuests_doesNotMatchWhenOccupancyIsBelowFilter() {
+        val campsite = Campsite(maxOccupancy = 4)
+        assertFalse(campsite.matchesGuests(6))
+    }
+
+    @Test
+    fun matchesGuests_nullOrZeroOrNegativeMatchesAnyCampsite() {
+        val campsite = Campsite(maxOccupancy = 2)
+        assertTrue(campsite.matchesGuests(null))
+        assertTrue(campsite.matchesGuests(0))
+        assertTrue(campsite.matchesGuests(-1))
     }
 }
