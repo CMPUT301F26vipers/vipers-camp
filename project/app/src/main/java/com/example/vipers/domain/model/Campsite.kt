@@ -119,6 +119,22 @@ data class Campsite(
     }
 
     /**
+     * True if this campsite is in [filterRegion], or true if [filterRegion] is null, so it matches
+     * any region (US 01.01.02).
+     */
+    fun matchesRegion(filterRegion: Region?): Boolean {
+        return filterRegion == null || region == filterRegion
+    }
+
+    /**
+     * True if this campsite's maximum occupancy is at least [minGuests], or true if [minGuests]
+     * is null or not positive (US 01.01.02).
+     */
+    fun matchesGuests(minGuests: Int?): Boolean {
+        return minGuests == null || minGuests <= 0 || maxOccupancy >= minGuests
+    }
+
+    /**
      * True if [userId] is this campsite's owner, so they may edit it (US 02.01.03). An empty
      * [userId] is never the owner, even on a campsite with no [ownerId] set.
      */
