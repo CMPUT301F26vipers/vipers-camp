@@ -66,6 +66,14 @@ interface LotteryRepository {
      */
     suspend fun updateEntry(entry: LotteryEntry)
 
+    /**
+     * Declines [userId]'s win in [lotteryId] (US 01.04.03): in one transaction, sets the entry to
+     * [EntryStatus.DECLINED] only if it is still [EntryStatus.WON], and changes no other field.
+     * Returns true if it changed the entry, or false if the entry is missing or has any other
+     * status (e.g. already DECLINED or RESERVED), so two quick taps can't decline twice.
+     */
+    suspend fun declineTransaction(lotteryId: String, userId: String): Boolean
+
     /** Directly seeds an entry without transactional lifecycle validation. For tests and SeedLoader only. */
     suspend fun seedEntry(entry: LotteryEntry)
 

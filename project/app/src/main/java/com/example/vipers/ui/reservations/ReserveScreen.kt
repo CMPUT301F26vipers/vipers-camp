@@ -1,12 +1,13 @@
 /*
  * ReserveScreen.kt
- * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details when the user won a
- * lottery there. It shows the reserve-by date, the campsite, the lottery's nights with the taken
- * ones greyed out, the nightly price times the picked nights and total, the group size selector,
- * the Reserve action button (T-03), the confirmation dialog (01.05.01), and the campsite rules.
+ * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details or the win
+ * notification when the user won a lottery. It shows the reserve-by date, the campsite, the
+ * lottery's nights with the taken ones greyed out, the nightly price times the picked nights and
+ * total, the group size selector, the Reserve action button (T-03), the confirmation dialog
+ * (01.05.01), and the campsite rules. A winner can decline the win here (US 01.04.03, mockup E12).
  * ReserveController does the work.
- * Known issues: declining the win (01.04.03) and choosing between several campsites (01.04.02)
- * are added by those stories; opening this screen from the win notification comes with T-13 (#77).
+ * Known issues: choosing between several campsites (01.04.02) is added by that story. Declining
+ * doesn't pick a replacement winner yet (T-12).
  */
 package com.example.vipers.ui.reservations
 
@@ -36,9 +37,15 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -49,13 +56,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.ui.campsites.RulesAndPolicySection
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.common.shortDate
 import com.example.vipers.ui.theme.Border
+import com.example.vipers.ui.theme.ButtonHeight
+import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
+import com.example.vipers.ui.theme.Error
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.InputHeight
 import com.example.vipers.ui.theme.InputShape
@@ -213,9 +224,78 @@ fun ReserveScreen(
                         )
                     }
                 }
+
+                DeclineSection(controller)
             }
         }
     }
+}
+
+/**
+ * The Decline button (mockup E11, marker 7), shown only while the win can be declined (US 01.04.03).
+ * Tapping it opens [DeclineWinDialog]; once declined, it's replaced by "You declined this win.".
+ */
+@Composable
+private fun DeclineSection(controller: ReserveController) {
+    // saved, so turning the phone doesn't close the dialog
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+
+    when {
+        controller.canDecline -> OutlinedButton(
+            onClick = { showDialog = true },
+            enabled = !controller.isDeclining,
+            shape = ButtonShape,
+            border = BorderStroke(1.5.dp, Error),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Error),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ButtonHeight)
+                .testTag("reserve_decline"),
+        ) {
+            Text("Decline", fontWeight = FontWeight.SemiBold)
+        }
+        controller.entry?.status == EntryStatus.DECLINED -> Text(
+            "You declined this win.",
+            color = TextMuted,
+            modifier = Modifier.testTag("reserve_declined"),
+        )
+    }
+    controller.declineError?.let { message ->
+        Text(message, color = Error, modifier = Modifier.testTag("reserve_decline_error"))
+    }
+
+    if (showDialog) {
+        DeclineWinDialog(
+            onConfirm = {
+                showDialog = false
+                controller.declineWin()
+            },
+            onCancel = { showDialog = false },
+        )
+    }
+}
+
+/**
+ * Asks the winner to confirm declining their win (mockup E12, US 01.04.03). [onConfirm] declines;
+ * [onCancel] only closes the dialog, as does tapping outside it.
+ */
+@Composable
+private fun DeclineWinDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Decline this win?") },
+        text = { Text("You won't be able to reserve from it.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag("decline_confirm")) {
+                Text("Confirm", color = Error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel, modifier = Modifier.testTag("decline_cancel")) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 /**

@@ -3,11 +3,12 @@
  * The controller (a ViewModel) behind the Reserve screen (mockup E11, US 01.04.01). It loads the
  * won lottery, the campsite and its calendar, works out which of the lottery's nights are still
  * free, lets the winner pick nights in a row, select their group size, reserve the nights (T-03),
- * and adds up the total.
- * This is the "Load the Reserve screen" part of the ReservationController CRC card; it is its own
- * class because ReservationController already runs the owner's reservation list (02.07.01).
- * Known issues: declining the win (01.04.03) and choosing between several campsites (01.04.02)
- * are added by those stories.
+ * and adds up the total. The winner can also decline the win (US 01.04.03).
+ * This is the "Load the Reserve screen", "Reserve" and "Decline a win" parts of the
+ * ReservationController CRC card; it is its own class because ReservationController already runs
+ * the owner's reservation list (02.07.01).
+ * Known issues: choosing between several campsites (01.04.02) is added by that story. Declining
+ * doesn't pick a replacement winner yet; that's the replacement draw (T-12).
  */
 package com.example.vipers.ui.reservations
 
@@ -116,6 +117,28 @@ class ReserveController(
     var reserveError by mutableStateOf<String?>(null)
         private set
 
+    /** The user's entry in the lottery, or null if they never joined or it hasn't loaded. */
+    var entry by mutableStateOf<LotteryEntry?>(null)
+        private set
+
+    /**
+     * True if the user can decline this win now, so the screen offers Decline (US 01.04.03): the
+     * entry is WON and booking is open. False once it's reserved, declined or expired.
+     */
+    var canDecline by mutableStateOf(false)
+        private set
+
+    /** True while a decline is being saved, so a second tap does nothing (US 01.04.03). */
+    var isDeclining by mutableStateOf(false)
+        private set
+
+    /**
+     * A message to show if declining failed, e.g. because the phone is offline (US 01.04.03). Kept
+     * apart from [error] so the rest of the screen stays on show.
+     */
+    var declineError by mutableStateOf<String?>(null)
+        private set
+
     /** True if the winner can pick nights now, but none are left to pick. */
     val noNightsLeft: Boolean
         get() = offerState == OfferState.OPEN && freeNights.isEmpty()
@@ -156,6 +179,8 @@ class ReserveController(
                 nights = emptyList()
                 freeNights = emptyList()
                 offerState = OfferState.NO_WIN
+                entry = null
+                canDecline = false
                 return
             }
 
@@ -169,9 +194,9 @@ class ReserveController(
                 site = campsiteRepository.getCampsite(chosenId)?.takeIf { !it.removed }
             }
 
-            val entry = lotteryRepository.getEntry(found.id, userId)
-            if (entry != null && entry.groupSize > 0) {
-                groupSize = entry.groupSize
+            val loadedEntry = lotteryRepository.getEntry(found.id, userId)
+            if (loadedEntry != null && loadedEntry.groupSize > 0) {
+                groupSize = loadedEntry.groupSize
             }
             // the day of "now" on this phone's clock, to leave out nights that are already past
             val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -184,7 +209,9 @@ class ReserveController(
             campsite = site
             nights = found.nightsOffered.distinct().sorted()
             freeNights = free
-            offerState = stateOf(entry, found, now)
+            entry = loadedEntry
+            offerState = stateOf(loadedEntry, found, now)
+            canDecline = loadedEntry?.canDecline(found, now) == true
             // if a picked night was taken in the meantime, the rest may not be in a row any more
             if (selectedNights.any { it !in free }) selectedNights = emptyList()
         } catch (e: CancellationException) {
@@ -195,6 +222,42 @@ class ReserveController(
         } finally {
             loading = false
         }
+    }
+
+    /** Declines the win in the background (US 01.04.03). The screen calls this on Confirm. */
+    fun declineWin() {
+        viewModelScope.launch { decline() }
+    }
+
+    /**
+     * Declines the user's win at time [now] (milliseconds since 1970) (US 01.04.03). Checks
+     * [LotteryEntry.canDecline] again first, so a win that was reserved or expired since the screen
+     * loaded is left alone, then sets the entry to DECLINED with
+     * [LotteryRepository.declineTransaction] and reloads, so [canDecline] becomes false and
+     * [offerState] becomes [OfferState.USED]. A second call while one is saving does nothing. If
+     * saving fails, [declineError] says so. [declineWin] runs this in the background; unit tests
+     * call it directly and pass their own [now].
+     */
+    suspend fun decline(now: Long = System.currentTimeMillis()) {
+        val currentLottery = lottery ?: return
+        val currentEntry = entry ?: return
+        if (isDeclining || !currentEntry.canDecline(currentLottery, now)) return
+        isDeclining = true
+        declineError = null
+        try {
+            // false means it was no longer WON (e.g. a second tap got there first); the reload shows that
+            lotteryRepository.declineTransaction(currentLottery.id, userId)
+            // TODO(T-12): run one replacement draw for the declined spot with LotteryDrawer, as the
+            //  ReservationController CRC card says. It needs the draw, which comes in #16.
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            declineError = "Unable to decline your win. Please try again."
+            return
+        } finally {
+            isDeclining = false
+        }
+        fetchData(now)
     }
 
     /** Sets group size within 1..maxOccupancy (T-03). */

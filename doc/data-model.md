@@ -108,6 +108,12 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | joinedAt | number | ms |
 | status | string | `WAITING`, `WON`, `LOST`, `DECLINED`, `RESERVED`, `EXPIRED`, `REMOVED` |
 
+A winner declines with `declineTransaction(lotteryId, userId)` (US 01.04.03). In one transaction it
+sets `status` to `DECLINED` only if the entry is still `WON`, and writes no other field. It returns
+`true` if it changed the entry, and `false` if the entry is missing or has any other status (already
+`DECLINED`, `RESERVED`…), so two quick taps can't decline twice. It doesn't pick a replacement
+winner; that is the replacement draw (T-12). Transactions need a connection, so it fails offline.
+
 ### `reservations`: `Reservation` (`ReservationRepository`)
 
 | Field | Type | Notes |

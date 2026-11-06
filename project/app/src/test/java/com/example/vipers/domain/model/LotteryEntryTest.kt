@@ -1,6 +1,7 @@
 /*
  * LotteryEntryTest.kt
- * Unit tests for a lottery entry's eligibility to reserve and whether its win has expired.
+ * Unit tests for a lottery entry's eligibility to reserve or decline (US 01.04.03) and whether its
+ * win has expired.
  * Known issues: none.
  */
 package com.example.vipers.domain.model
@@ -117,6 +118,46 @@ class LotteryEntryTest {
             assertFalse(
                 "Entry with status $status should not evaluate isExpired as true",
                 entry.isExpired(lottery, afterBooking)
+            )
+        }
+    }
+
+    // US 01.04.03: declining a win
+
+    @Test
+    fun canDecline_wonDuringBooking_returnsTrue() {
+        assertTrue(wonEntry.canDecline(lottery, at("2027-05-20T12:00")))
+    }
+
+    @Test
+    fun canDecline_wonAtBookingStartAndEnd_returnsTrue() {
+        assertTrue(wonEntry.canDecline(lottery, at("2027-05-12T00:00")))
+        assertTrue(wonEntry.canDecline(lottery, at("2027-05-31T23:59")))
+    }
+
+    @Test
+    fun canDecline_beforeBookingStart_returnsFalse() {
+        assertFalse(wonEntry.canDecline(lottery, at("2027-05-11T23:59")))
+    }
+
+    @Test
+    fun canDecline_afterBookingEnd_returnsFalse() {
+        assertFalse(wonEntry.canDecline(lottery, at("2027-06-01T00:00")))
+    }
+
+    @Test
+    fun canDecline_reservedDeclinedLostOrExpired_returnsFalse() {
+        val duringBooking = at("2027-05-20T12:00")
+        val statuses = listOf(
+            EntryStatus.RESERVED,
+            EntryStatus.DECLINED,
+            EntryStatus.LOST,
+            EntryStatus.EXPIRED,
+        )
+        for (status in statuses) {
+            assertFalse(
+                "Entry with status $status should not be allowed to decline",
+                wonEntry.copy(status = status).canDecline(lottery, duringBooking),
             )
         }
     }
