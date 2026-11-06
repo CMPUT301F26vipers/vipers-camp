@@ -156,4 +156,40 @@ class CampsiteDetailsControllerTest {
         assertNull(controller.error)
         assertFalse(controller.loading)
     }
+
+    @Test
+    fun spotsLeft_withCapacityAndWaitingEntrants_calculatesRemainingSpots() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00").copy(
+            waitlistCapacity = 10,
+            waitingUserIds = listOf("user-1", "user-2", "user-3"),
+        )
+        val controller = loadedController(lotteries = listOf(open))
+        assertEquals(7, controller.spotsLeft)
+    }
+
+    @Test
+    fun spotsLeft_whenCapacityIsUnlimited_returnsNull() {
+        val open = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00").copy(
+            waitlistCapacity = null,
+            waitingUserIds = listOf("user-1", "user-2"),
+        )
+        val controller = loadedController(lotteries = listOf(open))
+        assertNull(controller.spotsLeft)
+    }
+
+    @Test
+    fun spotsLeft_whenWaitingListAtOrOverCapacity_returnsZero() {
+        val full = lottery("open", "2027-04-20T09:00", "2027-05-01T15:00").copy(
+            waitlistCapacity = 5,
+            waitingUserIds = listOf("u1", "u2", "u3", "u4", "u5"),
+        )
+        val controller = loadedController(lotteries = listOf(full))
+        assertEquals(0, controller.spotsLeft)
+
+        val overCapacity = full.copy(
+            waitingUserIds = listOf("u1", "u2", "u3", "u4", "u5", "u6"),
+        )
+        val overController = loadedController(lotteries = listOf(overCapacity))
+        assertEquals(0, overController.spotsLeft)
+    }
 }

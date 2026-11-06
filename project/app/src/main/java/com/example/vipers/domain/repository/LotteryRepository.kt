@@ -1,7 +1,7 @@
 /*
  * LotteryRepository.kt
  * What the app can do with lotteries and their waiting-list entries (Repository pattern).
- * Known issues: none.
+ * Known issues: only the draw and the replacement draw run as transactions and are added by those stories.
  */
 package com.example.vipers.domain.repository
 
@@ -100,4 +100,9 @@ interface LotteryRepository {
      * Preserves progressed or terminal statuses (RESERVED, DECLINED, EXPIRED, REMOVED).
      */
     suspend fun reconcileEntryStatuses(lotteryId: String, committedDrawId: String)
+    /**
+     * Atomically adds [entry] to the lottery's waiting list in a transaction, enforcing
+     * [Lottery.waitlistCapacity] and preventing duplicate entries.
+     */
+    suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult
 }

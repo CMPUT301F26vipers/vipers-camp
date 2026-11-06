@@ -6,12 +6,16 @@
 package com.example.vipers.ui.lottery
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -26,6 +30,11 @@ import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.EntryStatus
+import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.repository.JoinWaitingListResult
+import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
@@ -211,5 +220,371 @@ class LotteryIntentTest {
         val calendar = runBlocking { campsiteRepository.getAvailability("c-123") }
         assertEquals(originalOpenNights, calendar.openNights)
         assertEquals(originalHeldNights, calendar.heldNights)
+    }
+
+    @Test
+    fun lotteryForm_waitlistCapacityInput_showsInlineErrorOnInvalidInput() {
+        val controller = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = lotteryRepository,
+            ownerId = ownerId,
+            campsiteId = "c-123"
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(
+                    campsiteId = "c-123",
+                    onBack = {},
+                    controller = controller
+                )
+            }
+        }
+
+        // Initially field is displayed with no error
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().assertIsDisplayed()
+
+        // Enter non-numeric text
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("abc")
+        composeRule.onNodeWithText("Waitlist limit must be a whole number at least 1").performScrollTo().assertIsDisplayed()
+
+        // Clear and enter zero
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextClearance()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("0")
+        composeRule.onNodeWithText("Waitlist limit must be a whole number at least 1").performScrollTo().assertIsDisplayed()
+
+        // Clear and enter decimal
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextClearance()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("3.5")
+        composeRule.onNodeWithText("Waitlist limit must be a whole number at least 1").performScrollTo().assertIsDisplayed()
+
+        // Clear and enter valid positive integer
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextClearance()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().performTextInput("25")
+        composeRule.onAllNodesWithText("Waitlist limit must be a whole number at least 1").assertCountEquals(0)
+    }
+
+    @Test
+    fun joinButton_visibleForEligibleEntrant() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-open",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 10,
+        )
+        val fakeLotteryRepo = FakeLotteryRepository(initialLotteries = listOf(lottery))
+        val fakeProfileRepo = FakeProfileRepository()
+
+        // Entrant viewing
+        val entrantController = LotteryDetailsController(
+            lotteryRepository = fakeLotteryRepo,
+            profileRepository = fakeProfileRepo,
+            lotteryId = "lottery-open",
+            currentUserId = "entrant-phone",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-open",
+                    onBack = {},
+                    controller = entrantController
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Join Waiting List").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Edit Lottery").assertDoesNotExist()
+    }
+
+    @Test
+    fun joinButton_hiddenForOwner() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-open-owner",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 10,
+        )
+        val fakeLotteryRepo = FakeLotteryRepository(initialLotteries = listOf(lottery))
+        val fakeProfileRepo = FakeProfileRepository()
+
+        // Owner viewing their own lottery
+        val ownerController = LotteryDetailsController(
+            lotteryRepository = fakeLotteryRepo,
+            profileRepository = fakeProfileRepo,
+            lotteryId = "lottery-open-owner",
+            currentUserId = "owner-phone",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-open-owner",
+                    onBack = {},
+                    controller = ownerController
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+        composeRule.onNodeWithText("Edit Lottery").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun groupSizeDialog_andConfirmation_joinsWaitingList() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-open-2",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 10,
+        )
+        val fakeLotteryRepo = FakeLotteryRepository(initialLotteries = listOf(lottery))
+        val fakeProfileRepo = FakeProfileRepository()
+        val fakeCampsiteRepo = FakeCampsiteRepository(listOf(Campsite(id = "c-123", maxOccupancy = 6)))
+
+        val controller = LotteryDetailsController(
+            lotteryRepository = fakeLotteryRepo,
+            profileRepository = fakeProfileRepo,
+            lotteryId = "lottery-open-2",
+            currentUserId = "entrant-phone",
+            campsiteRepository = fakeCampsiteRepo,
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-open-2",
+                    onBack = {},
+                    controller = controller
+                )
+            }
+        }
+
+        // Tap Join Waiting List
+        composeRule.onNodeWithText("Join Waiting List").performScrollTo().performClick()
+
+        // Dialog appears with default "1"
+        composeRule.onNodeWithText("Group size").assertIsDisplayed()
+
+        // Enter group size 3
+        composeRule.onNodeWithText("Group size").performTextClearance()
+        composeRule.onNodeWithText("Group size").performTextInput("3")
+
+        // Confirm join
+        composeRule.onNodeWithText("Confirm").performClick()
+
+        // Success state shown
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("On Waiting List").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("On Waiting List").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Group size: 3").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Successfully joined the waiting list!").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun alreadyJoined_showsOnWaitingListAndGroupSize() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-open-3",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 10,
+        )
+        val existingEntry = LotteryEntry(
+            id = LotteryEntry.idFor("lottery-open-3", "entrant-phone"),
+            lotteryId = "lottery-open-3",
+            userId = "entrant-phone",
+            groupSize = 4,
+            joinedAt = now - 5_000,
+            status = EntryStatus.WAITING,
+        )
+        val fakeLotteryRepo = FakeLotteryRepository(
+            initialLotteries = listOf(lottery),
+            initialEntries = listOf(existingEntry)
+        )
+        val fakeProfileRepo = FakeProfileRepository()
+
+        val controller = LotteryDetailsController(
+            lotteryRepository = fakeLotteryRepo,
+            profileRepository = fakeProfileRepo,
+            lotteryId = "lottery-open-3",
+            currentUserId = "entrant-phone",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-open-3",
+                    onBack = {},
+                    controller = controller
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("On Waiting List").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Group size: 4").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun fullLottery_showsWaitingListFull() {
+        val now = System.currentTimeMillis()
+        val fullLottery = Lottery(
+            id = "lottery-full",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 1,
+        )
+        val otherEntry = LotteryEntry(
+            id = LotteryEntry.idFor("lottery-full", "other-entrant"),
+            lotteryId = "lottery-full",
+            userId = "other-entrant",
+            groupSize = 2,
+            joinedAt = now - 5_000,
+            status = EntryStatus.WAITING,
+        )
+        val fullRepo = FakeLotteryRepository(
+            initialLotteries = listOf(fullLottery),
+            initialEntries = listOf(otherEntry)
+        )
+        val fullController = LotteryDetailsController(
+            lotteryRepository = fullRepo,
+            profileRepository = FakeProfileRepository(),
+            lotteryId = "lottery-full",
+            currentUserId = "entrant-phone",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-full",
+                    onBack = {},
+                    controller = fullController
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Waiting List Full").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun closedLottery_showsRegistrationClosed() {
+        val now = System.currentTimeMillis()
+        val closedLottery = Lottery(
+            id = "lottery-closed",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 200_000,
+            registrationEnd = now - 100_000,
+            bookingStart = now - 100_000,
+            bookingEnd = now - 10_000,
+            waitlistCapacity = 10,
+        )
+        val closedRepo = FakeLotteryRepository(initialLotteries = listOf(closedLottery))
+        val closedController = LotteryDetailsController(
+            lotteryRepository = closedRepo,
+            profileRepository = FakeProfileRepository(),
+            lotteryId = "lottery-closed",
+            currentUserId = "entrant-phone",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-closed",
+                    onBack = {},
+                    controller = closedController
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Registration Closed").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+    }
+
+    @Test
+    fun joinErrorFeedback_displaysErrorMessageAndAllowsRetry() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-error",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 10,
+        )
+        // A repo that fails when saving an entry
+        val failingRepo = object : LotteryRepository by FakeLotteryRepository(initialLotteries = listOf(lottery)) {
+            override suspend fun saveEntry(entry: LotteryEntry) {
+                throw IllegalStateException("Network failure")
+            }
+            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
+                throw IllegalStateException("Network failure")
+            }
+        }
+
+        val controller = LotteryDetailsController(
+            lotteryRepository = failingRepo,
+            profileRepository = FakeProfileRepository(),
+            lotteryId = "lottery-error",
+            currentUserId = "entrant-phone",
+            campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "c-123", maxOccupancy = 6))),
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-error",
+                    onBack = {},
+                    controller = controller
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Join Waiting List").performScrollTo().performClick()
+        composeRule.onNodeWithText("Confirm").performClick()
+
+        // Wait for error feedback
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Unable to join waiting list. Please try again.").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Unable to join waiting list. Please try again.").performScrollTo().assertIsDisplayed()
+
+        // Join button is still available to allow retry
+        composeRule.onNodeWithText("Join Waiting List").performScrollTo().assertIsDisplayed()
     }
 }

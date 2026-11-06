@@ -76,6 +76,8 @@ class LotteryController(
 
     var waitlistCapacityText by mutableStateOf("")
         private set
+    var waitlistCapacityError by mutableStateOf<String?>(null)
+        private set
 
     var loading by mutableStateOf(true)
         private set
@@ -180,10 +182,21 @@ class LotteryController(
         error = null
     }
 
-    /** Sets waitlist capacity limit string. */
+    /** Sets waitlist capacity limit string and validates input inline. */
     fun onWaitlistCapacityChange(text: String) {
         waitlistCapacityText = text
         error = null
+        waitlistCapacityError = validateWaitlistCapacity(text)
+    }
+
+    private fun validateWaitlistCapacity(text: String): String? {
+        if (text.isBlank()) return null
+        val parsed = text.trim().toIntOrNull()
+        return if (parsed == null || parsed < 1) {
+            "Waitlist limit must be a whole number at least 1"
+        } else {
+            null
+        }
     }
 
     /** Clears any active error message. */
@@ -264,17 +277,14 @@ class LotteryController(
 
         val winnersCount = winnersCountText.toIntOrNull() ?: 0
 
-        val waitlistCapacity: Int? = if (waitlistCapacityText.isBlank()) {
-            null
-        } else {
-            val parsed = waitlistCapacityText.trim().toIntOrNull()
-            if (parsed == null || parsed < 1) {
-                error = "Waitlist limit must be a whole number at least 1"
-                saving = false
-                return
-            }
-            parsed
+        val capacityError = validateWaitlistCapacity(waitlistCapacityText)
+        if (capacityError != null) {
+            waitlistCapacityError = capacityError
+            error = capacityError
+            saving = false
+            return
         }
+        val waitlistCapacity: Int? = waitlistCapacityText.trim().toIntOrNull()
 
         val lottery = Lottery(
             ownerId = ownerId,

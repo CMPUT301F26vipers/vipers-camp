@@ -2,9 +2,9 @@
  * CampsiteFormScreen.kt
  * The Add Campsite screen (mockup O02), opened from the "+" on My Campsites (US 02.01.01,
  * 02.01.02a), and the Edit Campsite screen (mockup O05), opened from Edit on My Campsite
- * (US 02.01.03). CampsiteController checks and saves what the owner types.
- * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
- * cancellation policy (T-11) are added by those stories.
+ * (US 02.01.03). CampsiteController checks and saves what the owner types, including the nightly
+ * price (T-09) and the optional rules and cancellation policy (T-11).
+ * Known issues: photo (02.01.02b) and Find location (02.01.02c) are added by those stories.
  */
 package com.example.vipers.ui.campsites
 
@@ -152,6 +152,7 @@ fun CampsiteFormScreen(
                 error = controller.errors["address"],
                 tag = "field_address",
             )
+            // Region, Max guests and Price / night share a row, as in mockups O02 and O05
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RegionDropdown(
                     selected = controller.region,
@@ -169,6 +170,16 @@ fun CampsiteFormScreen(
                     keyboardType = KeyboardType.Number,
                     modifier = Modifier.weight(1f),
                 )
+                FormField(
+                    label = "Price / night",
+                    value = controller.price,
+                    onValueChange = controller::onPriceChange,
+                    placeholder = "$50",
+                    error = controller.errors["pricePerNightCents"],
+                    tag = "field_price",
+                    keyboardType = KeyboardType.Decimal,
+                    modifier = Modifier.weight(1f),
+                )
             }
             FormField(
                 label = "Description",
@@ -180,6 +191,32 @@ fun CampsiteFormScreen(
                 singleLine = false,
             )
             TagsField(controller)
+            // side by side as in mockups O02 and O05; optional, so neither shows an error (T-11).
+            // They start one line tall and grow as the owner types, so long text isn't cut off.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FormField(
+                    label = "Rules",
+                    value = controller.rules,
+                    onValueChange = controller::onRulesChange,
+                    placeholder = "e.g. Quiet hours",
+                    error = null,
+                    tag = "field_rules",
+                    singleLine = false,
+                    minLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                FormField(
+                    label = "Cancellation policy",
+                    value = controller.cancellationPolicy,
+                    onValueChange = controller::onCancellationPolicyChange,
+                    placeholder = "e.g. 7 days notice",
+                    error = null,
+                    tag = "field_cancellation_policy",
+                    singleLine = false,
+                    minLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
         if (controller.saveFailed) {
@@ -228,7 +265,10 @@ fun CampsiteFormScreen(
     }
 }
 
-/** A label above a text field, with the field's error underneath if it has one. */
+/**
+ * A label above a text field, with the field's error underneath if it has one. A field that isn't
+ * [singleLine] wraps long text and starts [minLines] tall.
+ */
 @Composable
 private fun FormField(
     label: String,
@@ -239,6 +279,7 @@ private fun FormField(
     tag: String,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
+    minLines: Int = if (singleLine) 1 else 3,
     keyboardType: KeyboardType = KeyboardType.Text,
 ) {
     Column(modifier) {
@@ -250,7 +291,7 @@ private fun FormField(
             isError = error != null,
             supportingText = error?.let { { Text(it) } },
             singleLine = singleLine,
-            minLines = if (singleLine) 1 else 3,
+            minLines = minLines,
             shape = InputShape,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             modifier = Modifier.fillMaxWidth().testTag(tag),

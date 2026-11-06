@@ -4,7 +4,7 @@
  * buttons to manage it, and its lotteries with a Create Lottery button (US 02.04.01).
  * OwnerCampsiteController loads the data.
  * Known issues: the photo and map are placeholders until 02.01.02b and 02.01.02c, and the QR Code
- * button stays off until 02.02.01. Availability (T-10) opens a placeholder screen for now.
+ * button stays off until 02.02.01.
  */
 package com.example.vipers.ui.campsites
 
@@ -41,10 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -298,8 +295,8 @@ private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Un
 /**
  * The Details section: location, maximum guests and price ([Campsite.summaryText], unless
  * [showSummary] is false because the screen shows it higher up), then the description, tags,
- * region, rules and cancellation policy. Empty optional fields are left out. Also used by the
- * entrant's Campsite Details screen (E05).
+ * region, and the rules and cancellation policy from [RulesAndPolicySection]. Empty optional
+ * fields are left out. Also used by the entrant's Campsite Details screen (E05).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -327,24 +324,8 @@ internal fun CampsiteDetails(campsite: Campsite, showSummary: Boolean = true) {
             }
         }
         LabelledText("Region", campsite.region.displayName)
-        if (campsite.rules.isNotBlank()) {
-            LabelledText("Rules", campsite.rules)
-        }
-        if (campsite.cancellationPolicy.isNotBlank()) {
-            LabelledText("Cancellation", campsite.cancellationPolicy)
-        }
+        RulesAndPolicySection(campsite)
     }
-}
-
-/** Text like "Rules: quiet hours after 10 PM", with the [label] in bold. */
-@Composable
-private fun LabelledText(label: String, text: String) {
-    Text(
-        buildAnnotatedString {
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("$label: ") }
-            append(text)
-        }
-    )
 }
 
 /** [timestamp] (milliseconds since 1970) as a date and time in the phone's format, or "Not set". */

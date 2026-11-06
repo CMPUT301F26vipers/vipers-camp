@@ -52,6 +52,7 @@ data class Lottery(
     val participantCount: Int = 0,
     val winnerCount: Int = 0,
 ) {
+
     /**
      * The lottery's stage at time [now] (milliseconds since 1970), worked out from its
      * periods and whether it has been drawn. A lottery with no times set counts as CLOSED.

@@ -160,6 +160,37 @@ class ViewCampsiteDetailsTest {
     }
 
     @Test
+    fun activeLotteryWithCapacityShowsSpotsRemaining() {
+        val lotteryWithCapacity = openLottery.copy(
+            waitlistCapacity = 20,
+            waitingUserIds = listOf("u1", "u2", "u3", "u4", "u5", "u6"),
+        )
+        openScreen(lotteries = listOf(lotteryWithCapacity))
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 14 spots left")
+        assertShown("Available: May 2027 weekends")
+    }
+
+    @Test
+    fun activeLotteryWithOneSpotRemainingShowsSingularText() {
+        val oneSpotLottery = openLottery.copy(
+            waitlistCapacity = 3,
+            waitingUserIds = listOf("u1", "u2"),
+        )
+        openScreen(lotteries = listOf(oneSpotLottery))
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 1 spot left")
+    }
+
+    @Test
+    fun activeLotteryAtCapacityShowsZeroSpotsLeft() {
+        val fullLottery = openLottery.copy(
+            waitlistCapacity = 2,
+            waitingUserIds = listOf("u1", "u2"),
+        )
+        openScreen(lotteries = listOf(fullLottery))
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 0 spots left")
+    }
+
+    @Test
     fun campsiteWithoutAnOpenLotterySaysNoActiveLottery() {
         // registration only starts next week, so entrants can't join yet
         val upcoming = openLottery.copy(
@@ -173,15 +204,16 @@ class ViewCampsiteDetailsTest {
 
     @Test
     fun campsiteSavedFromTheAddFormShowsCorrectly() {
-        // what the Add Campsite form saves today: no price, rules or policy yet (T-09, T-11)
+        // what the Add Campsite form saves when the optional rules and policy are left empty
         val fromForm = Campsite(
             id = "new", ownerId = "owner-daniel", name = "Kananaskis Lakes Sites",
             address = "Kananaskis Trail, AB", region = Region.KANANASKIS, maxOccupancy = 6,
             description = "Mountain views and hiking trails.", tags = listOf("Hiking", "Playground"),
+            pricePerNightCents = 4000,
         )
         openScreen(campsites = listOf(fromForm), campsiteId = "new")
         assertShown("Kananaskis Lakes Sites")
-        assertShown("Kananaskis Trail, AB · Up to 6 guests")
+        assertShown("Kananaskis Trail, AB · Up to 6 guests · $40 / night")
         assertShown("Region: Kananaskis")
         assertShown("Mountain views and hiking trails.")
         assertShown("Hiking")
