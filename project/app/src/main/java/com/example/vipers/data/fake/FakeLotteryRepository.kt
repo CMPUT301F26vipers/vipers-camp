@@ -134,6 +134,7 @@ class FakeLotteryRepository(
         val entry = entries[id]
         if (entry == null || entry.status != EntryStatus.WON) return@withLock false
         entries[id] = entry.copy(status = EntryStatus.DECLINED)
+        publish()
         true
     }
 

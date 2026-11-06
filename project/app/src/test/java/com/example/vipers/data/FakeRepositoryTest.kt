@@ -385,6 +385,17 @@ class FakeRepositoryTest {
         assertEquals(listOf(EntryStatus.RESERVED), repo.observeEntries("lottery-1").first().map { it.status })
     }
 
+    @Test
+    fun observeEntries_sendsTheListAgainWhenAWinIsDeclined() = runBlocking {
+        val repo = FakeLotteryRepository(listOf(openLottery))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1", status = EntryStatus.WON))
+
+        repo.declineTransaction("lottery-1", "user-1")
+
+        // the owner's live Waiting List (02.09.01) shows the decline (01.04.03) without reopening
+        assertEquals(listOf(EntryStatus.DECLINED), repo.observeEntries("lottery-1").first().map { it.status })
+    }
+
     /** Keeps every inbox it is sent, oldest call first (T-13). */
     private class RecordingInboxListener : InboxListener {
         val calls = mutableListOf<List<Notification>>()
