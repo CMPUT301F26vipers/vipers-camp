@@ -2,11 +2,11 @@
  * ReserveScreen.kt
  * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details when the user won a
  * lottery there. It shows the reserve-by date, the campsite, the lottery's nights with the taken
- * ones greyed out, the nightly price times the picked nights and the total, and the campsite's
- * rules and cancellation policy. ReserveController does the work.
- * Known issues: the Reserve and Decline buttons, the guests field and the "I accept the campsite
- * rules" box come with T-03, 01.04.03 and 02.11.01; opening this screen from the win
- * notification comes with T-13 (#77).
+ * ones greyed out, the nightly price times the picked nights and total, the group size selector,
+ * the Reserve action button (T-03), and the campsite's rules and cancellation policy.
+ * ReserveController does the work.
+ * Known issues: declining the win (01.04.03) and choosing between several campsites (01.04.02)
+ * are added by those stories; opening this screen from the win notification comes with T-13 (#77).
  */
 package com.example.vipers.ui.reservations
 
@@ -24,9 +24,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +45,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.domain.model.Lottery
@@ -129,6 +135,14 @@ fun ReserveScreen(
                     )
                 }
 
+                GuestsSection(
+                    groupSize = controller.groupSize,
+                    maxOccupancy = campsite.maxOccupancy,
+                    canEdit = controller.offerState == OfferState.OPEN,
+                    onDecrease = controller::decrementGroupSize,
+                    onIncrease = controller::incrementGroupSize,
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -146,6 +160,46 @@ fun ReserveScreen(
                 }
                 HorizontalDivider(color = Divider)
                 RulesAndPolicySection(campsite)
+
+                if (controller.reserveError != null) {
+                    Text(
+                        text = controller.reserveError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .testTag("reserve_error_message"),
+                    )
+                }
+
+                Button(
+                    onClick = controller::reserve,
+                    enabled = controller.offerState == OfferState.OPEN && !controller.isReserving,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("button_reserve"),
+                ) {
+                    if (controller.isReserving) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .testTag("reserve_loading"),
+                            strokeWidth = 2.5.dp,
+                        )
+                    } else {
+                        Text(
+                            "Reserve",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
             }
         }
     }
@@ -259,5 +313,85 @@ private fun RowScope.NightChip(
                 else -> TextMuted
             },
         )
+    }
+}
+
+/** Group size counter matching campsite max occupancy (T-03). */
+@Composable
+private fun GuestsSection(
+    groupSize: Int,
+    maxOccupancy: Int,
+    canEdit: Boolean,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Label("Guests")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "$groupSize ${if (groupSize == 1) "guest" else "guests"} (max $maxOccupancy)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("reserve_guests_text"),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val canDec = canEdit && groupSize > 1
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .border(
+                            BorderStroke(1.5.dp, if (canDec) Primary else TextMuted),
+                            CircleShape,
+                        )
+                        .clickable(enabled = canDec, onClick = onDecrease)
+                        .testTag("reserve_guests_decrease"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "−",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canDec) Primary else TextMuted,
+                    )
+                }
+
+                Text(
+                    text = "$groupSize",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .widthIn(min = 28.dp)
+                        .testTag("reserve_guests_count"),
+                )
+
+                val canInc = canEdit && groupSize < maxOccupancy
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .border(
+                            BorderStroke(1.5.dp, if (canInc) Primary else TextMuted),
+                            CircleShape,
+                        )
+                        .clickable(enabled = canInc, onClick = onIncrease)
+                        .testTag("reserve_guests_increase"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "+",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canInc) Primary else TextMuted,
+                    )
+                }
+            }
+        }
     }
 }
