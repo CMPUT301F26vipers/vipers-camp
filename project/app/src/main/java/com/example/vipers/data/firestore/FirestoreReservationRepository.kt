@@ -2,22 +2,33 @@
  * FirestoreReservationRepository.kt
  * The real ReservationRepository: saves and loads reservations in the Firestore "reservations"
  * collection (Repository pattern).
+ * Supports atomic reservation transactions with conflict checks (T-03).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  */
 package com.example.vipers.data.firestore
 
+import com.example.vipers.domain.model.EntryStatus
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.repository.ReservationRepository
+import com.example.vipers.domain.repository.ReserveResult
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.tasks.await
+import java.time.LocalDate
 
 /** Stores reservations in Firestore. */
 class FirestoreReservationRepository(
-    db: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : ReservationRepository {
 
     private val collection = db.collection("reservations")
+    private val campsites = db.collection("campsites")
+    private val availability = db.collection("availability")
+    private val lotteries = db.collection("lotteries")
+    private val entries = db.collection("lotteryEntries")
 
     override suspend fun addReservation(reservation: Reservation): String {
         val doc = collection.document()
@@ -41,6 +52,104 @@ class FirestoreReservationRepository(
             .whereEqualTo("ownerId", ownerId)
             .get().await()
             .documents.map { it.toReservation() }
+
+    override suspend fun createReservation(
+        lotteryId: String,
+        campsiteId: String,
+        userId: String,
+        nights: List<String>,
+        groupSize: Int,
+        now: Long,
+    ): ReserveResult {
+        if (nights.isEmpty()) return ReserveResult.Error("No nights selected")
+        val sortedNights = nights.distinct().sorted()
+
+        val campsiteDoc = campsites.document(campsiteId)
+        val availabilityDoc = availability.document(campsiteId)
+        val lotteryDoc = lotteries.document(lotteryId)
+        val entryId = LotteryEntry.idFor(lotteryId, userId)
+        val entryDoc = entries.document(entryId)
+        val reservationDoc = collection.document()
+
+        return try {
+            db.runTransaction { tx ->
+                // All reads first (Firestore requirement)
+                val campsiteSnap = tx.get(campsiteDoc)
+                val lotterySnap = tx.get(lotteryDoc)
+                val entrySnap = tx.get(entryDoc)
+                val availabilitySnap = tx.get(availabilityDoc)
+
+                if (!campsiteSnap.exists()) return@runTransaction ReserveResult.Error("Campsite not found")
+                val campsite = campsiteSnap.toCampsite()
+                if (campsite.removed) return@runTransaction ReserveResult.Error("Campsite is no longer available")
+
+                if (groupSize > campsite.maxOccupancy) {
+                    return@runTransaction ReserveResult.CapacityExceeded
+                }
+
+                if (!lotterySnap.exists()) return@runTransaction ReserveResult.Error("Lottery not found")
+                val lottery = lotterySnap.toLottery()
+                if (lottery.removed) return@runTransaction ReserveResult.Error("Lottery is no longer available")
+
+                if (!entrySnap.exists()) return@runTransaction ReserveResult.NotEligible
+                val entry = entrySnap.toLotteryEntry()
+
+                if (!entry.canReserve(lottery, now)) {
+                    return@runTransaction ReserveResult.NotEligible
+                }
+
+                val openNights = if (availabilitySnap.exists()) availabilitySnap.getStringList("openNights") else emptyList()
+                val heldNights = if (availabilitySnap.exists()) availabilitySnap.getStringList("heldNights") else emptyList()
+
+                // Two reservations can never hold the same night (AC 4)
+                if (sortedNights.any { it in heldNights || it !in openNights }) {
+                    return@runTransaction ReserveResult.Conflict
+                }
+
+                val updatedHeldNights = (heldNights + sortedNights).distinct().sorted()
+
+                // All writes after reads
+                tx.set(
+                    availabilityDoc,
+                    mapOf(
+                        "campsiteId" to campsiteId,
+                        "openNights" to openNights,
+                        "heldNights" to updatedHeldNights,
+                    ),
+                    SetOptions.merge(),
+                )
+
+                tx.update(entryDoc, "status", EntryStatus.RESERVED.name)
+
+                val checkIn = sortedNights.first()
+                val checkOut = LocalDate.parse(sortedNights.last()).plusDays(1).toString()
+                val reservationNumber = "R-" + (10000..99999).random()
+                val totalPriceCents = campsite.pricePerNightCents * sortedNights.size
+
+                val reservation = Reservation(
+                    id = reservationDoc.id,
+                    reservationNumber = reservationNumber,
+                    userId = userId,
+                    ownerId = campsite.ownerId,
+                    campsiteId = campsite.id,
+                    campsiteName = campsite.name,
+                    lotteryEntryId = entry.id,
+                    checkIn = checkIn,
+                    checkOut = checkOut,
+                    groupSize = groupSize,
+                    totalPriceCents = totalPriceCents,
+                    rulesAcceptedAt = now,
+                    status = ReservationStatus.CONFIRMED,
+                    statusChangedAt = now,
+                )
+                tx.set(reservationDoc, reservation.toMap())
+
+                ReserveResult.Success(reservation)
+            }.await()
+        } catch (e: Exception) {
+            ReserveResult.Error(e.message ?: "Failed to complete reservation")
+        }
+    }
 }
 
 /** Turns a reservation into the fields saved in its Firestore document. */
