@@ -1,7 +1,8 @@
 /*
  * CampsiteDetailsControllerTest.kt
  * Unit tests for CampsiteDetailsController (US 01.01.05): loading a campsite for an entrant and
- * finding the lottery they can join, using the fake campsite and lottery repositories.
+ * finding the lottery they can join and the lottery they won (US 01.04.01), using the fake
+ * campsite and lottery repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -9,7 +10,9 @@ package com.example.vipers.ui.campsites
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.repository.CampsiteRepository
 import kotlinx.coroutines.awaitCancellation
@@ -67,15 +70,28 @@ class CampsiteDetailsControllerTest {
     private fun loadedController(
         campsiteId: String = "hinton",
         lotteries: List<Lottery> = emptyList(),
+        entries: List<LotteryEntry> = emptyList(),
+        userId: String = "",
+        at: Long = now,
     ): CampsiteDetailsController = runBlocking {
         val controller = CampsiteDetailsController(
             FakeCampsiteRepository(listOf(hinton, removed)),
-            FakeLotteryRepository(lotteries),
+            FakeLotteryRepository(lotteries, entries),
             campsiteId,
+            userId,
         )
-        controller.fetchData(now)
+        controller.fetchData(at)
         controller
     }
+
+    /** Sam's entry in [lotteryId] with [status]. */
+    private fun samsEntry(lotteryId: String, status: EntryStatus) = LotteryEntry(
+        id = LotteryEntry.idFor(lotteryId, "user-sam"),
+        lotteryId = lotteryId,
+        userId = "user-sam",
+        groupSize = 4,
+        status = status,
+    )
 
     @Test
     fun fetchData_loadsTheCampsite() {
@@ -191,5 +207,52 @@ class CampsiteDetailsControllerTest {
         )
         val overController = loadedController(lotteries = listOf(overCapacity))
         assertEquals(0, overController.spotsLeft)
+    }
+
+    // a lottery whose registration closed in April and whose booking runs May 12 to May 31
+    private val drawn = lottery("drawn", "2027-04-01T09:00", "2027-04-10T15:00")
+        .copy(drawnAt = at("2027-04-10T15:15"))
+
+    @Test
+    fun fetchData_findsTheLotteryTheUserWonHere() {
+        val controller = loadedController(
+            lotteries = listOf(drawn),
+            entries = listOf(samsEntry("drawn", EntryStatus.WON)),
+            userId = "user-sam",
+        )
+        assertEquals("drawn", controller.wonLottery?.id)
+    }
+
+    @Test
+    fun fetchData_hasNoWonLotteryWhenTheUserLostOrAlreadyReserved() {
+        for (status in listOf(EntryStatus.LOST, EntryStatus.RESERVED, EntryStatus.DECLINED)) {
+            val controller = loadedController(
+                lotteries = listOf(drawn),
+                entries = listOf(samsEntry("drawn", status)),
+                userId = "user-sam",
+            )
+            assertNull(controller.wonLottery)
+        }
+    }
+
+    @Test
+    fun fetchData_hasNoWonLotteryAfterTheBookingPeriod() {
+        val controller = loadedController(
+            lotteries = listOf(drawn),
+            entries = listOf(samsEntry("drawn", EntryStatus.WON)),
+            userId = "user-sam",
+            at = at("2027-06-01T08:00"),
+        )
+        assertNull(controller.wonLottery)
+    }
+
+    @Test
+    fun fetchData_onlyShowsTheViewersOwnWin() {
+        val controller = loadedController(
+            lotteries = listOf(drawn),
+            entries = listOf(samsEntry("drawn", EntryStatus.WON)),
+            userId = "user-alex",
+        )
+        assertNull(controller.wonLottery)
     }
 }
