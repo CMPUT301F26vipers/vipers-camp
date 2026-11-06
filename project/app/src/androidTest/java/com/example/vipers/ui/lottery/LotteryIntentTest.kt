@@ -584,4 +584,133 @@ class LotteryIntentTest {
         // Join button is still available to allow retry
         composeRule.onNodeWithText("Join Waiting List").performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun leaveWaitingList_dialogAndConfirmation_removesEntrantAndAllowsRejoining() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-leave-1",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 10,
+        )
+        val existingEntry = LotteryEntry(
+            id = LotteryEntry.idFor("lottery-leave-1", "entrant-phone"),
+            lotteryId = "lottery-leave-1",
+            userId = "entrant-phone",
+            groupSize = 4,
+            joinedAt = now - 5_000,
+            status = EntryStatus.WAITING,
+        )
+        val fakeLotteryRepo = FakeLotteryRepository(
+            initialLotteries = listOf(lottery),
+            initialEntries = listOf(existingEntry)
+        )
+        val controller = LotteryDetailsController(
+            lotteryRepository = fakeLotteryRepo,
+            profileRepository = FakeProfileRepository(),
+            lotteryId = "lottery-leave-1",
+            currentUserId = "entrant-phone",
+            campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "c-123", maxOccupancy = 6))),
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-leave-1",
+                    onBack = {},
+                    controller = controller
+                )
+            }
+        }
+
+        // Verify joined status and Leave button
+        composeRule.onNodeWithText("On Waiting List").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Group size: 4").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Leave Waiting List").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
+
+        // Open dialog and test Stay
+        composeRule.onNodeWithText("Leave Waiting List").performClick()
+        composeRule.onNodeWithText("Leave waiting list?").assertIsDisplayed()
+        composeRule.onNodeWithText("You will not be in the draw for this campsite.").assertIsDisplayed()
+        composeRule.onNodeWithText("Stay").performClick()
+        composeRule.onNodeWithText("Leave waiting list?").assertDoesNotExist()
+
+        // Open dialog and confirm Leave
+        composeRule.onNodeWithText("Leave Waiting List").performScrollTo().performClick()
+        composeRule.onNodeWithText("Leave").performClick()
+
+        // Verify success banner and updated state allowing rejoin
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Successfully left the waiting list.").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Successfully left the waiting list.").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Leave Waiting List").assertDoesNotExist()
+        composeRule.onNodeWithText("On Waiting List").assertDoesNotExist()
+        composeRule.onNodeWithText("Join Waiting List").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun leaveWaitingList_onRepositoryFailure_showsErrorAndPreservesState() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-leave-2",
+            ownerId = "owner-phone",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 100_000,
+            bookingEnd = now + 200_000,
+            waitlistCapacity = 10,
+        )
+        val existingEntry = LotteryEntry(
+            id = LotteryEntry.idFor("lottery-leave-2", "entrant-phone"),
+            lotteryId = "lottery-leave-2",
+            userId = "entrant-phone",
+            groupSize = 2,
+            joinedAt = now - 5_000,
+            status = EntryStatus.WAITING,
+        )
+        val failingRepo = object : LotteryRepository by FakeLotteryRepository(
+            initialLotteries = listOf(lottery),
+            initialEntries = listOf(existingEntry)
+        ) {
+            override suspend fun leaveWaitingList(lotteryId: String, userId: String) {
+                throw IllegalStateException("Network failure")
+            }
+        }
+        val controller = LotteryDetailsController(
+            lotteryRepository = failingRepo,
+            profileRepository = FakeProfileRepository(),
+            lotteryId = "lottery-leave-2",
+            currentUserId = "entrant-phone",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = "lottery-leave-2",
+                    onBack = {},
+                    controller = controller
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Leave Waiting List").performScrollTo().performClick()
+        composeRule.onNodeWithText("Leave").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Couldn't leave the waiting list. Please try again.").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Couldn't leave the waiting list. Please try again.").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Leave Waiting List").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("On Waiting List").performScrollTo().assertIsDisplayed()
+    }
 }

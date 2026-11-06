@@ -1,7 +1,7 @@
 /*
  * LotteryDetailsController.kt
- * The controller (a ViewModel) handling data fetching, states, and joining logic for a specific lottery's detail screen.
- * Known issues: none. Waiting-list capacity is enforced atomically in a Firestore transaction via LotteryRepository.
+ * The controller (a ViewModel) handling data fetching, states, joining, and leaving logic for a specific lottery's detail screen.
+ * Known issues: none. Waiting-list capacity and leaving are enforced atomically in a Firestore transaction via LotteryRepository.
  */
 package com.example.vipers.ui.lottery
 
@@ -65,12 +65,18 @@ class LotteryDetailsController(
         private set
     var joinSuccess by mutableStateOf(false)
         private set
-    var joinError by mutableStateOf<String?>(null)
+    var actionError by mutableStateOf<String?>(null)
+        private set
+    var leaveSuccess by mutableStateOf(false)
         private set
 
     /** True if the current user is already on the waiting list. */
     val isJoined: Boolean
         get() = userEntry?.status == EntryStatus.WAITING
+
+    /** True if the current user can leave the waiting list. */
+    val canLeave: Boolean
+        get() = !isOwner && lottery?.let { userEntry?.canLeave(it) } == true
 
     /** True if the lottery has a waitlist limit and the number of waiting entrants has reached or exceeded it. */
     val isFull: Boolean
@@ -151,26 +157,27 @@ class LotteryDetailsController(
      */
     suspend fun performJoin(groupSize: Int, now: Long = System.currentTimeMillis()): Boolean {
         if (currentUserId.isBlank()) {
-            joinError = "User ID is required to join."
+            actionError = "User ID is required to join."
             joinSuccess = false
             return false
         }
 
         val currentLottery = lottery ?: run {
-            joinError = "Lottery not found."
+            actionError = "Lottery not found."
             joinSuccess = false
             return false
         }
 
         if (currentLottery.ownerId == currentUserId) {
-            joinError = "Owners cannot join their own lottery."
+            actionError = "Owners cannot join their own lottery."
             joinSuccess = false
             return false
         }
 
         isJoining = true
-        joinError = null
+        actionError = null
         joinSuccess = false
+        leaveSuccess = false
 
         val existing = try {
             userEntry ?: lotteryRepository.getEntry(lotteryId, currentUserId)
@@ -179,7 +186,7 @@ class LotteryDetailsController(
         } catch (e: Exception) {
             isJoining = false
             joinSuccess = false
-            joinError = "Unable to join waiting list. Please try again."
+            actionError = "Unable to join waiting list. Please try again."
             return false
         }
 
@@ -187,7 +194,7 @@ class LotteryDetailsController(
         if (limit == null) {
             isJoining = false
             joinSuccess = false
-            joinError = "Campsite occupancy information is unavailable. Please try again."
+            actionError = "Campsite occupancy information is unavailable. Please try again."
             return false
         }
         maxOccupancy = limit
@@ -203,7 +210,7 @@ class LotteryDetailsController(
 
         if (validationErrors.isNotEmpty()) {
             isJoining = false
-            joinError = validationErrors.first()
+            actionError = validationErrors.first()
             joinSuccess = false
             return false
         }
@@ -224,7 +231,7 @@ class LotteryDetailsController(
             throw e
         } catch (e: Exception) {
             joinSuccess = false
-            joinError = "Unable to join waiting list. Please try again."
+            actionError = "Unable to join waiting list. Please try again."
             isJoining = false
             return false
         }
@@ -233,23 +240,23 @@ class LotteryDetailsController(
             is JoinWaitingListResult.Success -> {
                 userEntry = newEntry
                 joinSuccess = true
-                joinError = null
+                actionError = null
             }
             is JoinWaitingListResult.WaitlistFull -> {
                 joinSuccess = false
-                joinError = "Waiting list is full"
+                actionError = "Waiting list is full"
                 isJoining = false
                 return false
             }
             is JoinWaitingListResult.AlreadyJoined -> {
                 joinSuccess = false
-                joinError = "Already on the waiting list"
+                actionError = "Already on the waiting list"
                 isJoining = false
                 return false
             }
             is JoinWaitingListResult.Error -> {
                 joinSuccess = false
-                joinError = joinResult.message
+                actionError = joinResult.message
                 isJoining = false
                 return false
             }
@@ -283,10 +290,55 @@ class LotteryDetailsController(
         return true
     }
 
-    /** Clears transient join feedback state. */
+    /** Clears transient feedback state. */
     fun clearJoinState() {
         joinSuccess = false
-        joinError = null
+        leaveSuccess = false
+        actionError = null
+    }
+
+    /** Leaves the waiting list in the background for the current user. */
+    fun leaveWaitingList() {
+        viewModelScope.launch { performLeave() }
+    }
+
+    /**
+     * Executes the leave waiting list operation and refreshes state.
+     *
+     * @return True if leaving succeeded, false otherwise.
+     */
+    suspend fun performLeave(): Boolean {
+        if (currentUserId.isBlank() || !isJoined) {
+            actionError = "Not on the waiting list."
+            return false
+        }
+        if (!canLeave) {
+            actionError = "Cannot leave after the lottery has been drawn."
+            return false
+        }
+
+        actionError = null
+        joinSuccess = false
+        leaveSuccess = false
+
+        return try {
+            lotteryRepository.leaveWaitingList(lotteryId, currentUserId)
+            userEntry = null
+            leaveSuccess = true
+            try {
+                fetchData()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Refresh failure must not be reported as a failed leave
+            }
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            actionError = "Couldn't leave the waiting list. Please try again."
+            false
+        }
     }
 
     /**
