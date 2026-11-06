@@ -42,9 +42,7 @@ data class Lottery(
     val removed: Boolean = false,
     val waitingUserIds: List<String> = emptyList(),
 ) {
-    /** Number of entrants currently on the waiting list. */
-    val waitingCount: Int
-        get() = waitingUserIds.size
+
     /**
      * The lottery's stage at time [now] (milliseconds since 1970), worked out from its
      * periods and whether it has been drawn. A lottery with no times set counts as CLOSED.

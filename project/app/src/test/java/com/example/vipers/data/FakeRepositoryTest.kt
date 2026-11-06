@@ -157,7 +157,7 @@ class FakeRepositoryTest {
         assertEquals(JoinWaitingListResult.WaitlistFull, result3)
 
         assertEquals(2, repo.getEntries("lottery-1").size)
-        assertEquals(2, repo.getLottery("lottery-1")?.waitingCount)
+        assertEquals(2, repo.getLottery("lottery-1")?.waitingUserIds?.size)
     }
 
     @Test
@@ -177,7 +177,7 @@ class FakeRepositoryTest {
         }
 
         assertEquals(10, repo.getEntries("lottery-1").size)
-        assertEquals(10, repo.getLottery("lottery-1")?.waitingCount)
+        assertEquals(10, repo.getLottery("lottery-1")?.waitingUserIds?.size)
     }
 
     @Test
@@ -226,7 +226,7 @@ class FakeRepositoryTest {
         assertEquals(3, successes)
         assertEquals(7, fulls)
         assertEquals(3, repo.getEntries("lottery-1").size)
-        assertEquals(3, repo.getLottery("lottery-1")?.waitingCount)
+        assertEquals(3, repo.getLottery("lottery-1")?.waitingUserIds?.size)
     }
 
     @Test
@@ -243,7 +243,7 @@ class FakeRepositoryTest {
         val entry1 = LotteryEntry(lotteryId = "lottery-1", userId = "user-1", status = EntryStatus.WAITING)
         val res1 = repo.joinWaitingList(entry1)
         assertEquals(JoinWaitingListResult.Success, res1)
-        assertEquals(1, repo.getLottery("lottery-1")?.waitingCount)
+        assertEquals(1, repo.getLottery("lottery-1")?.waitingUserIds?.size)
 
         // Waitlist is full for user-2
         val res2Blocked = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"))
@@ -251,15 +251,15 @@ class FakeRepositoryTest {
 
         // user-1 wins the draw (status changes from WAITING to WON)
         repo.saveEntry(entry1.copy(status = EntryStatus.WON))
-        assertEquals(0, repo.getLottery("lottery-1")?.waitingCount)
+        assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
 
         // Capacity is freed; user-2 can now successfully join
         val res2Allowed = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"))
         assertEquals(JoinWaitingListResult.Success, res2Allowed)
-        assertEquals(1, repo.getLottery("lottery-1")?.waitingCount)
+        assertEquals(1, repo.getLottery("lottery-1")?.waitingUserIds?.size)
 
         // user-2 is removed by an admin or leaves
         repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.REMOVED))
-        assertEquals(0, repo.getLottery("lottery-1")?.waitingCount)
+        assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
     }
 }
