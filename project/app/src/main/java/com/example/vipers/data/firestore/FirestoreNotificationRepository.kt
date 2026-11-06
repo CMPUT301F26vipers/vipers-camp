@@ -3,7 +3,8 @@
  * The real NotificationRepository: saves and loads inbox items in the Firestore "notifications"
  * collection (Repository pattern).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
- * The inbox is sorted in the app instead of with orderBy, which would need an extra Firestore index. */
+ * The inbox is sorted in the app instead of with orderBy, which would need an extra Firestore index.
+ */
 package com.example.vipers.data.firestore
 
 import com.example.vipers.domain.model.Notification

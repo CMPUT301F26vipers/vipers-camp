@@ -333,6 +333,18 @@ class FakeRepositoryTest {
     }
 
     @Test
+    fun listenToInbox_afterSaveNotification_sendsTheInbox() = runBlocking {
+        val repo = FakeNotificationRepository(listOf(samsWin))
+        val listener = RecordingInboxListener()
+        repo.listenToInbox("sam", listener)
+
+        // e.g. the draw (02.05.01a) saving a result with its own ID
+        repo.saveNotification(Notification(id = "lost", recipientId = "sam", createdAt = 300))
+
+        assertEquals(listOf("lost", "win"), listener.calls.last().map { it.id })
+    }
+
+    @Test
     fun listenToInbox_afterCancel_sendsNothingMore() = runBlocking {
         val repo = FakeNotificationRepository(listOf(samsWin))
         val listener = RecordingInboxListener()
