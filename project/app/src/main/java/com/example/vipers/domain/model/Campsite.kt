@@ -91,11 +91,13 @@ data class Campsite(
         return "$${dollarsText(totalPriceCents(nights))}"
     }
 
-    // An amount in cents as dollars: "50" or "65.50". Cents only show when there are some.
-    private fun dollarsText(amountCents: Long): String {
-        val dollars = amountCents / 100
-        val cents = amountCents % 100
-        return if (cents == 0L) "$dollars" else "$dollars.%02d".format(cents)
+    companion object {
+        /** An amount in cents as dollars: "50" or "65.50". Cents only show when there are some. */
+        fun dollarsText(amountCents: Long): String {
+            val dollars = amountCents / 100
+            val cents = amountCents % 100
+            return if (cents == 0L) "$dollars" else "$dollars.%02d".format(Locale.US, cents)
+        }
     }
 
     /**

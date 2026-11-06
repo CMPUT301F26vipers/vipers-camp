@@ -1,21 +1,24 @@
 /*
  * ReserveControllerTest.kt
- * Unit tests for ReserveController (US 01.04.01): which nights a winner can pick, where the win
- * stands during and after the booking period, picking nights in a row, and the total, using the
- * fake campsite and lottery repositories.
+ * Unit tests for ReserveController (US 01.04.01, T-03): which nights a winner can pick, where
+ * the win stands during and after the booking period, picking nights in a row, group size,
+ * reserving nights and handling conflicts, using fake repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
+import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.ReserveResult
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -82,13 +85,18 @@ class ReserveControllerTest {
         campsiteId: String? = "hinton",
         theLottery: Lottery = lottery,
         calendar: AvailabilityCalendar = hintonCalendar,
+        reservationRepo: FakeReservationRepository? = null,
     ): ReserveController = runBlocking {
         val campsites = FakeCampsiteRepository(listOf(hinton, jasper))
         campsites.saveAvailability(calendar)
         val entries = if (status == null) emptyList() else listOf(entry(status))
+        val lotteries = FakeLotteryRepository(listOf(theLottery), entries)
+        val reservations = reservationRepo ?: FakeReservationRepository()
+        reservations.attachRepositories(campsites, lotteries)
         val controller = ReserveController(
-            campsites,
-            FakeLotteryRepository(listOf(theLottery), entries),
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = reservations,
             userId = "user-sam",
             lotteryId = "lot-may",
             campsiteId = campsiteId,
@@ -170,7 +178,12 @@ class ReserveControllerTest {
                 throw IllegalStateException("offline")
         }
         val controller = ReserveController(
-            FakeCampsiteRepository(listOf(hinton)), failing, "user-sam", "lot-may", "hinton",
+            campsiteRepository = FakeCampsiteRepository(listOf(hinton)),
+            lotteryRepository = failing,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(),
         )
         controller.fetchData(duringBooking)
 
@@ -255,11 +268,15 @@ class ReserveControllerTest {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         campsites.saveAvailability(hintonCalendar)
         val controller = ReserveController(
-            campsites,
-            FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON))),
-            "user-sam",
-            "lot-may",
-            "hinton",
+            campsiteRepository = campsites,
+            lotteryRepository = FakeLotteryRepository(
+                listOf(lottery),
+                listOf(entry(EntryStatus.WON)),
+            ),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -280,11 +297,15 @@ class ReserveControllerTest {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         campsites.saveAvailability(hintonCalendar)
         val controller = ReserveController(
-            campsites,
-            FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON))),
-            "user-sam",
-            "lot-may",
-            "hinton",
+            campsiteRepository = campsites,
+            lotteryRepository = FakeLotteryRepository(
+                listOf(lottery),
+                listOf(entry(EntryStatus.WON)),
+            ),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -292,5 +313,164 @@ class ReserveControllerTest {
         controller.fetchData(duringBooking)
 
         assertEquals(listOf("2027-05-22"), controller.selectedNights)
+    }
+
+    @Test
+    fun fetchData_initializesGroupSizeFromLotteryEntry() {
+        val controller = loaded()
+        assertEquals(4, controller.groupSize)
+    }
+
+    @Test
+    fun groupSize_boundsCheckingAndControls() {
+        val controller = loaded()
+        assertEquals(4, controller.groupSize)
+
+        controller.incrementGroupSize()
+        assertEquals(5, controller.groupSize)
+
+        controller.onGroupSizeChange(8)
+        assertEquals(8, controller.groupSize)
+
+        // Cannot exceed campsite.maxOccupancy (8)
+        controller.incrementGroupSize()
+        assertEquals(8, controller.groupSize)
+        controller.onGroupSizeChange(10)
+        assertEquals(8, controller.groupSize)
+
+        // Decrement down to 1
+        controller.onGroupSizeChange(2)
+        controller.decrementGroupSize()
+        assertEquals(1, controller.groupSize)
+        controller.decrementGroupSize()
+        assertEquals(1, controller.groupSize)
+    }
+
+    @Test
+    fun reserveNights_createsReservationWithChosenNightsAndGroupSize() = runBlocking {
+        val controller = loaded()
+        controller.onNightTap("2027-05-22")
+        controller.onNightTap("2027-05-23")
+        controller.onGroupSizeChange(5)
+
+        val result = controller.reserveNights(duringBooking)
+        assertTrue(result is ReserveResult.Success)
+
+        val reservation = controller.confirmedReservation
+        assertNotNull(reservation)
+        assertEquals("2027-05-22", reservation?.checkIn)
+        assertEquals("2027-05-24", reservation?.checkOut)
+        assertEquals(5, reservation?.groupSize)
+        assertEquals(10000L, reservation?.totalPriceCents)
+        assertEquals(OfferState.USED, controller.offerState)
+        assertNull(controller.reserveError)
+        assertFalse(controller.isReserving)
+    }
+
+    @Test
+    fun reserveNights_failsWhenNoNightsPicked() = runBlocking {
+        val controller = loaded()
+        assertTrue(controller.selectedNights.isEmpty())
+
+        val result = controller.reserveNights(duringBooking)
+        assertTrue(result is ReserveResult.Error)
+        assertEquals("Please pick at least one night.", controller.reserveError)
+        assertNull(controller.confirmedReservation)
+    }
+
+    @Test
+    fun reserveNights_conflict_refreshesCalendarWhenAnotherWinnerBooksSameNights() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper))
+        campsites.saveAvailability(hintonCalendar)
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val reservations = FakeReservationRepository(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+        )
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = reservations,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+        )
+        controller.fetchData(duringBooking)
+
+        controller.onNightTap("2027-05-22")
+        controller.onNightTap("2027-05-23")
+
+        // Another winner books May 22 while Sam was viewing the screen
+        val cal = campsites.getAvailability("hinton")
+        campsites.saveAvailability(cal.copy(heldNights = cal.heldNights + "2027-05-22"))
+
+        val result = controller.reserveNights(duringBooking)
+        assertEquals(ReserveResult.Conflict, result)
+        assertNotNull(controller.reserveError)
+        assertTrue(
+            controller.reserveError!!.contains("These nights were just booked by another winner"),
+        )
+
+        // Calendar refreshed: May 22 is no longer free, pick was cleared
+        assertFalse("2027-05-22" in controller.freeNights)
+        assertTrue(controller.selectedNights.isEmpty())
+    }
+
+    @Test
+    fun reserveNights_failsWhenOfferNotOpen() = runBlocking {
+        val controller = loaded(status = EntryStatus.LOST)
+        val result = controller.reserveNights(duringBooking)
+        assertEquals(ReserveResult.NotEligible, result)
+        assertEquals(
+            "Only winners with an open booking period can reserve.",
+            controller.reserveError,
+        )
+    }
+
+    @Test
+    fun dismissConfirmation_clearsConfirmedReservation() = runBlocking {
+        val controller = loaded()
+        controller.onNightTap("2027-05-22")
+        controller.reserveNights(duringBooking)
+        assertNotNull(controller.confirmedReservation)
+
+        controller.dismissConfirmation()
+        assertNull(controller.confirmedReservation)
+    }
+
+    @Test
+    fun clearReserveError_clearsError() = runBlocking {
+        val controller = loaded()
+        controller.reserveNights(duringBooking)
+        assertEquals("Please pick at least one night.", controller.reserveError)
+
+        controller.clearReserveError()
+        assertNull(controller.reserveError)
+    }
+
+    @Test
+    fun totalPrice_formatsCentsCorrectly() = runBlocking {
+        val oddCampsite = hinton.copy(pricePerNightCents = 6550) // $65.50
+        val oddCampsites = FakeCampsiteRepository(listOf(oddCampsite))
+        oddCampsites.saveAvailability(hintonCalendar)
+        val oddLotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val controller = ReserveController(
+            campsiteRepository = oddCampsites,
+            lotteryRepository = oddLotteries,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(oddCampsites, oddLotteries),
+        )
+        controller.fetchData(duringBooking)
+        controller.onNightTap("2027-05-22")
+
+        assertEquals("Total $65.50", controller.totalText)
+
+        val result = controller.reserveNights(duringBooking)
+        assertTrue(result is ReserveResult.Success)
+        val res = (result as ReserveResult.Success).reservation
+        assertEquals(6550L, res.totalPriceCents)
+        assertEquals("$65.50", res.totalPriceText)
     }
 }
