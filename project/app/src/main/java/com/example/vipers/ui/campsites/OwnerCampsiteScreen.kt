@@ -296,17 +296,18 @@ private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Un
 }
 
 /**
- * The Details section: location, maximum guests and price, then the description, tags, rules
- * and cancellation policy. Empty optional fields are left out, and so is a price of 0, which
- * campsites have until the form asks for one (T-09).
+ * The Details section: location, maximum guests and price ([Campsite.summaryText], unless
+ * [showSummary] is false because the screen shows it higher up), then the description, tags,
+ * region, rules and cancellation policy. Empty optional fields are left out. Also used by the
+ * entrant's Campsite Details screen (E05).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CampsiteDetails(campsite: Campsite) {
+internal fun CampsiteDetails(campsite: Campsite, showSummary: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        val summary = mutableListOf(campsite.address, "Up to ${campsite.guestsText()}")
-        if (campsite.pricePerNightCents > 0) summary.add(campsite.priceText())
-        Text(summary.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (showSummary) {
+            Text(campsite.summaryText(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (campsite.description.isNotBlank()) {
             Text(campsite.description)
         }
@@ -325,6 +326,7 @@ private fun CampsiteDetails(campsite: Campsite) {
                 }
             }
         }
+        LabelledText("Region", campsite.region.displayName)
         if (campsite.rules.isNotBlank()) {
             LabelledText("Rules", campsite.rules)
         }
@@ -345,7 +347,8 @@ private fun LabelledText(label: String, text: String) {
     )
 }
 
-private fun formatDate(timestamp: Long): String {
+/** [timestamp] (milliseconds since 1970) as a date and time in the phone's format, or "Not set". */
+internal fun formatDate(timestamp: Long): String {
     if (timestamp <= 0L) return "Not set"
     return DateFormat.getDateTimeInstance().format(Date(timestamp))
 }

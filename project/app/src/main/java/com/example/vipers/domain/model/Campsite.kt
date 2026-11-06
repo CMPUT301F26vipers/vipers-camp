@@ -81,6 +81,17 @@ data class Campsite(
         return if (maxOccupancy == 1) "1 guest" else "$maxOccupancy guests"
     }
 
+    /**
+     * The one-line summary under a campsite's name, e.g. "Hinton, AB · Up to 6 guests · $50 / night"
+     * (mockups E05 and O04). The price is left out while it's 0, which campsites have until the
+     * form asks for one (T-09).
+     */
+    fun summaryText(): String {
+        val parts = mutableListOf(address, "Up to ${guestsText()}")
+        if (pricePerNightCents > 0) parts.add(priceText())
+        return parts.joinToString(" · ")
+    }
+
     /** True if the campsite has map coordinates (both [lat] and [lng] are set). */
     fun hasLocation(): Boolean {
         return lat != null && lng != null
