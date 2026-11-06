@@ -24,6 +24,7 @@ your story needs a field or method that isn't here.
 |---|---|
 | `domain/model/` | The data classes and enums below. No Firebase or Android imports. |
 | `domain/repository/` | Repository interfaces: what you can do with the data. |
+| `domain/service/` | Logic shared by several screens, on top of the repositories (e.g. `NotificationService`). No Firebase or Android imports. |
 | `data/firestore/` | `Firestore…Repository`: the real versions, plus `toMap()` / `to…()` mappers. |
 | `data/fake/` | `Fake…Repository`: in-memory versions for unit and intent tests. |
 | `data/device/` | `DeviceIdentityManager`: the device ID is the user's ID. |
