@@ -20,9 +20,11 @@ interface NotificationRepository {
     /**
      * Saves every notification in [notifications] under its own [Notification.id] (US 01.03.01).
      * Writing the same IDs again overwrites them instead of adding copies, so a retried draw
-     * doesn't send anyone a second notification. Firestore saves them in batches of up to 500;
-     * if a later batch fails, the earlier ones stay saved, and calling again with the same list
-     * finishes the job. Does nothing for an empty list.
+     * doesn't send anyone a second notification, but a notification already saved keeps its
+     * [Notification.read] and [Notification.shownOnDevice], so a read one stays read. Firestore
+     * saves them in transactions of up to 500, which need a connection; if a later one fails, the
+     * earlier ones stay saved, and calling again with the same list finishes the job. Does nothing
+     * for an empty list.
      *
      * @throws IllegalArgumentException if any notification has a blank ID; then nothing is saved.
      */

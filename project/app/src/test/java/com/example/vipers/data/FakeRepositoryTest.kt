@@ -24,6 +24,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -371,6 +372,25 @@ class FakeRepositoryTest {
 
         assertEquals(listOf("lottery-1_sam"), repo.getNotificationsFor("sam").map { it.id })
         assertEquals(listOf("lottery-1_alex"), repo.getNotificationsFor("alex").map { it.id })
+    }
+
+    @Test
+    fun addAll_sameIdsAfterReadAndShown_keepsThemReadAndShown() = runBlocking {
+        val repo = FakeNotificationRepository()
+        repo.addAll(drawResults)
+        repo.markRead("lottery-1_sam")
+        // Sam's was also shown on the phone, e.g. by the device-notification worker
+        repo.saveNotification(repo.getNotificationsFor("sam").single().copy(shownOnDevice = true))
+
+        repo.addAll(drawResults.map { it.copy(message = "sent again") })
+
+        val sams = repo.getNotificationsFor("sam").single()
+        assertTrue(sams.read)
+        assertTrue(sams.shownOnDevice)
+        assertEquals("sent again", sams.message) // the content is still replaced
+        val alexs = repo.getNotificationsFor("alex").single()
+        assertFalse(alexs.read) // Alex never opened theirs
+        assertFalse(alexs.shownOnDevice)
     }
 
     @Test

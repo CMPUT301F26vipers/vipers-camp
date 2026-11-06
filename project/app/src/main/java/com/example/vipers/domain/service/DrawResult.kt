@@ -2,7 +2,7 @@
  * DrawResult.kt
  * Who won and who lost one lottery's committed draw, handed from LotteryDrawer to
  * NotificationService so it can send the draw's notifications (US 01.03.01).
- * Known issues: not the same as LotteryDrawResult, which is what drawLottery returns to the screen.
+ * Known issues: not the same as LotteryDrawResult, which is what drawLottery returns to its caller.
  */
 package com.example.vipers.domain.service
 

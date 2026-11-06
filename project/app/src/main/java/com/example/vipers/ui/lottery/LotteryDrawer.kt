@@ -3,8 +3,11 @@
  * Runs the random draw for a lottery, following the Project Part 2 CRC card specifications.
  * Randomly picks the set number of winners from WAITING entries, writes chunked manifests,
  * commits the atomic Phase 1 draw transaction, reconciles entry statuses, and dispatches
- * idempotent notifications.
- * Known issues: Draw transaction not tested against real Firestore yet.
+ * idempotent notifications: the winners' through NotificationService (US 01.03.01), the losers'
+ * directly until US 01.03.02 moves them there.
+ * Known issues: Draw transaction not tested against real Firestore yet. Nothing in the app starts
+ * a draw yet; DrawAndNotifyWorker (US 02.05.01b) will. The replacement draw after a decline
+ * (US 01.04.03) isn't built.
  */
 package com.example.vipers.ui.lottery
 

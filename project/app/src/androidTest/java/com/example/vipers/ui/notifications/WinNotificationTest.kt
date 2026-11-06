@@ -2,8 +2,8 @@
  * WinNotificationTest.kt
  * Intent tests for US 01.03.01: after a lottery draw picks this device, the Notifications tab
  * (mockup E10) shows a "You won" notice naming the campsite, tapping it opens Reserve for that
- * lottery, and running the draw again doesn't add a second notice. The draw is run directly with
- * LotteryDrawer on fake repositories, so it doesn't touch Firestore.
+ * lottery, and running the draw again neither adds a second notice nor makes a read one unread.
+ * The draw is run directly with LotteryDrawer on fake repositories, so it doesn't touch Firestore.
  * Known issues: the Reserve screen (01.04.01) isn't merged yet, so the tap is checked through the
  * screen's onOpenReserve lambda instead of the Reserve screen itself.
  */
@@ -146,5 +146,20 @@ class WinNotificationTest {
 
         composeRule.onAllNodesWithTag("notification_row").assertCountEquals(1)
         assertEquals(1, runBlocking { notifications.getNotificationsFor("test-device") }.size)
+    }
+
+    @Test
+    fun aWinAlreadyOpenedStaysReadWhenTheDrawRunsAgain() {
+        openNotifications()
+        composeRule.onNodeWithText("You won the lottery!").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("unread_dot", useUnmergedTree = true)
+                .fetchSemanticsNodes().isEmpty()
+        }
+
+        runBlocking { drawer.drawLottery("may", now) }
+        composeRule.waitForIdle()
+
+        composeRule.onAllNodesWithTag("unread_dot", useUnmergedTree = true).assertCountEquals(0)
     }
 }

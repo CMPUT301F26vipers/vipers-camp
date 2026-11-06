@@ -118,6 +118,17 @@ class NotificationServiceTest {
     }
 
     @Test
+    fun sendDrawResults_againAfterTheWinnerReadIt_keepsItRead() = runBlocking {
+        val result = DrawResult(hintonLottery, listOf("sam"), emptyList())
+        service.sendDrawResults(result)
+        service.markRead("draw_may_sam")
+
+        service.sendDrawResults(result)
+
+        assertTrue(notifications.getNotificationsFor("sam").single().read)
+    }
+
+    @Test
     fun sendDrawResults_lotteryNotDrawnYet_usesNowAsTheTime() = runBlocking {
         service.sendDrawResults(DrawResult(hintonLottery.copy(drawnAt = null), listOf("sam"), emptyList()))
 

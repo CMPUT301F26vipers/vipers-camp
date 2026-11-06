@@ -151,10 +151,12 @@ Computed, never stored (T-13): `target` is the screen a tap opens, a `Notificati
 "Owner message", "Message" or "Campsite removed".
 
 To send many at once (e.g. a draw's results), use `addAll(notifications)` (US 01.03.01). It saves each
-notification under its own `id`, in Firestore batches of up to 500 (the most one batch allows), and
-writing the same IDs again overwrites them instead of adding copies. If a later batch fails the earlier
-ones stay saved, so call it again with the same list to finish. Set the `id` yourself; a blank `id`
-throws `IllegalArgumentException` and nothing is saved.
+notification under its own `id`, in Firestore transactions of up to 500 (the most one allows), and
+writing the same IDs again overwrites them instead of adding copies. A notification that's already
+saved keeps its `read` and `shownOnDevice`, so sending it again doesn't make a read item unread or show
+it on the phone twice. If a later transaction fails the earlier ones stay saved, so call it again with
+the same list to finish. Transactions need a connection, so `addAll` fails offline. Set the `id`
+yourself; a blank `id` throws `IllegalArgumentException` and nothing is saved.
 
 A draw's results (US 01.03.01) use the ID `draw_<lotteryId>_<userId>`, so each entrant gets one per
 draw however often it runs. A win is `WON` from `"system"` with `lotteryId` set, `campsiteId` set only
