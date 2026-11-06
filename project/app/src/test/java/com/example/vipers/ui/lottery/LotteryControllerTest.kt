@@ -11,6 +11,7 @@ import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -306,6 +307,7 @@ class LotteryControllerTest {
             override suspend fun saveEntry(entry: LotteryEntry) {}
             override suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry? = null
             override suspend fun getEntries(lotteryId: String): List<LotteryEntry> = emptyList()
+            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult = JoinWaitingListResult.Success
         }
 
         val camp = Campsite(id = campsiteId, ownerId = ownerId, name = "Test Camp")

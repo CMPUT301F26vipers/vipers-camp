@@ -24,6 +24,7 @@ package com.example.vipers.domain.model
  * @property waitlistCapacity Most entrants allowed to join, or null for no limit.
  * @property drawnAt When the draw ran, or null if it hasn't.
  * @property removed True once an admin removes it.
+ * @property waitingUserIds Device IDs of entrants currently on the waiting list.
  */
 data class Lottery(
     val id: String = "",
@@ -39,7 +40,9 @@ data class Lottery(
     val waitlistCapacity: Int? = null,
     val drawnAt: Long? = null,
     val removed: Boolean = false,
+    val waitingUserIds: List<String> = emptyList(),
 ) {
+
     /**
      * The lottery's stage at time [now] (milliseconds since 1970), worked out from its
      * periods and whether it has been drawn. A lottery with no times set counts as CLOSED.
