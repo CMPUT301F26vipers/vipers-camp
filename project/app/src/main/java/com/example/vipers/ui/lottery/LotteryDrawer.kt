@@ -197,6 +197,7 @@ class LotteryDrawer(
         // The winners' notices come from NotificationService (US 01.03.01).
         notificationService.sendDrawResults(
             DrawResult(committedLottery, manifestWinners.toList(), manifestLosers.toList()),
+            now,
         )
 
         // The losers' notices move to NotificationService with US 01.03.02.

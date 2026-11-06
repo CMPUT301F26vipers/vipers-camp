@@ -20,14 +20,12 @@ import java.util.Date
 
 /**
  * Reads a user's inbox and marks notifications read (T-13), and sends a draw's results
- * (US 01.03.01), using [notificationRepository]. [campsiteRepository] looks up campsite names,
- * [now] gives the time in milliseconds since 1970, and [formatDate] turns a time into text for a
- * message; tests pass fixed ones.
+ * (US 01.03.01), using [notificationRepository]. [campsiteRepository] looks up campsite names, and
+ * [formatDate] turns a time into text for a message; tests pass a fixed one.
  */
 class NotificationService(
     private val notificationRepository: NotificationRepository,
     private val campsiteRepository: CampsiteRepository,
-    private val now: () -> Long = System::currentTimeMillis,
     private val formatDate: (Long) -> String = ::dateAndTime,
 ) {
 
@@ -45,9 +43,11 @@ class NotificationService(
      * Adds a "You won" notification to each winner's inbox in [result] (US 01.03.01). It names the
      * lottery's campsites and says when booking ends, and tapping it opens Reserve for the lottery.
      * Each winner's notice has the ID "draw_<lotteryId>_<userId>", so sending the same draw again
-     * replaces it instead of adding a second one. The losers' notices are added by US 01.03.02.
+     * replaces it instead of adding a second one. The notices are dated when the draw ran, or
+     * [now] (milliseconds since 1970) if the lottery has no draw time. The losers' notices are
+     * added by US 01.03.02.
      */
-    suspend fun sendDrawResults(result: DrawResult) {
+    suspend fun sendDrawResults(result: DrawResult, now: Long = System.currentTimeMillis()) {
         val lottery = result.lottery
         val winnerIds = result.winnerIds.distinct()
         if (winnerIds.isEmpty()) return
@@ -58,7 +58,7 @@ class NotificationService(
             "Reserve your nights before ${formatDate(lottery.bookingEnd)}."
         // only a single-campsite lottery has one campsite to point to
         val campsiteId = lottery.campsiteIds.singleOrNull()
-        val sentAt = lottery.drawnAt ?: now()
+        val sentAt = lottery.drawnAt ?: now
         val notices = winnerIds.map { userId ->
             Notification(
                 id = "draw_${lottery.id}_$userId",

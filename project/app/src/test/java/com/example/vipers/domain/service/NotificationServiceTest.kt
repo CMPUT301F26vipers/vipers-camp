@@ -12,15 +12,10 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.NotificationType
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 
 class NotificationServiceTest {
@@ -37,7 +32,6 @@ class NotificationServiceTest {
     private val service = NotificationService(
         notifications,
         campsites,
-        now = { 999L },
         formatDate = { time -> "time $time" },
     )
 
@@ -48,16 +42,6 @@ class NotificationServiceTest {
         bookingEnd = 2000L,
         drawnAt = 500L,
     )
-
-    @Before
-    fun setUp() {
-        Dispatchers.setMain(Dispatchers.Unconfined)
-    }
-
-    @After
-    fun tearDown() {
-        Dispatchers.resetMain()
-    }
 
     @Test
     fun sendDrawResults_twoWinners_addsOneWonPerWinnerThatOpensReserve() = runBlocking {
@@ -130,7 +114,10 @@ class NotificationServiceTest {
 
     @Test
     fun sendDrawResults_lotteryNotDrawnYet_usesNowAsTheTime() = runBlocking {
-        service.sendDrawResults(DrawResult(hintonLottery.copy(drawnAt = null), listOf("sam"), emptyList()))
+        service.sendDrawResults(
+            DrawResult(hintonLottery.copy(drawnAt = null), listOf("sam"), emptyList()),
+            now = 999L,
+        )
 
         assertEquals(999L, notifications.getNotificationsFor("sam").single().createdAt)
     }
