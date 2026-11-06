@@ -28,6 +28,8 @@ import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /**
  * Turns the entrant's search text into the list of campsites shown on Home.
@@ -105,7 +107,14 @@ class CampsiteSearchController(
                     } else {
                         val calendar = availabilityByCampsiteId[campsite.id]
                         try {
-                            calendar?.freeNights(effectiveStart!!, effectiveEnd!!).orEmpty().isNotEmpty()
+                            val s = LocalDate.parse(effectiveStart!!)
+                            val e = LocalDate.parse(effectiveEnd!!)
+                            // Cap date range to ~1 year (365 days) to avoid long loops in freeNights
+                            if (Math.abs(ChronoUnit.DAYS.between(s, e)) > 365) {
+                                false
+                            } else {
+                                calendar?.freeNights(effectiveStart, effectiveEnd).orEmpty().isNotEmpty()
+                            }
                         } catch (_: Exception) {
                             false
                         }

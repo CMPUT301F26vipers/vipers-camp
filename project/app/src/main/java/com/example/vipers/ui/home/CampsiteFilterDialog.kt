@@ -56,6 +56,7 @@ import com.example.vipers.domain.model.Region
 import com.example.vipers.ui.theme.InputShape
 import com.example.vipers.ui.theme.Primary
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 
 /**
@@ -186,9 +187,13 @@ fun CampsiteFilterDialog(
                                     endDate = trimmed
                                 }
                             }
-                            val sValid = try { LocalDate.parse(startDate); true } catch (_: Exception) { false }
-                            val eValid = try { LocalDate.parse(endDate); true } catch (_: Exception) { false }
-                            dateError = if (!sValid || !eValid) "Enter valid dates (yyyy-MM-dd)" else null
+                            val sParsed = try { LocalDate.parse(startDate) } catch (_: Exception) { null }
+                            val eParsed = try { LocalDate.parse(endDate) } catch (_: Exception) { null }
+                            dateError = when {
+                                sParsed == null || eParsed == null -> "Enter valid dates (yyyy-MM-dd)"
+                                Math.abs(ChronoUnit.DAYS.between(sParsed, eParsed)) > 365 -> "Date range cannot exceed 1 year"
+                                else -> null
+                            }
                         }
                     },
                     onOpenPicker = { openDateRangePicker() },

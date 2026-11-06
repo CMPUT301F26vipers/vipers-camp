@@ -189,6 +189,18 @@ class CampsiteSearchControllerTest {
     }
 
     @Test
+    fun filter_byDateRangeCapsRangeAtOneYear() {
+        val calendars = listOf(
+            AvailabilityCalendar(campsiteId = "1", openNights = listOf("2027-06-01")),
+        )
+        val controller = loadedController(calendars = calendars)
+
+        // Extremely wide range (e.g. 2027 to 2099) is safely rejected to avoid long loops
+        controller.applyFilters(startDate = "2027-01-01", endDate = "2099-01-01")
+        assertTrue(controller.results.isEmpty())
+    }
+
+    @Test
     fun filter_combinesRegionGuestsAndDateRange() {
         val calendars = listOf(
             AvailabilityCalendar(campsiteId = "1", openNights = listOf("2027-06-01", "2027-06-02")),
