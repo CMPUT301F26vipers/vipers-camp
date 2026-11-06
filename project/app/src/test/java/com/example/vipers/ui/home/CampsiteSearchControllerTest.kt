@@ -1,13 +1,15 @@
 /*
  * CampsiteSearchControllerTest.kt
- * Unit tests for CampsiteSearchController: searching by name (US 01.01.01) and marking which
- * campsites have an open lottery (US 01.01.04), using the fake campsite and lottery repositories.
+ * Unit tests for CampsiteSearchController: searching by name (US 01.01.01), filtering by region,
+ * date range, and guests (US 01.01.02), and marking which campsites have an open lottery (US 01.01.04),
+ * using the fake campsite and lottery repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.home
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.Region
@@ -28,9 +30,9 @@ import java.time.ZoneId
 class CampsiteSearchControllerTest {
 
     private val campsites = listOf(
-        Campsite(id = "1", name = "Hinton Ridge Campground", address = "Hinton, AB", region = Region.HINTON),
-        Campsite(id = "2", name = "Hinton Lakeside Sites", address = "Hinton, AB", region = Region.HINTON),
-        Campsite(id = "3", name = "Bow Valley Campground", address = "Banff, AB", region = Region.BANFF),
+        Campsite(id = "1", name = "Hinton Ridge Campground", address = "Hinton, AB", region = Region.HINTON, maxOccupancy = 6),
+        Campsite(id = "2", name = "Hinton Lakeside Sites", address = "Hinton, AB", region = Region.HINTON, maxOccupancy = 4),
+        Campsite(id = "3", name = "Bow Valley Campground", address = "Banff, AB", region = Region.BANFF, maxOccupancy = 2),
         Campsite(id = "4", name = "Hinton Old Mill", address = "Hinton, AB", region = Region.HINTON, removed = true),
     )
 
@@ -65,8 +67,13 @@ class CampsiteSearchControllerTest {
 
     private fun loadedController(
         lotteryRepository: LotteryRepository = FakeLotteryRepository(lotteries),
+        campsiteRepository: CampsiteRepository? = null,
+        calendars: List<AvailabilityCalendar> = emptyList(),
     ): CampsiteSearchController = runBlocking {
-        val controller = CampsiteSearchController(FakeCampsiteRepository(campsites), lotteryRepository)
+        val repo = campsiteRepository ?: FakeCampsiteRepository(campsites).also { fake ->
+            calendars.forEach { fake.saveAvailability(it) }
+        }
+        val controller = CampsiteSearchController(repo, lotteryRepository)
         controller.fetchCampsites(now)
         controller
     }
@@ -116,6 +123,133 @@ class CampsiteSearchControllerTest {
     }
 
     @Test
+    fun filter_byRegionShowsOnlyCampsitesInThatRegion() {
+        val controller = loadedController()
+        controller.applyFilters(region = Region.BANFF)
+        assertEquals(listOf("Bow Valley Campground"), controller.results.map { it.name })
+
+        controller.applyFilters(region = Region.HINTON)
+        assertEquals(
+            listOf("Hinton Lakeside Sites", "Hinton Ridge Campground"),
+            controller.results.map { it.name },
+        )
+    }
+
+    @Test
+    fun filter_byMinGuestsHidesCampsitesBelowOccupancy() {
+        val controller = loadedController()
+        controller.applyFilters(minGuests = 5)
+        assertEquals(listOf("Hinton Ridge Campground"), controller.results.map { it.name })
+
+        controller.applyFilters(minGuests = 3)
+        assertEquals(
+            listOf("Hinton Lakeside Sites", "Hinton Ridge Campground"),
+            controller.results.map { it.name },
+        )
+
+        controller.applyFilters(minGuests = 10)
+        assertTrue(controller.results.isEmpty())
+    }
+
+    @Test
+    fun filter_byDateRangeShowsOnlyCampsitesWithAvailableNight() {
+        val calendars = listOf(
+            AvailabilityCalendar(campsiteId = "1", openNights = listOf("2027-06-01", "2027-06-02")),
+            AvailabilityCalendar(campsiteId = "2", openNights = listOf("2027-06-05"), heldNights = listOf("2027-06-05")),
+            AvailabilityCalendar(campsiteId = "3", openNights = listOf("2027-06-10", "2027-06-11")),
+        )
+        val controller = loadedController(calendars = calendars)
+
+        // Range covering only campsite 1
+        controller.applyFilters(startDate = "2027-06-01", endDate = "2027-06-03")
+        assertEquals(listOf("Hinton Ridge Campground"), controller.results.map { it.name })
+
+        // Range where campsite 2 has an open night, but it is held by confirmed reservation
+        controller.applyFilters(startDate = "2027-06-04", endDate = "2027-06-06")
+        assertTrue(controller.results.isEmpty())
+
+        // Range covering both campsite 1 and campsite 3
+        controller.applyFilters(startDate = "2027-06-01", endDate = "2027-06-15")
+        assertEquals(
+            listOf("Bow Valley Campground", "Hinton Ridge Campground"),
+            controller.results.map { it.name },
+        )
+    }
+
+    @Test
+    fun filter_combinesRegionGuestsAndDateRange() {
+        val calendars = listOf(
+            AvailabilityCalendar(campsiteId = "1", openNights = listOf("2027-06-01", "2027-06-02")),
+            AvailabilityCalendar(campsiteId = "2", openNights = listOf("2027-06-01", "2027-06-02")),
+            AvailabilityCalendar(campsiteId = "3", openNights = listOf("2027-06-01", "2027-06-02")),
+        )
+        val controller = loadedController(calendars = calendars)
+
+        // Hinton campsites with at least 5 guests and available on June 1
+        controller.applyFilters(
+            region = Region.HINTON,
+            startDate = "2027-06-01",
+            endDate = "2027-06-02",
+            minGuests = 5,
+        )
+        assertEquals(listOf("Hinton Ridge Campground"), controller.results.map { it.name })
+    }
+
+    @Test
+    fun filter_combinesFiltersWithSearchText() {
+        val calendars = listOf(
+            AvailabilityCalendar(campsiteId = "1", openNights = listOf("2027-06-01")),
+            AvailabilityCalendar(campsiteId = "2", openNights = listOf("2027-06-01")),
+        )
+        val controller = loadedController(calendars = calendars)
+
+        controller.applyFilters(region = Region.HINTON, minGuests = 2)
+        assertEquals(2, controller.results.size)
+
+        // Typing search text narrows the filtered results
+        controller.onSearchTextChange("Hinton L")
+        assertEquals(listOf("Hinton Lakeside Sites"), controller.results.map { it.name })
+    }
+
+    @Test
+    fun clearFilters_restoresFullListPreservingSearchText() {
+        val controller = loadedController()
+        controller.applyFilters(region = Region.BANFF, minGuests = 2)
+        assertEquals(1, controller.results.size)
+
+        controller.onSearchTextChange("Bow")
+        controller.clearFilters()
+
+        assertFalse(controller.hasActiveFilters)
+        assertEquals("Bow", controller.searchText)
+        assertEquals(listOf("Bow Valley Campground"), controller.results.map { it.name })
+
+        controller.onSearchTextChange("")
+        assertEquals(3, controller.results.size)
+    }
+
+    @Test
+    fun hasActiveFilters_isTrueWhenAnyFilterIsActive() {
+        val controller = loadedController()
+        assertFalse(controller.hasActiveFilters)
+
+        controller.onRegionChange(Region.BANFF)
+        assertTrue(controller.hasActiveFilters)
+        controller.clearFilters()
+        assertFalse(controller.hasActiveFilters)
+
+        controller.onDateRangeChange("2027-06-01", "2027-06-05")
+        assertTrue(controller.hasActiveFilters)
+        controller.clearFilters()
+        assertFalse(controller.hasActiveFilters)
+
+        controller.onMinGuestsChange(4)
+        assertTrue(controller.hasActiveFilters)
+        controller.clearFilters()
+        assertFalse(controller.hasActiveFilters)
+    }
+
+    @Test
     fun fetchCampsites_stopsLoadingWhenDone() {
         val controller = loadedController()
         assertFalse(controller.isLoading)
@@ -147,6 +281,18 @@ class CampsiteSearchControllerTest {
         load.cancelAndJoin()
         assertFalse(controller.loadFailed)
         assertFalse(controller.isLoading)
+    }
+
+    @Test
+    fun fetchCampsites_stillShowsCampsitesWhenAvailabilityFails() {
+        val failing = object : CampsiteRepository by FakeCampsiteRepository(campsites) {
+            override suspend fun getAvailability(campsiteId: String): AvailabilityCalendar =
+                throw Exception("offline")
+        }
+        val controller = loadedController(campsiteRepository = failing)
+        assertFalse(controller.loadFailed)
+        assertFalse(controller.isLoading)
+        assertEquals(3, controller.results.size)
     }
 
     @Test
