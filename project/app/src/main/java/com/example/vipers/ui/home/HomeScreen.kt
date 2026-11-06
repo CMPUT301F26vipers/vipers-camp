@@ -108,7 +108,6 @@ fun HomeScreen(
                     .size(InputHeight)
                     .semantics {
                         contentDescription = "Filters"
-                        text = AnnotatedString("Filters")
                     }
                     .testTag("button_filters"),
                 contentPadding = PaddingValues(0.dp),

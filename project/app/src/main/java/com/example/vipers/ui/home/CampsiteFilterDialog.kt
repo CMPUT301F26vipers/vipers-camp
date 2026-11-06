@@ -166,13 +166,22 @@ fun CampsiteFilterDialog(
                             startDate = ""
                             endDate = ""
                         } else {
-                            val parts = trimmed.split(Regex("\\s*(to|–|-)\\s*"))
-                            if (parts.size >= 2) {
-                                startDate = parts[0].trim()
-                                endDate = parts[1].trim()
+                            val dateMatches = Regex("""\d{4}-\d{2}-\d{2}""").findAll(trimmed).map { it.value }.toList()
+                            if (dateMatches.size >= 2) {
+                                startDate = dateMatches[0]
+                                endDate = dateMatches[1]
+                            } else if (dateMatches.size == 1) {
+                                startDate = dateMatches[0]
+                                endDate = dateMatches[0]
                             } else {
-                                startDate = trimmed
-                                endDate = trimmed
+                                val parts = trimmed.split(Regex("""\s+to\s+|\s+[–—]\s+|\s+-\s+"""))
+                                if (parts.size >= 2) {
+                                    startDate = parts[0].trim()
+                                    endDate = parts[1].trim()
+                                } else {
+                                    startDate = trimmed
+                                    endDate = trimmed
+                                }
                             }
                         }
                     },
