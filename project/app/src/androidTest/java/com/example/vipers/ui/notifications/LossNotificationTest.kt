@@ -2,7 +2,7 @@
  * LossNotificationTest.kt
  * Intent tests for US 01.03.02: after a lottery draw passes over this device, the Notifications
  * tab (mockup E10) shows a "Not selected" notice naming the campsite, shows no "You won" notice,
- * and running the draw again doesn't add a second notice.
+ * and running the draw again neither adds a second notice nor makes a read one unread.
  * The draw is run directly with LotteryDrawer on fake repositories, so it doesn't touch Firestore.
  * Known issues: none.
  */
@@ -16,6 +16,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
@@ -146,5 +147,20 @@ class LossNotificationTest {
 
         composeRule.onAllNodesWithTag("notification_row").assertCountEquals(1)
         assertEquals(1, runBlocking { notifications.getNotificationsFor("test-device") }.size)
+    }
+
+    @Test
+    fun aLossAlreadyOpenedStaysReadWhenTheDrawRunsAgain() {
+        openNotifications()
+        composeRule.onNodeWithText("Not selected this time").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("unread_dot", useUnmergedTree = true)
+                .fetchSemanticsNodes().isEmpty()
+        }
+
+        runBlocking { drawer.drawLottery("may", now) }
+        composeRule.waitForIdle()
+
+        composeRule.onAllNodesWithTag("unread_dot", useUnmergedTree = true).assertCountEquals(0)
     }
 }

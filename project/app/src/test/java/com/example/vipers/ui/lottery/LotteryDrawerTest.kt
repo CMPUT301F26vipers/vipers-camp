@@ -24,6 +24,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -475,7 +476,8 @@ class LotteryDrawerTest {
         drawer.drawLottery(lottery.id, now)
 
         for (notice in noticesOf(NotificationType.NOT_SELECTED)) {
-            assertTrue(notice.message, notice.message.contains("Pine Ridge"))
+            assertEquals("Not selected this time", notice.title)
+            assertEquals("You weren't selected for Pine Ridge this time.", notice.message)
             assertEquals("camp-1", notice.campsiteId)
             assertEquals(NotificationTarget.OpenCampsite("camp-1"), notice.target)
         }
@@ -504,5 +506,38 @@ class LotteryDrawerTest {
 
         assertEquals(LotteryDrawResult.EmptyList, countingDrawer.drawLottery(lottery.id, now))
         assertEquals(0, saved)
+    }
+
+    @Test
+    fun drawLottery_multiCampsiteWithDescription_notSelectedNamesEveryCampsite() = runBlocking {
+        val lottery = createTestLottery(
+            campsiteIds = listOf("camp-1", "camp-2"),
+            winnersCount = 1,
+            nightsDesc = "July Long Weekend",
+        )
+        for (userId in listOf("user-1", "user-2")) {
+            lotteryRepository.seedEntry(
+                LotteryEntry(lotteryId = lottery.id, userId = userId, status = EntryStatus.WAITING),
+            )
+        }
+        drawer.drawLottery(lottery.id, now)
+
+        val notice = noticesOf(NotificationType.NOT_SELECTED).single()
+        assertEquals("You weren't selected for Pine Ridge, Maple Grove this time.", notice.message)
+        assertNull(notice.campsiteId)
+    }
+
+    @Test
+    fun drawLottery_runAgainAfterALoserReadIt_keepsItRead() = runBlocking {
+        val lottery = lotteryWithFiveEntrants()
+        drawer.drawLottery(lottery.id, now)
+        val read = noticesOf(NotificationType.NOT_SELECTED).first()
+        notificationRepository.markRead(read.id)
+
+        drawer.drawLottery(lottery.id, now)
+
+        assertTrue(notificationRepository.getNotificationsFor(read.recipientId).single().read)
+        // the other losers never opened theirs
+        assertFalse(noticesOf(NotificationType.NOT_SELECTED).filter { it.id != read.id }.any { it.read })
     }
 }

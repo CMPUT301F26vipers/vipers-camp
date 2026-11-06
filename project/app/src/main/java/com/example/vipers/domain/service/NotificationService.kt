@@ -3,10 +3,8 @@
  * The app's notification logic, between the screens and NotificationRepository. It passes the
  * inbox and marking read through to the repository (T-13), and builds and saves a draw's "You won"
  * (US 01.03.01) and "Not selected" (US 01.03.02) notices.
- * Known issues: LotteryDrawer still saves its own "Not selected" notices after calling
- * sendDrawResults, under the same IDs, so its text replaces these until it stops (US 01.03.02).
- * Inbox items are written even for users who turned notifications off; showing them on the
- * phone, and skipping those users, is left to the device-notification work.
+ * Known issues: inbox items are written even for users who turned notifications off; showing them
+ * on the phone, and skipping those users, is left to the device-notification work.
  */
 package com.example.vipers.domain.service
 

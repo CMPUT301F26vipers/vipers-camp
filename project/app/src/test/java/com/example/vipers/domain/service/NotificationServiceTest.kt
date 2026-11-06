@@ -257,4 +257,15 @@ class NotificationServiceTest {
             assertEquals(userId, listOf("draw_may_$userId"), notifications.getNotificationsFor(userId).map { it.id })
         }
     }
+
+    @Test
+    fun sendDrawResults_againAfterTheLoserReadIt_keepsItRead() = runBlocking {
+        val result = DrawResult(hintonLottery, listOf("sam"), listOf("jo"))
+        service.sendDrawResults(result)
+        service.markRead("draw_may_jo")
+
+        service.sendDrawResults(result)
+
+        assertTrue(notifications.getNotificationsFor("jo").single().read)
+    }
 }
