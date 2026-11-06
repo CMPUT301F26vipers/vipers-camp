@@ -171,6 +171,16 @@ class ViewCampsiteDetailsTest {
     }
 
     @Test
+    fun activeLotteryWithOneSpotRemainingShowsSingularText() {
+        val oneSpotLottery = openLottery.copy(
+            waitlistCapacity = 3,
+            waitingUserIds = listOf("u1", "u2"),
+        )
+        openScreen(lotteries = listOf(oneSpotLottery))
+        assertShown("Lottery open until ${formatDate(openLottery.registrationEnd)} · 1 spot left")
+    }
+
+    @Test
     fun activeLotteryAtCapacityShowsZeroSpotsLeft() {
         val fullLottery = openLottery.copy(
             waitlistCapacity = 2,

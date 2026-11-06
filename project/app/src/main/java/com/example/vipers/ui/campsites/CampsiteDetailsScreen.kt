@@ -119,7 +119,7 @@ private fun ratingWithCount(campsite: Campsite): String {
 @Composable
 private fun LotteryBox(
     lottery: Lottery?,
-    spotsLeft: Int? = lottery?.waitlistCapacity?.let { maxOf(0, it - lottery.waitingUserIds.size) },
+    spotsLeft: Int? = null,
 ) {
     Column(
         modifier = Modifier
@@ -133,7 +133,8 @@ private fun LotteryBox(
             Text("No active lottery", color = TextMuted, fontWeight = FontWeight.SemiBold)
         } else {
             val headline = if (spotsLeft != null) {
-                "Lottery open until ${formatDate(lottery.registrationEnd)} · $spotsLeft spots left"
+                val spotsText = if (spotsLeft == 1) "1 spot left" else "$spotsLeft spots left"
+                "Lottery open until ${formatDate(lottery.registrationEnd)} · $spotsText"
             } else {
                 "Lottery open until ${formatDate(lottery.registrationEnd)}"
             }
