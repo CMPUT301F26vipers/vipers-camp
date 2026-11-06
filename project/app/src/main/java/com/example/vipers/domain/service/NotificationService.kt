@@ -1,14 +1,16 @@
 /*
  * NotificationService.kt
  * The app's notification logic, between the screens and NotificationRepository. It passes the
- * inbox and marking read through to the repository (T-13), and builds and saves the "You won"
- * notices after a draw (US 01.03.01).
- * Known issues: the "Not selected" notices are still sent by LotteryDrawer until US 01.03.02
- * moves them here. Inbox items are written even for users who turned notifications off; showing
- * them on the phone, and skipping those users, is left to the device-notification work.
+ * inbox and marking read through to the repository (T-13), and builds and saves a draw's "You won"
+ * (US 01.03.01) and "Not selected" (US 01.03.02) notices.
+ * Known issues: LotteryDrawer still saves its own "Not selected" notices after calling
+ * sendDrawResults, under the same IDs, so its text replaces these until it stops (US 01.03.02).
+ * Inbox items are written even for users who turned notifications off; showing them on the
+ * phone, and skipping those users, is left to the device-notification work.
  */
 package com.example.vipers.domain.service
 
+import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.repository.CampsiteRepository
@@ -20,8 +22,8 @@ import java.util.Date
 
 /**
  * Reads a user's inbox and marks notifications read (T-13), and sends a draw's results
- * (US 01.03.01), using [notificationRepository]. [campsiteRepository] looks up campsite names, and
- * [formatDate] turns a time into text for a message; tests pass a fixed one.
+ * (US 01.03.01, 01.03.02), using [notificationRepository]. [campsiteRepository] looks up campsite
+ * names, and [formatDate] turns a time into text for a message; tests pass a fixed one.
  */
 class NotificationService(
     private val notificationRepository: NotificationRepository,
@@ -40,39 +42,61 @@ class NotificationService(
     suspend fun markRead(id: String) = notificationRepository.markRead(id)
 
     /**
-     * Adds a "You won" notification to each winner's inbox in [result] (US 01.03.01). It names the
-     * lottery's campsites and says when booking ends, and tapping it opens Reserve for the lottery.
-     * Each winner's notice has the ID "draw_<lotteryId>_<userId>", so sending the same draw again
-     * replaces it instead of adding a second one. The notices are dated when the draw ran, or
-     * [now] (milliseconds since 1970) if the lottery has no draw time. The losers' notices are
-     * added by US 01.03.02.
+     * Adds a draw's results to the inboxes of everyone in [result] (US 01.03.01, 01.03.02): a "You
+     * won" notice to each winner, naming the lottery's campsites and when booking ends, which opens
+     * Reserve for the lottery; and a "Not selected" notice to each loser, naming the campsites.
+     * A user in both lists only gets the win. Each notice has the ID "draw_<lotteryId>_<userId>",
+     * so sending the same draw again replaces it instead of adding a second one. All of them are
+     * saved in one [NotificationRepository.addAll] call, dated when the draw ran, or [now]
+     * (milliseconds since 1970) if the lottery has no draw time.
      */
     suspend fun sendDrawResults(result: DrawResult, now: Long = System.currentTimeMillis()) {
         val lottery = result.lottery
         val winnerIds = result.winnerIds.distinct()
-        if (winnerIds.isEmpty()) return
+        // a winner never gets a "Not selected" notice, even if a list has them in both
+        val loserIds = result.loserIds.distinct() - winnerIds.toSet()
+        if (winnerIds.isEmpty() && loserIds.isEmpty()) return
         // Notification has no campsite name field, so the names go in the message
         val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }
         val where = if (names.isEmpty()) "a campsite" else names.joinToString(", ")
-        val message = "You won a spot at $where. " +
-            "Reserve your nights before ${formatDate(lottery.bookingEnd)}."
-        // only a single-campsite lottery has one campsite to point to
-        val campsiteId = lottery.campsiteIds.singleOrNull()
-        val sentAt = lottery.drawnAt ?: now
-        val notices = winnerIds.map { userId ->
-            Notification(
-                id = "draw_${lottery.id}_$userId",
-                recipientId = userId,
-                senderId = "system",
-                campsiteId = campsiteId,
-                lotteryId = lottery.id,
-                type = NotificationType.WON,
-                title = "You won the lottery!",
-                message = message,
-                createdAt = sentAt,
-            )
-        }
-        notificationRepository.addAll(notices)
+        val won = drawNotices(
+            lottery, winnerIds, now,
+            type = NotificationType.WON,
+            title = "You won the lottery!",
+            message = "You won a spot at $where. " +
+                "Reserve your nights before ${formatDate(lottery.bookingEnd)}.",
+        )
+        val lost = drawNotices(
+            lottery, loserIds, now,
+            type = NotificationType.NOT_SELECTED,
+            title = "Not selected this time",
+            message = "You weren't selected for $where this time.",
+        )
+        notificationRepository.addAll(won + lost)
+    }
+
+    // One notice per user in userIds with what every draw notice shares: the ID
+    // "draw_<lotteryId>_<userId>", sent by "system" about the lottery, pointing to its campsite only
+    // when it covers one, and dated when the draw ran (or now). batchId stays null (#16).
+    private fun drawNotices(
+        lottery: Lottery,
+        userIds: List<String>,
+        now: Long,
+        type: NotificationType,
+        title: String,
+        message: String,
+    ): List<Notification> = userIds.map { userId ->
+        Notification(
+            id = "draw_${lottery.id}_$userId",
+            recipientId = userId,
+            senderId = "system",
+            campsiteId = lottery.campsiteIds.singleOrNull(),
+            lotteryId = lottery.id,
+            type = type,
+            title = title,
+            message = message,
+            createdAt = lottery.drawnAt ?: now,
+        )
     }
 }
 
