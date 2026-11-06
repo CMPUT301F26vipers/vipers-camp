@@ -133,7 +133,7 @@ class ViewMyCampsiteDetailsTest {
         composeRule.onNodeWithText("Edit Campsite").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Back").performClick()
         tap("button_availability")
-        composeRule.onNodeWithText("Setting available nights is added in T-10.").assertIsDisplayed()
+        composeRule.onNodeWithText("+ Set a date range").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNodeWithText("My Campsite").assertIsDisplayed()
     }

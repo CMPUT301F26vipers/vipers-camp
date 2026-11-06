@@ -25,6 +25,7 @@ import com.example.vipers.ui.admin.BrowseCampsitesScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.campsites.OwnerCampsiteScreen
+import com.example.vipers.ui.campsites.AvailabilityScreen
 import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SentScreen
@@ -129,12 +130,12 @@ fun AppNavigation(
                     onPublished = { navController.popBackStack() },
                 )
             }
-            // placeholder until T-10 builds this screen
-            composable(Routes.AVAILABILITY) {
-                Column {
-                    TopBar(title = "Availability", onBack = { navController.popBackStack() })
-                    Placeholder("Setting available nights is added in T-10.")
-                }
+            composable(
+                route = Routes.AVAILABILITY,
+                arguments = listOf(navArgument("campsiteId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
+                AvailabilityScreen(campsiteId = campsiteId, onBack = { navController.popBackStack() })
             }
             composable(
                 route = Routes.CREATE_LOTTERY,

@@ -4,7 +4,7 @@
  * buttons to manage it, and its lotteries with a Create Lottery button (US 02.04.01).
  * OwnerCampsiteController loads the data.
  * Known issues: the photo and map are placeholders until 02.01.02b and 02.01.02c, and the QR Code
- * button stays off until 02.02.01. Availability (T-10) opens a placeholder screen for now.
+ * button stays off until 02.02.01.
  */
 package com.example.vipers.ui.campsites
 
