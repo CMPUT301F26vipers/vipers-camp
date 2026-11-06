@@ -3,7 +3,8 @@
  * The controller (a ViewModel) behind the owner's view of one campsite (mockup O04, US 02.01.04).
  * It loads the campsite with all its saved details and its lotteries (US 02.04.01), with how many
  * entrants joined or reserved each one, and works out whether this user may edit it (US 02.01.03).
- * Known issues: the campsite's reservations are not loaded here yet (02.07.01).
+ * Known issues: this campsite's own reservations are not loaded here. The screen's Reservations
+ * button opens the list for all of the current user's campsites (US 02.07.01).
  */
 package com.example.vipers.ui.campsites
 
