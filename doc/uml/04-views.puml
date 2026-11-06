@@ -57,6 +57,7 @@ package "Other screens (collaborators on the CRC cards)" {
   class WelcomeScreen <<Composable>>
   class CampsiteDetailsScreen <<Composable>>
   class ReserveScreen <<Composable>>
+  class ReservationConfirmationDialog <<Composable>>
   class ReservationDetailsScreen <<Composable>>
   class SettingsScreen <<Composable>>
   class PolicyScreen <<Composable>>
@@ -73,7 +74,6 @@ package "Other screens (collaborators on the CRC cards)" {
 }
 
 package "Planned screens" {
-  class ReservationConfirmedScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class MessagesScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class SendNotificationScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class BrowseProfilesScreen <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
@@ -153,7 +153,7 @@ OwnerCampsiteScreen --> LotteryFormScreen
 LotteryDetailsScreen --> WaitingListScreen : owner
 OwnerReservationsScreen --> OwnerReservationDetailsScreen
 MyReservationsScreen --> ReservationDetailsScreen
-ReserveScreen --> ReservationConfirmedScreen
+ReserveScreen --> ReservationConfirmationDialog : after Reserve
 AdminHomeScreen --> BrowseCampsitesScreen
 AdminHomeScreen --> BrowseProfilesScreen
 AdminHomeScreen --> BrowseImagesScreen
@@ -173,9 +173,9 @@ note bottom of SentScreen
   It is a placeholder for now.
 end note
 
-note bottom of ReservationConfirmedScreen
-  E13: built as a confirmation dialog
-  inside ReserveScreen, not its own screen.
+note bottom of ReservationConfirmationDialog
+  E13 (Reservation Confirmed): a dialog
+  shown over ReserveScreen, not its own screen.
 end note
 
 note bottom of MyReservationsScreen
