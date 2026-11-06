@@ -26,6 +26,13 @@ class FakeNotificationRepository(initial: List<Notification> = emptyList()) : No
         return id
     }
 
+    override suspend fun saveNotification(notification: Notification): String {
+        val id = notification.id.ifBlank { "notification-${nextId++}" }
+        notifications[id] = notification.copy(id = id)
+        notifyListeners(notification.recipientId)
+        return id
+    }
+
     override suspend fun getNotificationsFor(recipientId: String): List<Notification> = inboxOf(recipientId)
 
     override suspend fun markRead(id: String) {

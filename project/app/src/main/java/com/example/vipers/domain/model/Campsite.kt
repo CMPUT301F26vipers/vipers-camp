@@ -2,8 +2,7 @@
  * Campsite.kt
  * A campsite an owner lists so entrants can find it and join its lotteries.
  * Stored in the Firestore "campsites" collection.
- * Known issues: price, rules, cancellation policy, photo and map location are stored but not
- * yet filled in by the Add Campsite form.
+ * Known issues: photo and map location are stored but not yet filled in by the Add Campsite form.
  */
 package com.example.vipers.domain.model
 
@@ -51,6 +50,17 @@ data class Campsite(
     val ratingCount: Int = 0,
     val removed: Boolean = false,
 ) {
+    /** True if the owner has written rules; an empty or blank [rules] means none (T-11). */
+    val hasRules: Boolean
+        get() = rules.isNotBlank()
+
+    /**
+     * True if the owner has written a cancellation policy; an empty or blank [cancellationPolicy]
+     * means none (T-11).
+     */
+    val hasCancellationPolicy: Boolean
+        get() = cancellationPolicy.isNotBlank()
+
     /** The average star rating, or 0.0 if nobody has rated it yet. */
     fun averageRating(): Double {
         // avoid division by zero
@@ -58,12 +68,25 @@ data class Campsite(
         return ratingSum.toDouble() / ratingCount
     }
 
-    /** The nightly price as text for the UI, e.g. "$50 / night" or "$65.50 / night". */
-    fun priceText(): String {
+    /** The nightly price in dollars, as the campsite form shows it: "50" or "65.50" (T-09). */
+    fun priceInDollars(): String {
         val dollars = pricePerNightCents / 100
         val cents = pricePerNightCents % 100
         // only show cents when there are some
-        return if (cents == 0L) "$$dollars / night" else "$$dollars.%02d / night".format(cents)
+        return if (cents == 0L) "$dollars" else "$dollars.%02d".format(cents)
+    }
+
+    /** The nightly price as text for the UI, e.g. "$50 / night" or "$65.50 / night". */
+    fun priceText(): String {
+        return "$${priceInDollars()} / night"
+    }
+
+    /**
+     * The total for staying [nights] nights: the nightly price times [nights] (T-09). A reservation
+     * stores this total when it's made, so changing the price later doesn't change it.
+     */
+    fun totalPriceCents(nights: Int): Long {
+        return pricePerNightCents * nights
     }
 
     /**
@@ -83,8 +106,8 @@ data class Campsite(
 
     /**
      * The one-line summary under a campsite's name, e.g. "Hinton, AB · Up to 6 guests · $50 / night"
-     * (mockups E05 and O04). The price is left out while it's 0, which campsites have until the
-     * form asks for one (T-09).
+     * (mockups E05 and O04). The price is left out while it's 0, which campsites added before the
+     * form asked for a price (T-09) still have.
      */
     fun summaryText(): String {
         val parts = mutableListOf(address, "Up to ${guestsText()}")
@@ -103,6 +126,22 @@ data class Campsite(
      */
     fun matchesSearch(searchText: String): Boolean {
         return name.startsWith(searchText.trim(), ignoreCase = true)
+    }
+
+    /**
+     * True if this campsite is in [filterRegion], or true if [filterRegion] is null, so it matches
+     * any region (US 01.01.02).
+     */
+    fun matchesRegion(filterRegion: Region?): Boolean {
+        return filterRegion == null || region == filterRegion
+    }
+
+    /**
+     * True if this campsite's maximum occupancy is at least [minGuests], or true if [minGuests]
+     * is null or not positive (US 01.01.02).
+     */
+    fun matchesGuests(minGuests: Int?): Boolean {
+        return minGuests == null || minGuests <= 0 || maxOccupancy >= minGuests
     }
 
     /**

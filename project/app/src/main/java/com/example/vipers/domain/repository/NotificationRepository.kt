@@ -14,6 +14,9 @@ interface NotificationRepository {
     /** Saves a new [notification] and returns the ID it was given. */
     suspend fun addNotification(notification: Notification): String
 
+    /** Saves or updates [notification]. When [Notification.id] is set, writes to that ID idempotently. */
+    suspend fun saveNotification(notification: Notification): String
+
     /** Loads [recipientId]'s inbox, newest first. */
     suspend fun getNotificationsFor(recipientId: String): List<Notification>
 

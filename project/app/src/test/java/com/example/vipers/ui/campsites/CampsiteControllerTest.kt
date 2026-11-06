@@ -1,7 +1,7 @@
 /*
  * CampsiteControllerTest.kt
- * Unit tests for CampsiteController (US 02.01.01, 02.01.02a, 02.01.03), using the fake campsite
- * repository.
+ * Unit tests for CampsiteController (US 02.01.01, 02.01.02a, 02.01.03, T-11), using the fake
+ * campsite repository.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -45,6 +45,7 @@ class CampsiteControllerTest {
         controller.onAddressChange("Hinton, AB")
         controller.onRegionChange(Region.HINTON)
         controller.onMaxGuestsChange("6")
+        controller.onPriceChange("65")
         controller.onDescriptionChange("Outdoor cookhouse")
         controller.onTagInputChange("Cookhouse")
         controller.addTag()
@@ -54,7 +55,10 @@ class CampsiteControllerTest {
     fun publish_withEmptyForm_showsAnErrorForEachRequiredFieldAndSavesNothing() = runBlocking {
         controller.publish()
 
-        assertEquals(setOf("name", "address", "region", "maxOccupancy"), controller.errors.keys)
+        assertEquals(
+            setOf("name", "address", "region", "maxOccupancy", "pricePerNightCents"),
+            controller.errors.keys,
+        )
         assertEquals("Enter max guests", controller.errors["maxOccupancy"])
         assertTrue(repo.getAllCampsites().isEmpty())
         assertFalse(controller.published)
@@ -178,8 +182,11 @@ class CampsiteControllerTest {
         assertEquals("", form.address)
         assertNull(form.region)
         assertEquals("", form.maxGuests)
+        assertEquals("", form.price)
         assertEquals("", form.description)
         assertTrue(form.tags.isEmpty())
+        assertEquals("", form.rules)
+        assertEquals("", form.cancellationPolicy)
     }
 
     @Test
@@ -380,6 +387,7 @@ class CampsiteControllerTest {
             { it.onAddressChange("Jasper, AB") },
             { it.onRegionChange(Region.JASPER) },
             { it.onMaxGuestsChange("6") },
+            { it.onPriceChange("70") },
             { it.onDescriptionChange("Tennis court") },
             { it.removeTag("Cookhouse") },
         )
@@ -409,6 +417,73 @@ class CampsiteControllerTest {
     }
 
     @Test
+    fun publish_withRulesAndCancellationPolicy_savesBothTrimmed() = runBlocking {
+        fillValidForm()
+        controller.onRulesChange("  Quiet hours after 10 PM ")
+        controller.onCancellationPolicyChange(" Free up to 7 days before  ")
+        controller.publish()
+
+        val saved = repo.getCampsitesByOwner("my-phone").single()
+        assertEquals("Quiet hours after 10 PM", saved.rules)
+        assertEquals("Free up to 7 days before", saved.cancellationPolicy)
+        assertTrue(controller.published)
+        assertTrue(controller.errors.isEmpty())
+    }
+
+    @Test
+    fun publish_withoutRulesOrCancellationPolicy_succeedsWithBothEmpty() = runBlocking {
+        fillValidForm()
+        controller.publish()
+
+        val saved = repo.getCampsitesByOwner("my-phone").single()
+        assertEquals("", saved.rules)
+        assertEquals("", saved.cancellationPolicy)
+        assertTrue(controller.published)
+        assertTrue(controller.errors.isEmpty())
+    }
+
+    @Test
+    fun loadForEdit_owner_prefillsRulesAndCancellationPolicy() = runBlocking {
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+
+        assertEquals("Quiet hours after 10 PM", form.rules)
+        assertEquals("Free up to 7 days before", form.cancellationPolicy)
+    }
+
+    @Test
+    fun publish_editToRules_savesTheNewRulesAndKeepsEverythingElse() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = editForm(campsites)
+        form.onRulesChange(" No pets ")
+        form.publish()
+
+        assertEquals(hintonInFull.copy(rules = "No pets"), campsites.getCampsite("hinton"))
+        assertTrue(form.published)
+    }
+
+    @Test
+    fun hasUnsavedChanges_newFormAfterTypingRulesOrCancellationPolicy_isTrue() {
+        val rulesOnly = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        rulesOnly.onRulesChange("Quiet hours after 10 PM")
+        assertTrue(rulesOnly.hasUnsavedChanges)
+
+        val policyOnly = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        policyOnly.onCancellationPolicyChange("Free up to 7 days before")
+        assertTrue(policyOnly.hasUnsavedChanges)
+    }
+
+    @Test
+    fun hasUnsavedChanges_editAfterTypingRulesOrCancellationPolicy_isTrue() = runBlocking {
+        val rulesEdit = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        rulesEdit.onRulesChange("No pets")
+        assertTrue(rulesEdit.hasUnsavedChanges)
+
+        val policyEdit = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        policyEdit.onCancellationPolicyChange("No refunds")
+        assertTrue(policyEdit.hasUnsavedChanges)
+    }
+
+    @Test
     fun save_whenTheRepositoryFails_setsSaveFailed() = runBlocking {
         // a repository that always fails, e.g. Firestore rejecting the write
         val failing = object : CampsiteRepository by FakeCampsiteRepository() {
@@ -420,5 +495,109 @@ class CampsiteControllerTest {
         assertTrue(offlineController.saveFailed)
         assertFalse(offlineController.published)
         assertFalse(offlineController.isSaving)
+    }
+
+    // T-09: the nightly price
+
+    @Test
+    fun publish_savesThePriceInCents() = runBlocking {
+        fillValidForm()
+        controller.onPriceChange("65.5")
+        controller.publish()
+
+        assertEquals(6550L, repo.getCampsitesByOwner("my-phone").single().pricePerNightCents)
+        assertTrue(controller.published)
+    }
+
+    @Test
+    fun publish_acceptsWholeDollarsZeroAndADollarSign() = runBlocking {
+        val prices = mapOf("65" to 6500L, "0" to 0L, "$50" to 5000L, " 65.05 " to 6505L)
+        for ((typed, cents) in prices) {
+            val form = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+            form.onNameChange("Hinton Ridge Campground")
+            form.onAddressChange("Hinton, AB")
+            form.onRegionChange(Region.HINTON)
+            form.onMaxGuestsChange("6")
+            form.onPriceChange(typed)
+            form.publish()
+
+            assertTrue(typed, form.published)
+            assertEquals(typed, cents, form.toCampsite().pricePerNightCents)
+        }
+    }
+
+    @Test
+    fun publish_withNoPrice_asksForOne() = runBlocking {
+        fillValidForm()
+        controller.onPriceChange("  ")
+        controller.publish()
+
+        assertEquals("Enter a price", controller.errors["pricePerNightCents"])
+        assertTrue(repo.getAllCampsites().isEmpty())
+    }
+
+    @Test
+    fun publish_withAPriceThatIsNotDollarsAndCents_showsAnError() = runBlocking {
+        for (typed in listOf("-5", "65.505", "abc", "6.5.0", ".50", "1e3")) {
+            fillValidForm()
+            controller.onPriceChange(typed)
+            controller.publish()
+
+            assertEquals(typed, "Enter dollars, e.g. 65.50", controller.errors["pricePerNightCents"])
+        }
+        assertTrue(repo.getAllCampsites().isEmpty())
+    }
+
+    @Test
+    fun onPriceChange_clearsThePriceError() {
+        controller.publish()
+        controller.onPriceChange("65")
+
+        assertFalse("pricePerNightCents" in controller.errors)
+    }
+
+    @Test
+    fun hasUnsavedChanges_newFormWithOnlyAPrice_isTrue() {
+        controller.onPriceChange("65")
+        assertTrue(controller.hasUnsavedChanges)
+    }
+
+    @Test
+    fun loadForEdit_prefillsThePriceInDollars() = runBlocking {
+        assertEquals("65", editForm(FakeCampsiteRepository(listOf(hintonInFull))).price)
+        val withCents = hintonInFull.copy(pricePerNightCents = 6550)
+        assertEquals("65.50", editForm(FakeCampsiteRepository(listOf(withCents))).price)
+    }
+
+    @Test
+    fun publish_editToThePrice_savesItAndKeepsEverythingElse() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = editForm(campsites)
+        form.onPriceChange("70")
+        form.publish()
+
+        assertEquals(hintonInFull.copy(pricePerNightCents = 7000), campsites.getCampsite("hinton"))
+        assertTrue(form.published)
+    }
+
+    @Test
+    fun publish_editToThePrice_leavesReservationsAtTheOldPrice() = runBlocking {
+        // reserved for 2 nights at $65 before the owner raised the price
+        val booked = Reservation(
+            id = "r1",
+            userId = "sam",
+            ownerId = "my-phone",
+            campsiteId = "hinton",
+            checkIn = "2027-05-08",
+            checkOut = "2027-05-10",
+            totalPriceCents = hintonInFull.totalPriceCents(2),
+        )
+        val reservations = FakeReservationRepository(listOf(booked))
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        form.onPriceChange("80")
+        form.publish()
+
+        assertTrue(form.published)
+        assertEquals(13000L, reservations.getReservation("r1")?.totalPriceCents)
     }
 }

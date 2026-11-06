@@ -27,6 +27,12 @@ class FirestoreNotificationRepository(
         return doc.id
     }
 
+    override suspend fun saveNotification(notification: Notification): String {
+        val doc = if (notification.id.isNotBlank()) collection.document(notification.id) else collection.document()
+        doc.set(notification.copy(id = doc.id).toMap()).await()
+        return doc.id
+    }
+
     override suspend fun getNotificationsFor(recipientId: String): List<Notification> =
         collection
             .whereEqualTo("recipientId", recipientId)

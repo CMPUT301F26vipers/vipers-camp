@@ -65,6 +65,7 @@ class AddCampsiteTest {
         composeRule.onNodeWithTag("field_region").performScrollTo().performClick()
         composeRule.onNodeWithText("Hinton").performClick()
         type("field_max_guests", "6")
+        type("field_price", "65")
     }
 
     private fun publish() = composeRule.onNodeWithTag("button_publish").performClick()
@@ -89,6 +90,7 @@ class AddCampsiteTest {
         composeRule.onNodeWithText("Enter a location").assertIsDisplayed()
         composeRule.onNodeWithText("Choose a region").assertIsDisplayed()
         composeRule.onNodeWithText("Enter max guests").assertIsDisplayed()
+        composeRule.onNodeWithText("Enter a price").assertIsDisplayed()
         assertTrue(runBlocking { repo.getAllCampsites() }.isEmpty())
         assertFalse(publishedCalled)
     }

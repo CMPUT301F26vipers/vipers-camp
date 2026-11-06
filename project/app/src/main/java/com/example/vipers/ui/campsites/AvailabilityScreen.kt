@@ -1,8 +1,9 @@
 /*
  * AvailabilityScreen.kt
  * The owner's Availability screen (mockup O07, T-10), opened from Availability on My Campsite.
- * A month calendar where tapping a night opens or closes it, "+ Set a date range" opens every night
- * between two taps, and Save stores the open nights. AvailabilityController does the work.
+ * A month calendar where tapping a night opens or closes it, "+ Open a range" and "− Close a range"
+ * open or close every night between two taps, and Save stores the open nights.
+ * AvailabilityController does the work.
  * Known issues: none. Booked nights come from reservations (T-03) and can't be changed here.
  */
 package com.example.vipers.ui.campsites
@@ -111,7 +112,15 @@ fun AvailabilityScreen(
                             controller.cancelRange()
                         }
                     } else {
-                        RangeButton("+ Set a date range", "button_date_range") { controller.startRange() }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val half = Modifier.weight(1f)
+                            RangeButton("+ Open a range", "button_open_range", half) {
+                                controller.startRange(open = true)
+                            }
+                            RangeButton("− Close a range", "button_close_range", half) {
+                                controller.startRange(open = false)
+                            }
+                        }
                     }
                     MonthGrid(
                         controller.month,
@@ -175,15 +184,20 @@ private fun MonthHeader(month: YearMonth, onPrevious: () -> Unit, onNext: () -> 
     }
 }
 
-/** The outlined button that starts or cancels choosing a date range. */
+/** An outlined button that starts or cancels choosing a date range, full width by default. */
 @Composable
-private fun RangeButton(text: String, tag: String, onClick: () -> Unit) {
+private fun RangeButton(
+    text: String,
+    tag: String,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    onClick: () -> Unit,
+) {
     OutlinedButton(
         onClick = onClick,
         shape = ButtonShape,
         border = BorderStroke(1.dp, Primary),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
-        modifier = Modifier.fillMaxWidth().testTag(tag),
+        modifier = modifier.testTag(tag),
     ) {
         Text(text, fontWeight = FontWeight.SemiBold)
     }

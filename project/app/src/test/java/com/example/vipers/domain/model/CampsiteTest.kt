@@ -35,6 +35,20 @@ class CampsiteTest {
     }
 
     @Test
+    fun priceInDollars_showsCentsOnlyWhenThereAreSome() {
+        assertEquals("50", Campsite(pricePerNightCents = 5000).priceInDollars())
+        assertEquals("65.50", Campsite(pricePerNightCents = 6550).priceInDollars())
+        assertEquals("0", Campsite(pricePerNightCents = 0).priceInDollars())
+    }
+
+    @Test
+    fun totalPriceCents_isThePriceTimesTheNights() {
+        // 2 nights at $65 is $130
+        assertEquals(13000L, Campsite(pricePerNightCents = 6500).totalPriceCents(2))
+        assertEquals(0L, Campsite(pricePerNightCents = 0).totalPriceCents(3))
+    }
+
+    @Test
     fun hasLocation_needsBothCoordinates() {
         assertTrue(Campsite(lat = 53.405, lng = -117.585).hasLocation())
         assertFalse(Campsite(lat = 53.405).hasLocation())
@@ -147,5 +161,67 @@ class CampsiteTest {
     fun validate_maxOccupancyMustBeAtLeastOne() {
         val campsite = Campsite(name = "Hinton Ridge Campground", address = "Hinton, AB", maxOccupancy = 0)
         assertEquals(mapOf("maxOccupancy" to "Must be at least 1"), campsite.validate())
+    }
+
+    @Test
+
+    fun hasRules_emptyOrBlank_isFalse() {
+        assertFalse(Campsite(rules = "").hasRules)
+        assertFalse(Campsite(rules = "   ").hasRules)
+    }
+
+    @Test
+    fun hasRules_withText_isTrue() {
+        assertTrue(Campsite(rules = "Quiet hours after 10 PM").hasRules)
+    }
+
+    @Test
+    fun hasCancellationPolicy_emptyOrBlank_isFalse() {
+        assertFalse(Campsite(cancellationPolicy = "").hasCancellationPolicy)
+        assertFalse(Campsite(cancellationPolicy = "   ").hasCancellationPolicy)
+    }
+
+    @Test
+    fun hasCancellationPolicy_withText_isTrue() {
+        assertTrue(Campsite(cancellationPolicy = "Free up to 7 days before").hasCancellationPolicy)
+    }
+
+    @Test
+    fun matchesRegion_matchesWhenSameRegion() {
+        val campsite = Campsite(region = Region.JASPER)
+        assertTrue(campsite.matchesRegion(Region.JASPER))
+    }
+
+    @Test
+    fun matchesRegion_doesNotMatchWhenDifferentRegion() {
+        val campsite = Campsite(region = Region.JASPER)
+        assertFalse(campsite.matchesRegion(Region.BANFF))
+    }
+
+    @Test
+    fun matchesRegion_nullMatchesAnyRegion() {
+        assertTrue(Campsite(region = Region.HINTON).matchesRegion(null))
+        assertTrue(Campsite(region = Region.KANANASKIS).matchesRegion(null))
+    }
+
+    @Test
+    fun matchesGuests_matchesWhenOccupancyIsEqualOrGreater() {
+        val campsite = Campsite(maxOccupancy = 6)
+        assertTrue(campsite.matchesGuests(6))
+        assertTrue(campsite.matchesGuests(4))
+    }
+
+    @Test
+    fun matchesGuests_doesNotMatchWhenOccupancyIsBelowFilter() {
+        val campsite = Campsite(maxOccupancy = 4)
+        assertFalse(campsite.matchesGuests(6))
+    }
+
+    @Test
+    fun matchesGuests_nullOrZeroOrNegativeMatchesAnyCampsite() {
+        val campsite = Campsite(maxOccupancy = 2)
+        assertTrue(campsite.matchesGuests(null))
+        assertTrue(campsite.matchesGuests(0))
+        assertTrue(campsite.matchesGuests(-1))
     }
 }

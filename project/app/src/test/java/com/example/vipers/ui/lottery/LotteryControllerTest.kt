@@ -268,27 +268,61 @@ class LotteryControllerTest {
 
         // Non-numeric text
         controller.onWaitlistCapacityChange("abc")
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.waitlistCapacityError)
+        controller.saveLottery()
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.error)
+        assertFalse(controller.saved)
+
+        // Decimal
+        controller.onWaitlistCapacityChange("3.14")
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.waitlistCapacityError)
         controller.saveLottery()
         assertEquals("Waitlist limit must be a whole number at least 1", controller.error)
         assertFalse(controller.saved)
 
         // Zero
         controller.onWaitlistCapacityChange("0")
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.waitlistCapacityError)
         controller.saveLottery()
         assertEquals("Waitlist limit must be a whole number at least 1", controller.error)
         assertFalse(controller.saved)
 
         // Negative
         controller.onWaitlistCapacityChange("-5")
+        assertEquals("Waitlist limit must be a whole number at least 1", controller.waitlistCapacityError)
         controller.saveLottery()
         assertEquals("Waitlist limit must be a whole number at least 1", controller.error)
         assertFalse(controller.saved)
 
         // Blank (valid, no limit)
         controller.onWaitlistCapacityChange("")
+        assertNull(controller.waitlistCapacityError)
         controller.saveLottery()
         assertTrue(controller.saved)
         assertNull(lotteryRepository.getLotteriesForCampsite(campsiteId).first().waitlistCapacity)
+    }
+
+    @Test
+    fun waitlistCapacity_validPositiveInteger_savedCorrectly() = runTest {
+        setupCampsiteAndController()
+        controller.onRangeStartChange("2026-01-01")
+        controller.onRangeEndChange("2026-01-02")
+        controller.loadSelectedRange()
+        controller.toggleNight("2026-01-01", true)
+
+        val now = System.currentTimeMillis()
+        controller.setRegistrationStart(now + 100_000)
+        controller.setRegistrationEnd(now + 200_000)
+        controller.setBookingStart(now + 200_000)
+        controller.setBookingEnd(now + 300_000)
+
+        controller.onWaitlistCapacityChange("50")
+        assertNull(controller.waitlistCapacityError)
+        controller.saveLottery()
+
+        assertTrue(controller.saved)
+        val saved = lotteryRepository.getLotteriesForCampsite(campsiteId).first()
+        assertEquals(50, saved.waitlistCapacity)
     }
 
     @Test
@@ -296,18 +330,12 @@ class LotteryControllerTest {
         val saveDeferred = CompletableDeferred<Unit>()
         var addCallCount = 0
 
-        val delayedRepo = object : LotteryRepository {
+        val delayedRepo = object : LotteryRepository by lotteryRepository {
             override suspend fun addLottery(lottery: Lottery): String {
                 addCallCount++
                 saveDeferred.await()
                 return "lottery-delayed"
             }
-            override suspend fun getLottery(id: String): Lottery? = null
-            override suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery> = emptyList()
-            override suspend fun saveEntry(entry: LotteryEntry) {}
-            override suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry? = null
-            override suspend fun getEntries(lotteryId: String): List<LotteryEntry> = emptyList()
-            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult = JoinWaitingListResult.Success
         }
 
         val camp = Campsite(id = campsiteId, ownerId = ownerId, name = "Test Camp")

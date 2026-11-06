@@ -110,7 +110,8 @@ class SetAvailableNightsTest {
         composeRule.onNodeWithText("Availability").assertIsDisplayed()
         val thisMonth = "${today.month.getDisplayName(TextStyle.FULL, Locale.US)} ${today.year}"
         composeRule.onNodeWithText(thisMonth).assertIsDisplayed()
-        composeRule.onNodeWithText("+ Set a date range").assertIsDisplayed()
+        composeRule.onNodeWithText("+ Open a range").assertIsDisplayed()
+        composeRule.onNodeWithText("− Close a range").assertIsDisplayed()
     }
 
     @Test
@@ -128,15 +129,30 @@ class SetAvailableNightsTest {
     fun aDateRangeOpensEveryNightInIt() {
         openScreen()
         showNextMonth()
-        composeRule.onNodeWithTag("button_date_range").performClick()
+        composeRule.onNodeWithTag("button_open_range").performClick()
         tapNight(night(5))
         tapNight(night(7))
         assertNight(night(5), "Available")
         assertNight(night(6), "Available")
         assertNight(night(7), "Available")
         assertNight(night(8), "Closed")
-        // the range is done, so the button is back
-        composeRule.onNodeWithText("+ Set a date range").assertIsDisplayed()
+        // the range is done, so the buttons are back
+        composeRule.onNodeWithText("+ Open a range").assertIsDisplayed()
+    }
+
+    @Test
+    fun aCloseRangeClosesEveryNightButTheBookedOnes() {
+        val open = listOf(night(5), night(6), night(7), night(8))
+        openScreen(AvailabilityCalendar("hinton", openNights = open, heldNights = listOf(night(6))))
+        showNextMonth()
+        composeRule.onNodeWithTag("button_close_range").performClick()
+        tapNight(night(5))
+        tapNight(night(7))
+        assertNight(night(5), "Closed")
+        assertNight(night(6), "Booked")
+        assertNight(night(7), "Closed")
+        assertNight(night(8), "Available")
+        assertMessage("Booked nights in that range stay open.")
     }
 
     @Test
