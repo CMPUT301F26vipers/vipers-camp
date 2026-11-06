@@ -3,7 +3,7 @@
  * The controller (a ViewModel) behind the Reserve screen (mockup E11, US 01.04.01). It loads the
  * won lottery, the campsite and its calendar, works out which of the lottery's nights are still
  * free, lets the winner pick nights in a row, select their group size, reserve the nights (T-03),
- * and adds up the total.
+ * records confirmation notifications (US 01.05.01), and adds up the total.
  * This is the "Load the Reserve screen" part of the ReservationController CRC card; it is its own
  * class because ReservationController already runs the owner's reservation list (02.07.01).
  * Known issues: declining the win (01.04.03) and choosing between several campsites (01.04.02)
@@ -24,9 +24,12 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import com.example.vipers.domain.repository.ReserveResult
 import java.time.Instant
@@ -66,6 +69,7 @@ class ReserveController(
     private val lotteryId: String,
     private val campsiteId: String? = null,
     private val reservationRepository: ReservationRepository,
+    private val notificationRepository: NotificationRepository? = null,
 ) : ViewModel() {
 
     /** The won lottery, or null until it loads, or if it wasn't found or was removed. */
@@ -279,6 +283,21 @@ class ReserveController(
                 is ReserveResult.Success -> {
                     confirmedReservation = result.reservation
                     offerState = OfferState.USED
+                    val res = result.reservation
+                    notificationRepository?.saveNotification(
+                        Notification(
+                            id = "reservation_${res.id}",
+                            recipientId = userId,
+                            senderId = "system",
+                            campsiteId = site.id,
+                            lotteryId = lot.id,
+                            reservationId = res.id,
+                            type = NotificationType.RESERVATION_CONFIRMED,
+                            title = "Reservation confirmed",
+                            message = "${site.name}: ${res.checkIn} to ${res.checkOut}",
+                            createdAt = now,
+                        )
+                    )
                     fetchData(now)
                 }
                 is ReserveResult.Conflict -> {
@@ -355,6 +374,7 @@ class ReserveController(
                     campsiteRepository = app.container.campsiteRepository,
                     lotteryRepository = app.container.lotteryRepository,
                     reservationRepository = app.container.reservationRepository,
+                    notificationRepository = app.container.notificationRepository,
                     userId = app.container.deviceId,
                     lotteryId = lotteryId,
                     campsiteId = campsiteId,

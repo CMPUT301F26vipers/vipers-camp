@@ -2,13 +2,15 @@
  * FirestoreReservationRepository.kt
  * The real ReservationRepository: saves and loads reservations in the Firestore "reservations"
  * collection (Repository pattern).
- * Supports atomic reservation transactions with conflict checks (T-03).
+ * Supports atomic reservation transactions with conflict checks (T-03) and saves confirmation
+ * notifications (US 01.05.01).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  */
 package com.example.vipers.data.firestore
 
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.repository.ReservationRepository
@@ -29,6 +31,7 @@ class FirestoreReservationRepository(
     private val availability = db.collection("availability")
     private val lotteries = db.collection("lotteries")
     private val entries = db.collection("lotteryEntries")
+    private val notifications = db.collection("notifications")
 
     override suspend fun addReservation(reservation: Reservation): String {
         val doc = collection.document()
@@ -167,6 +170,27 @@ class FirestoreReservationRepository(
                     statusChangedAt = now,
                 )
                 tx.set(reservationDoc, reservation.toMap())
+
+                // Notify the entrant that their reservation is confirmed (US 01.05.01)
+                val notifDoc = notifications.document("reservation_${reservationDoc.id}")
+                tx.set(
+                    notifDoc,
+                    mapOf(
+                        "id" to notifDoc.id,
+                        "recipientId" to userId,
+                        "senderId" to "system",
+                        "campsiteId" to campsite.id,
+                        "lotteryId" to lottery.id,
+                        "reservationId" to reservationDoc.id,
+                        "type" to NotificationType.RESERVATION_CONFIRMED.name,
+                        "title" to "Reservation confirmed",
+                        "message" to "${campsite.name}: $checkIn to $checkOut",
+                        "read" to false,
+                        "shownOnDevice" to false,
+                        "createdAt" to now,
+                    ),
+                    SetOptions.merge(),
+                )
 
                 ReserveResult.Success(reservation)
             }.await()

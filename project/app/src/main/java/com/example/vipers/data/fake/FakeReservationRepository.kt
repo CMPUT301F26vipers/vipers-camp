@@ -1,16 +1,20 @@
 /*
  * FakeReservationRepository.kt
  * An in-memory ReservationRepository for unit and intent tests (test double for Repository).
- * Supports atomic reservation transactions with conflict checks (T-03).
+ * Supports atomic reservation transactions with conflict checks (T-03) and sends confirmation
+ * notifications to the entrant's inbox (US 01.05.01).
  * Known issues: none.
  */
 package com.example.vipers.data.fake
 
 import com.example.vipers.domain.model.EntryStatus
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import com.example.vipers.domain.repository.ReserveResult
 import kotlinx.coroutines.sync.Mutex
@@ -21,13 +25,14 @@ import java.time.LocalDate
 class FakeReservationRepository(
     var campsiteRepository: CampsiteRepository? = null,
     var lotteryRepository: LotteryRepository? = null,
+    var notificationRepository: NotificationRepository? = null,
 ) : ReservationRepository {
 
     private val reservations = mutableMapOf<String, Reservation>()
     private var nextId = 1
     private val mutex = Mutex()
 
-    constructor(initial: List<Reservation>) : this() {
+    constructor(initial: List<Reservation>) : this(null, null, null) {
         reservations.putAll(initial.associateBy { it.id })
     }
 
@@ -35,13 +40,27 @@ class FakeReservationRepository(
         campsiteRepository: CampsiteRepository,
         lotteryRepository: LotteryRepository,
         initial: List<Reservation>,
-    ) : this(campsiteRepository, lotteryRepository) {
+    ) : this(campsiteRepository, lotteryRepository, null) {
         reservations.putAll(initial.associateBy { it.id })
     }
 
-    fun attachRepositories(campsiteRepo: CampsiteRepository, lotteryRepo: LotteryRepository) {
+    constructor(
+        campsiteRepository: CampsiteRepository,
+        lotteryRepository: LotteryRepository,
+        notificationRepository: NotificationRepository?,
+        initial: List<Reservation>,
+    ) : this(campsiteRepository, lotteryRepository, notificationRepository) {
+        reservations.putAll(initial.associateBy { it.id })
+    }
+
+    fun attachRepositories(
+        campsiteRepo: CampsiteRepository,
+        lotteryRepo: LotteryRepository,
+        notificationRepo: NotificationRepository? = null,
+    ) {
         campsiteRepository = campsiteRepo
         lotteryRepository = lotteryRepo
+        notificationRepository = notificationRepo
     }
 
     override suspend fun addReservation(reservation: Reservation): String {
@@ -140,6 +159,22 @@ class FakeReservationRepository(
             statusChangedAt = now,
         )
         reservations[id] = reservation
+
+        // Notify the entrant that their reservation is confirmed (US 01.05.01)
+        val notice = Notification(
+            id = "reservation_$id",
+            recipientId = userId,
+            senderId = "system",
+            campsiteId = campsite.id,
+            lotteryId = lottery.id,
+            reservationId = id,
+            type = NotificationType.RESERVATION_CONFIRMED,
+            title = "Reservation confirmed",
+            message = "${campsite.name}: $checkIn to $checkOut",
+            createdAt = now,
+        )
+        notificationRepository?.saveNotification(notice)
+
         ReserveResult.Success(reservation)
     }
 }
