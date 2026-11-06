@@ -1,6 +1,6 @@
 /*
  * FakeReservationRepository.kt
- * An in-memory ReservationRepository for unit and intent tests (a test double for the Repository pattern).
+ * An in-memory ReservationRepository for unit and intent tests (test double for Repository).
  * Supports atomic reservation transactions with conflict checks (T-03).
  * Known issues: none.
  */
@@ -17,16 +17,27 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 
-/** Keeps reservations in a map instead of Firestore. Pass [initial] to start with some reservations. */
+/** Keeps reservations in a map instead of Firestore. Pass [initial] for seed data. */
 class FakeReservationRepository(
-    initial: List<Reservation> = emptyList(),
     var campsiteRepository: CampsiteRepository? = null,
     var lotteryRepository: LotteryRepository? = null,
 ) : ReservationRepository {
 
-    private val reservations = initial.associateBy { it.id }.toMutableMap()
+    private val reservations = mutableMapOf<String, Reservation>()
     private var nextId = 1
     private val mutex = Mutex()
+
+    constructor(initial: List<Reservation>) : this() {
+        reservations.putAll(initial.associateBy { it.id })
+    }
+
+    constructor(
+        campsiteRepository: CampsiteRepository,
+        lotteryRepository: LotteryRepository,
+        initial: List<Reservation>,
+    ) : this(campsiteRepository, lotteryRepository) {
+        reservations.putAll(initial.associateBy { it.id })
+    }
 
     fun attachRepositories(campsiteRepo: CampsiteRepository, lotteryRepo: LotteryRepository) {
         campsiteRepository = campsiteRepo
@@ -58,8 +69,10 @@ class FakeReservationRepository(
         if (nights.isEmpty()) return ReserveResult.Error("No nights selected")
         val sortedNights = nights.distinct().sorted()
 
-        val campsiteRepo = campsiteRepository ?: return ReserveResult.Error("Campsite repository not attached")
-        val lotteryRepo = lotteryRepository ?: return ReserveResult.Error("Lottery repository not attached")
+        val campsiteRepo = campsiteRepository
+            ?: return ReserveResult.Error("Campsite repository not attached")
+        val lotteryRepo = lotteryRepository
+            ?: return ReserveResult.Error("Lottery repository not attached")
 
         val campsite = campsiteRepo.getCampsite(campsiteId)
             ?: return ReserveResult.Error("Campsite not found")
@@ -72,6 +85,13 @@ class FakeReservationRepository(
         val lottery = lotteryRepo.getLottery(lotteryId)
             ?: return ReserveResult.Error("Lottery not found")
         if (lottery.removed) return ReserveResult.Error("Lottery is no longer available")
+
+        if (campsiteId !in lottery.campsiteIds) {
+            return ReserveResult.Error("Campsite is not offered in this lottery")
+        }
+        if (sortedNights.any { it !in lottery.nightsOffered }) {
+            return ReserveResult.Error("Selected nights are not offered in this lottery")
+        }
 
         val entry = lotteryRepo.getEntry(lotteryId, userId)
             ?: return ReserveResult.NotEligible
@@ -98,9 +118,10 @@ class FakeReservationRepository(
 
         val checkIn = sortedNights.first()
         val checkOut = LocalDate.parse(sortedNights.last()).plusDays(1).toString()
-        val id = "reservation-${nextId++}"
-        val reservationNumber = "R-${10000 + nextId}"
-        val totalPriceCents = campsite.pricePerNightCents * sortedNights.size
+        val currentId = nextId++
+        val id = "reservation-$currentId"
+        val reservationNumber = "R-${10000 + currentId}"
+        val totalPriceCents = campsite.totalPriceCents(sortedNights.size)
 
         val reservation = Reservation(
             id = id,

@@ -66,7 +66,7 @@ class ReserveController(
     private val userId: String,
     private val lotteryId: String,
     private val campsiteId: String? = null,
-    private val reservationRepository: ReservationRepository = FakeReservationRepository(),
+    private val reservationRepository: ReservationRepository,
 ) : ViewModel() {
 
     /** The won lottery, or null until it loads, or if it wasn't found or was removed. */
@@ -283,11 +283,14 @@ class ReserveController(
                     fetchData(now)
                 }
                 is ReserveResult.Conflict -> {
-                    reserveError = "These nights were just booked by another winner. Please pick different nights."
+                    reserveError =
+                        "These nights were just booked by another winner. " +
+                            "Please pick different nights."
                     fetchData(now)
                 }
                 is ReserveResult.CapacityExceeded -> {
-                    reserveError = "Group size cannot exceed the maximum occupancy of ${site.maxOccupancy}."
+                    reserveError =
+                        "Group size cannot exceed the maximum occupancy of ${site.maxOccupancy}."
                 }
                 is ReserveResult.NotEligible -> {
                     reserveError = "You are not eligible to reserve this win."

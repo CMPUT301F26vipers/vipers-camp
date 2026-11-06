@@ -79,17 +79,36 @@ class FirestoreReservationRepository(
                 val entrySnap = tx.get(entryDoc)
                 val availabilitySnap = tx.get(availabilityDoc)
 
-                if (!campsiteSnap.exists()) return@runTransaction ReserveResult.Error("Campsite not found")
+                if (!campsiteSnap.exists()) {
+                    return@runTransaction ReserveResult.Error("Campsite not found")
+                }
                 val campsite = campsiteSnap.toCampsite()
-                if (campsite.removed) return@runTransaction ReserveResult.Error("Campsite is no longer available")
+                if (campsite.removed) {
+                    return@runTransaction ReserveResult.Error("Campsite is no longer available")
+                }
+
+                if (!lotterySnap.exists()) {
+                    return@runTransaction ReserveResult.Error("Lottery not found")
+                }
+                val lottery = lotterySnap.toLottery()
+                if (lottery.removed) {
+                    return@runTransaction ReserveResult.Error("Lottery is no longer available")
+                }
+
+                if (campsiteId !in lottery.campsiteIds) {
+                    return@runTransaction ReserveResult.Error(
+                        "Campsite is not offered in this lottery",
+                    )
+                }
+                if (sortedNights.any { it !in lottery.nightsOffered }) {
+                    return@runTransaction ReserveResult.Error(
+                        "Selected nights are not offered in this lottery",
+                    )
+                }
 
                 if (groupSize > campsite.maxOccupancy) {
                     return@runTransaction ReserveResult.CapacityExceeded
                 }
-
-                if (!lotterySnap.exists()) return@runTransaction ReserveResult.Error("Lottery not found")
-                val lottery = lotterySnap.toLottery()
-                if (lottery.removed) return@runTransaction ReserveResult.Error("Lottery is no longer available")
 
                 if (!entrySnap.exists()) return@runTransaction ReserveResult.NotEligible
                 val entry = entrySnap.toLotteryEntry()
@@ -98,8 +117,12 @@ class FirestoreReservationRepository(
                     return@runTransaction ReserveResult.NotEligible
                 }
 
-                val openNights = if (availabilitySnap.exists()) availabilitySnap.getStringList("openNights") else emptyList()
-                val heldNights = if (availabilitySnap.exists()) availabilitySnap.getStringList("heldNights") else emptyList()
+                val openNights = if (availabilitySnap.exists()) {
+                    availabilitySnap.getStringList("openNights")
+                } else emptyList()
+                val heldNights = if (availabilitySnap.exists()) {
+                    availabilitySnap.getStringList("heldNights")
+                } else emptyList()
 
                 // Two reservations can never hold the same night (AC 4)
                 if (sortedNights.any { it in heldNights || it !in openNights }) {
@@ -123,8 +146,9 @@ class FirestoreReservationRepository(
 
                 val checkIn = sortedNights.first()
                 val checkOut = LocalDate.parse(sortedNights.last()).plusDays(1).toString()
-                val reservationNumber = "R-" + (10000..99999).random()
-                val totalPriceCents = campsite.pricePerNightCents * sortedNights.size
+                val hash = (reservationDoc.id.hashCode().toLong() and 0x7FFFFFFFL)
+                val reservationNumber = "R-" + (10000 + (hash % 90000)).toString()
+                val totalPriceCents = campsite.totalPriceCents(sortedNights.size)
 
                 val reservation = Reservation(
                     id = reservationDoc.id,

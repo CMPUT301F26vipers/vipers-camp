@@ -47,4 +47,8 @@ data class Reservation(
     /** True if it is CONFIRMED and checks out on or after [today]; everything else is past. */
     fun isActive(today: LocalDate): Boolean =
         status == ReservationStatus.CONFIRMED && !LocalDate.parse(checkOut).isBefore(today)
+
+    /** The total price as text for the UI, e.g. "$100" or "$65.50" (T-03, US 01.05.01). */
+    val totalPriceText: String
+        get() = "$${Campsite.dollarsText(totalPriceCents)}"
 }

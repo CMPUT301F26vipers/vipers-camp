@@ -470,7 +470,7 @@ fun ReservationConfirmationDialog(
                 )
                 ConfirmationRow(
                     label = "Total",
-                    value = "$${reservation.totalPriceCents / 100}",
+                    value = reservation.totalPriceText,
                     tag = "confirm_total_price",
                     isBold = true,
                 )

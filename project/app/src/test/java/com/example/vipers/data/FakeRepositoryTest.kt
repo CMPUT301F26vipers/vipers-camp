@@ -503,6 +503,7 @@ class FakeRepositoryTest {
         val lottery = Lottery(
             id = "lot-1",
             campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01", "2027-06-02", "2027-06-03"),
             bookingStart = 1000,
             bookingEnd = 5000,
             drawnAt = 900,
@@ -523,9 +524,12 @@ class FakeRepositoryTest {
 
         assertTrue(result is ReserveResult.Success)
         val reservation = (result as ReserveResult.Success).reservation
+        assertEquals("reservation-1", reservation.id)
+        assertEquals("R-10001", reservation.reservationNumber)
         assertEquals("2027-06-01", reservation.checkIn)
         assertEquals("2027-06-03", reservation.checkOut)
         assertEquals(10000L, reservation.totalPriceCents)
+        assertEquals("$100", reservation.totalPriceText)
         assertEquals(3, reservation.groupSize)
         assertEquals(ReservationStatus.CONFIRMED, reservation.status)
 
@@ -553,7 +557,14 @@ class FakeRepositoryTest {
         val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
         campsiteRepo.saveAvailability(calendar)
 
-        val lottery = Lottery(id = "lot-1", campsiteIds = listOf("site-1"), bookingStart = 1000, bookingEnd = 5000, drawnAt = 900)
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01", "2027-06-02"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+            drawnAt = 900,
+        )
         val entry = LotteryEntry(id = "lot-1_user-2", lotteryId = "lot-1", userId = "user-2", status = EntryStatus.WON)
         val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
 
@@ -577,7 +588,13 @@ class FakeRepositoryTest {
     fun createReservation_capacityExceeded_whenGroupSizeGreaterThanMaxOccupancy() = runBlocking {
         val campsite = Campsite(id = "site-1", maxOccupancy = 4)
         val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
-        val lottery = Lottery(id = "lot-1", campsiteIds = listOf("site-1"), bookingStart = 1000, bookingEnd = 5000)
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
         val entry = LotteryEntry(id = "lot-1_user-1", lotteryId = "lot-1", userId = "user-1", status = EntryStatus.WON)
         val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
 
@@ -599,7 +616,13 @@ class FakeRepositoryTest {
     fun createReservation_notEligible_whenBookingPeriodExpiredOrStatusNotWon() = runBlocking {
         val campsite = Campsite(id = "site-1", maxOccupancy = 4)
         val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
-        val lottery = Lottery(id = "lot-1", campsiteIds = listOf("site-1"), bookingStart = 1000, bookingEnd = 5000)
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
         val entry = LotteryEntry(id = "lot-1_user-1", lotteryId = "lot-1", userId = "user-1", status = EntryStatus.WON)
         val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
 
@@ -627,5 +650,83 @@ class FakeRepositoryTest {
             now = 2000,
         )
         assertEquals(ReserveResult.NotEligible, resultNotWon)
+    }
+
+    @Test
+    fun createReservation_failsWhenCampsiteNotInLottery() = runBlocking {
+        val campsite = Campsite(id = "site-2", maxOccupancy = 4)
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
+        val entry = LotteryEntry(
+            id = "lot-1_user-1",
+            lotteryId = "lot-1",
+            userId = "user-1",
+            status = EntryStatus.WON,
+        )
+        val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
+        val reservationRepo = FakeReservationRepository(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+        )
+
+        val result = reservationRepo.createReservation(
+            lotteryId = "lot-1",
+            campsiteId = "site-2",
+            userId = "user-1",
+            nights = listOf("2027-06-01"),
+            groupSize = 2,
+            now = 2000,
+        )
+
+        assertTrue(result is ReserveResult.Error)
+        assertEquals(
+            "Campsite is not offered in this lottery",
+            (result as ReserveResult.Error).message,
+        )
+    }
+
+    @Test
+    fun createReservation_failsWhenNightsNotOfferedInLottery() = runBlocking {
+        val campsite = Campsite(id = "site-1", maxOccupancy = 4)
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
+        val entry = LotteryEntry(
+            id = "lot-1_user-1",
+            lotteryId = "lot-1",
+            userId = "user-1",
+            status = EntryStatus.WON,
+        )
+        val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
+        val reservationRepo = FakeReservationRepository(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+        )
+
+        val result = reservationRepo.createReservation(
+            lotteryId = "lot-1",
+            campsiteId = "site-1",
+            userId = "user-1",
+            nights = listOf("2027-06-05"),
+            groupSize = 2,
+            now = 2000,
+        )
+
+        assertTrue(result is ReserveResult.Error)
+        assertEquals(
+            "Selected nights are not offered in this lottery",
+            (result as ReserveResult.Error).message,
+        )
     }
 }

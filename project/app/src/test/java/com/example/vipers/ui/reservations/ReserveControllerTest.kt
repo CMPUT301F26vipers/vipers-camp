@@ -178,7 +178,12 @@ class ReserveControllerTest {
                 throw IllegalStateException("offline")
         }
         val controller = ReserveController(
-            FakeCampsiteRepository(listOf(hinton)), failing, "user-sam", "lot-may", "hinton",
+            campsiteRepository = FakeCampsiteRepository(listOf(hinton)),
+            lotteryRepository = failing,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(),
         )
         controller.fetchData(duringBooking)
 
@@ -263,11 +268,15 @@ class ReserveControllerTest {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         campsites.saveAvailability(hintonCalendar)
         val controller = ReserveController(
-            campsites,
-            FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON))),
-            "user-sam",
-            "lot-may",
-            "hinton",
+            campsiteRepository = campsites,
+            lotteryRepository = FakeLotteryRepository(
+                listOf(lottery),
+                listOf(entry(EntryStatus.WON)),
+            ),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -288,11 +297,15 @@ class ReserveControllerTest {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         campsites.saveAvailability(hintonCalendar)
         val controller = ReserveController(
-            campsites,
-            FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON))),
-            "user-sam",
-            "lot-may",
-            "hinton",
+            campsiteRepository = campsites,
+            lotteryRepository = FakeLotteryRepository(
+                listOf(lottery),
+                listOf(entry(EntryStatus.WON)),
+            ),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -433,5 +446,31 @@ class ReserveControllerTest {
 
         controller.clearReserveError()
         assertNull(controller.reserveError)
+    }
+
+    @Test
+    fun totalPrice_formatsCentsCorrectly() = runBlocking {
+        val oddCampsite = hinton.copy(pricePerNightCents = 6550) // $65.50
+        val oddCampsites = FakeCampsiteRepository(listOf(oddCampsite))
+        oddCampsites.saveAvailability(hintonCalendar)
+        val oddLotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val controller = ReserveController(
+            campsiteRepository = oddCampsites,
+            lotteryRepository = oddLotteries,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(oddCampsites, oddLotteries),
+        )
+        controller.fetchData(duringBooking)
+        controller.onNightTap("2027-05-22")
+
+        assertEquals("Total $65.50", controller.totalText)
+
+        val result = controller.reserveNights(duringBooking)
+        assertTrue(result is ReserveResult.Success)
+        val res = (result as ReserveResult.Success).reservation
+        assertEquals(6550L, res.totalPriceCents)
+        assertEquals("$65.50", res.totalPriceText)
     }
 }
