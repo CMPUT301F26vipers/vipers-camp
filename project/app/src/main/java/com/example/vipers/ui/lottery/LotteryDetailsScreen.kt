@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryStatus
 import com.example.vipers.ui.common.TopBar
 import java.text.DateFormat
@@ -78,7 +79,7 @@ fun LotteryDetailsScreen(
                         LotteryStatus.DRAWN -> "Drawn"
                         LotteryStatus.CLOSED -> "Closed"
                     }
-                    val joinedCount = controller.waitingEntries.size
+                    val joinedCount = if (currentLottery.drawnAt != null) controller.allEntries.size else controller.waitingEntries.size
                     val capacityLabel = currentLottery.waitlistCapacity?.toString() ?: "No limit"
 
                     LazyColumn(
@@ -187,15 +188,25 @@ fun LotteryDetailsScreen(
             onDismissRequest = { showWaitingList = false },
             title = { Text("Waiting List") },
             text = {
-                if (controller.waitingEntries.isEmpty()) {
+                val displayEntries = if (controller.lottery?.drawnAt != null) controller.allEntries else controller.waitingEntries
+                if (displayEntries.isEmpty()) {
                     Text("There are no entrants on the waiting list.")
                 } else {
                     LazyColumn {
-                        items(controller.waitingEntries) { entry ->
+                        items(displayEntries) { entry ->
                             Column(modifier = Modifier.padding(vertical = 8.dp)) {
                                 val name = controller.userNames[entry.userId] ?: "Unknown User"
                                 Text(name)
-                                Text("Group size: ${entry.groupSize}")
+                                val statusLabel = when (entry.status) {
+                                    EntryStatus.WON -> "Won"
+                                    EntryStatus.LOST -> "Lost"
+                                    EntryStatus.WAITING -> "Waiting"
+                                    EntryStatus.DECLINED -> "Declined"
+                                    EntryStatus.RESERVED -> "Reserved"
+                                    EntryStatus.EXPIRED -> "Expired"
+                                    EntryStatus.REMOVED -> "Removed"
+                                }
+                                Text("Group size: ${entry.groupSize} · Status: $statusLabel")
                                 HorizontalDivider()
                             }
                         }

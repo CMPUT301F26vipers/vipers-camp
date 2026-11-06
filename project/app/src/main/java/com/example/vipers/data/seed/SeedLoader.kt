@@ -211,7 +211,7 @@ class SeedLoader(
     }
 
     private suspend fun addEntry(lottery: Lottery, userId: String, status: EntryStatus, groupSize: Int) {
-        container.lotteryRepository.saveEntry(
+        container.lotteryRepository.seedEntry(
             LotteryEntry(
                 lotteryId = lottery.id,
                 userId = userId,

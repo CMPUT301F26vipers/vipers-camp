@@ -122,10 +122,10 @@ class FakeRepositoryTest {
     }
 
     @Test
-    fun saveEntry_twiceForSameUserKeepsOneEntry() = runBlocking {
+    fun seedEntry_twiceForSameUserKeepsOneEntry() = runBlocking {
         val repo = FakeLotteryRepository()
-        repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WAITING))
-        repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WON))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WAITING))
+        repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WON))
         val entries = repo.getEntries("lottery-1")
         assertEquals(1, entries.size)
         assertEquals(EntryStatus.WON, entries[0].status)

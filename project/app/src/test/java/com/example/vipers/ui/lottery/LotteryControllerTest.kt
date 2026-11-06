@@ -295,17 +295,12 @@ class LotteryControllerTest {
         val saveDeferred = CompletableDeferred<Unit>()
         var addCallCount = 0
 
-        val delayedRepo = object : LotteryRepository {
+        val delayedRepo = object : LotteryRepository by lotteryRepository {
             override suspend fun addLottery(lottery: Lottery): String {
                 addCallCount++
                 saveDeferred.await()
                 return "lottery-delayed"
             }
-            override suspend fun getLottery(id: String): Lottery? = null
-            override suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery> = emptyList()
-            override suspend fun saveEntry(entry: LotteryEntry) {}
-            override suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry? = null
-            override suspend fun getEntries(lotteryId: String): List<LotteryEntry> = emptyList()
         }
 
         val camp = Campsite(id = campsiteId, ownerId = ownerId, name = "Test Camp")

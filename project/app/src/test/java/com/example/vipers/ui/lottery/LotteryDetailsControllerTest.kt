@@ -69,14 +69,14 @@ class LotteryDetailsControllerTest {
         profileRepository.saveProfile(UserProfile(id = "user-1", name = "Alice"))
         profileRepository.saveProfile(UserProfile(id = "user-2", name = "Bob"))
 
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-1", status = EntryStatus.WAITING, groupSize = 2)
         )
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-2", status = EntryStatus.WAITING, groupSize = 1)
         )
         // Add a non-waiting entry that should not appear in waitingEntries
-        lotteryRepository.saveEntry(
+        lotteryRepository.seedEntry(
             LotteryEntry(lotteryId = lotteryId, userId = "user-3", status = EntryStatus.WON, groupSize = 4)
         )
 
@@ -153,5 +153,38 @@ class LotteryDetailsControllerTest {
         assertNull(controller.error)
         assertNotNull(controller.lottery)
         assertEquals(2, controller.waitingEntries.size)
+    }
+
+    @Test
+    fun fetchData_loadsAllEntriesIncludingNonWaiting() = runTest {
+        setupData()
+        profileRepository.saveProfile(com.example.vipers.domain.model.UserProfile(id = "user-3", name = "Charlie"))
+        val controller = LotteryDetailsController(lotteryRepository, profileRepository, lotteryId)
+
+        controller.fetchData()
+
+        assertEquals(2, controller.waitingEntries.size)
+        assertEquals(3, controller.allEntries.size)
+        assertEquals("Charlie", controller.userNames["user-3"])
+    }
+
+    @Test
+    fun drawLottery_executesDrawAndRefreshesData() = runTest {
+        setupData()
+        val drawer = LotteryDrawer(
+            lotteryRepository = lotteryRepository,
+            notificationRepository = com.example.vipers.data.fake.FakeNotificationRepository(),
+            campsiteRepository = com.example.vipers.data.fake.FakeCampsiteRepository(),
+        )
+        val controller = LotteryDetailsController(lotteryRepository, profileRepository, lotteryId, drawer)
+
+        // Draw at a timestamp after registrationEnd (2000L)
+        val result = controller.drawLottery()
+        assertTrue(result is LotteryDrawResult.Success)
+
+        assertEquals(0, controller.waitingEntries.size)
+        assertEquals(3, controller.allEntries.size)
+        val wonCount = controller.allEntries.count { it.status == EntryStatus.WON }
+        assertEquals(3, wonCount) // 2 originally waiting won + 1 pre-existing won
     }
 }

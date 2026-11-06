@@ -28,16 +28,20 @@ import kotlinx.coroutines.launch
  * @param lotteryRepository Repository to fetch lottery details and entries.
  * @param profileRepository Repository to fetch user display names.
  * @param lotteryId ID of the lottery being inspected.
+ * @param lotteryDrawer Optional drawer service to trigger or verify lottery draw.
  */
 class LotteryDetailsController(
     private val lotteryRepository: LotteryRepository,
     private val profileRepository: ProfileRepository,
     private val lotteryId: String,
+    private val lotteryDrawer: LotteryDrawer? = null,
 ) : ViewModel() {
 
     var lottery by mutableStateOf<Lottery?>(null)
         private set
     var waitingEntries by mutableStateOf<List<LotteryEntry>>(emptyList())
+        private set
+    var allEntries by mutableStateOf<List<LotteryEntry>>(emptyList())
         private set
     var loading by mutableStateOf(true)
         private set
@@ -55,18 +59,26 @@ class LotteryDetailsController(
         viewModelScope.launch { fetchData() }
     }
 
+    /** Triggers a lottery draw using the configured [LotteryDrawer], then refreshes data. */
+    suspend fun drawLottery(): LotteryDrawResult {
+        val drawer = lotteryDrawer ?: throw IllegalStateException("LotteryDrawer not configured")
+        val result = drawer.drawLottery(lotteryId)
+        fetchData()
+        return result
+    }
+
     /** Loads lottery details and resolves waitlist entry user display names. Unit tests can call it directly. */
     suspend fun fetchData() {
         loading = true
         error = null
         try {
             lottery = lotteryRepository.getLottery(lotteryId)
-            val entries = lotteryRepository.getEntries(lotteryId)
-                .filter { it.status == EntryStatus.WAITING }
-            waitingEntries = entries
+            val all = lotteryRepository.getEntries(lotteryId)
+            allEntries = all
+            waitingEntries = all.filter { it.status == EntryStatus.WAITING }
 
             val names = mutableMapOf<String, String>()
-            for (entry in entries) {
+            for (entry in all) {
                 names[entry.userId] = profileRepository.getDisplayName(entry.userId)
             }
             userNames = names
@@ -86,7 +98,8 @@ class LotteryDetailsController(
                 LotteryDetailsController(
                     lotteryRepository = app.container.lotteryRepository,
                     profileRepository = app.container.profileRepository,
-                    lotteryId = lotteryId
+                    lotteryId = lotteryId,
+                    lotteryDrawer = app.container.lotteryDrawer,
                 )
             }
         }
