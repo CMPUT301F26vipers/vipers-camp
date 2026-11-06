@@ -16,6 +16,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.ReservationStatus
@@ -788,5 +789,66 @@ class FakeRepositoryTest {
             "Selected nights are not offered in this lottery",
             (result as ReserveResult.Error).message,
         )
+    }
+
+    @Test
+    fun createReservation_sendsReservationConfirmedNotificationToEntrant() = runBlocking {
+        val campsite = Campsite(
+            id = "site-1",
+            ownerId = "owner-1",
+            name = "Pine Lake",
+            maxOccupancy = 4,
+            pricePerNightCents = 5000,
+        )
+        val calendar = AvailabilityCalendar(
+            campsiteId = "site-1",
+            openNights = listOf("2027-06-01", "2027-06-02"),
+        )
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        campsiteRepo.saveAvailability(calendar)
+
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01", "2027-06-02"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
+        val entry = LotteryEntry(
+            id = "lot-1_user-1",
+            lotteryId = "lot-1",
+            userId = "user-1",
+            status = EntryStatus.WON,
+        )
+        val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
+        val notificationRepo = FakeNotificationRepository()
+        val reservationRepo = FakeReservationRepository(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+            notificationRepository = notificationRepo,
+        )
+
+        val result = reservationRepo.createReservation(
+            lotteryId = "lot-1",
+            campsiteId = "site-1",
+            userId = "user-1",
+            nights = listOf("2027-06-01"),
+            groupSize = 2,
+            now = 2000,
+        )
+
+        assertTrue(result is ReserveResult.Success)
+        val reservation = (result as ReserveResult.Success).reservation
+
+        val notifications = notificationRepo.getNotificationsFor("user-1")
+        assertEquals(1, notifications.size)
+        val notice = notifications.first()
+        assertEquals(NotificationType.RESERVATION_CONFIRMED, notice.type)
+        assertEquals("Reservation confirmed", notice.title)
+        assertEquals("Pine Lake: 2027-06-01 to 2027-06-02", notice.message)
+        assertEquals(reservation.id, notice.reservationId)
+        assertEquals("site-1", notice.campsiteId)
+        assertEquals("lot-1", notice.lotteryId)
+        assertEquals(NotificationTarget.OpenReservation(reservation.id), notice.target)
     }
 }

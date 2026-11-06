@@ -9,12 +9,14 @@ package com.example.vipers.ui.reservations
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.repository.LotteryRepository
@@ -472,6 +474,40 @@ class ReserveControllerTest {
         val res = (result as ReserveResult.Success).reservation
         assertEquals(6550L, res.totalPriceCents)
         assertEquals("$65.50", res.totalPriceText)
+    }
+
+    @Test
+    fun reserveNights_sendsReservationConfirmedNotificationToWinner() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hinton))
+        campsites.saveAvailability(hintonCalendar)
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val notifications = FakeNotificationRepository()
+        val reservations = FakeReservationRepository(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            notificationRepository = notifications,
+        )
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            reservationRepository = reservations,
+        )
+        controller.fetchData(duringBooking)
+        controller.onNightTap("2027-05-22")
+
+        val result = controller.reserveNights(duringBooking)
+        assertTrue(result is ReserveResult.Success)
+
+        val inbox = notifications.getNotificationsFor("user-sam")
+        assertEquals(1, inbox.size)
+        val notice = inbox.first()
+        assertEquals(NotificationType.RESERVATION_CONFIRMED, notice.type)
+        assertEquals("Reservation confirmed", notice.title)
+        assertTrue(notice.message.contains(hinton.name))
+        assertEquals((result as ReserveResult.Success).reservation.id, notice.reservationId)
     }
 
     // US 01.04.03: declining the win

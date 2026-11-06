@@ -9,6 +9,7 @@ package com.example.vipers.ui.navigation
 object Routes {
     const val HOME = "home"
     const val RESERVATIONS = "reservations"
+    const val RESERVATION_DETAILS = "reservation/{reservationId}"
     const val CAMPSITES = "campsites"
     const val ADD_CAMPSITE = "add_campsite"
     const val CREATE_LOTTERY = "create_lottery/{campsiteId}"
