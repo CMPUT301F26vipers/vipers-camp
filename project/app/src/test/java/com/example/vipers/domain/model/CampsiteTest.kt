@@ -136,4 +136,26 @@ class CampsiteTest {
         val campsite = Campsite(name = "Hinton Ridge Campground", address = "Hinton, AB", maxOccupancy = 0)
         assertEquals(mapOf("maxOccupancy" to "Must be at least 1"), campsite.validate())
     }
+
+    @Test
+    fun hasRules_emptyOrBlank_isFalse() {
+        assertFalse(Campsite(rules = "").hasRules)
+        assertFalse(Campsite(rules = "   ").hasRules)
+    }
+
+    @Test
+    fun hasRules_withText_isTrue() {
+        assertTrue(Campsite(rules = "Quiet hours after 10 PM").hasRules)
+    }
+
+    @Test
+    fun hasCancellationPolicy_emptyOrBlank_isFalse() {
+        assertFalse(Campsite(cancellationPolicy = "").hasCancellationPolicy)
+        assertFalse(Campsite(cancellationPolicy = "   ").hasCancellationPolicy)
+    }
+
+    @Test
+    fun hasCancellationPolicy_withText_isTrue() {
+        assertTrue(Campsite(cancellationPolicy = "Free up to 7 days before").hasCancellationPolicy)
+    }
 }

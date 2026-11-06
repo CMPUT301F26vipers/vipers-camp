@@ -51,6 +51,17 @@ data class Campsite(
     val ratingCount: Int = 0,
     val removed: Boolean = false,
 ) {
+    /** True if the owner has written rules; an empty or blank [rules] means none (US 02.01.02a). */
+    val hasRules: Boolean
+        get() = rules.isNotBlank()
+
+    /**
+     * True if the owner has written a cancellation policy; an empty or blank [cancellationPolicy]
+     * means none (US 02.01.02a).
+     */
+    val hasCancellationPolicy: Boolean
+        get() = cancellationPolicy.isNotBlank()
+
     /** The average star rating, or 0.0 if nobody has rated it yet. */
     fun averageRating(): Double {
         // avoid division by zero
