@@ -113,16 +113,20 @@ private fun EntrantRow(entry: LotteryEntry, name: String) {
     }
 }
 
-/** A small rounded label with the entry's status, e.g. "Won". */
+/** A small rounded label with the entry's status: green for Won/Reserved, red for Declined (O11). */
 @Composable
 private fun StatusChip(status: EntryStatus) {
-    val isGood = status == EntryStatus.WON || status == EntryStatus.RESERVED
+    val (textColor, fill) = when (status) {
+        EntryStatus.WON, EntryStatus.RESERVED -> Primary to GreenFill
+        EntryStatus.DECLINED -> Error to Error.copy(alpha = 0.12f)
+        else -> TextMuted to Divider
+    }
     Text(
         statusLabel(status),
-        color = if (isGood) Primary else TextMuted,
+        color = textColor,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier
-            .background(if (isGood) GreenFill else Divider, RoundedCornerShape(50))
+            .background(fill, RoundedCornerShape(50))
             .padding(horizontal = 10.dp, vertical = 4.dp),
     )
 }

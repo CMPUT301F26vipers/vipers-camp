@@ -101,12 +101,23 @@ class WaitingListController(
         }
     }
 
-    /** Looks up the names of entrants in [shown] whose names aren't known yet. */
+    /**
+     * Looks up the names of entrants in [shown] whose names aren't known yet. A lookup that fails
+     * shows "Unknown" for that entrant, so one bad lookup doesn't stop the live list.
+     */
     private suspend fun lookUpNewNames(shown: List<LotteryEntry>): Map<String, String> =
         shown.map { it.userId }
             .filter { it !in names }
             .distinct()
-            .associateWith { profileRepository.getDisplayName(it) }
+            .associateWith { userId ->
+                try {
+                    profileRepository.getDisplayName(userId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    "Unknown"
+                }
+            }
 
     companion object {
         /** Makes a [WaitingListController] for [lotteryId] with the app's repositories. */
