@@ -32,6 +32,7 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.navigation.Routes
@@ -506,6 +507,9 @@ class LotteryIntentTest {
         // A repo that fails when saving an entry
         val failingRepo = object : LotteryRepository by FakeLotteryRepository(initialLotteries = listOf(lottery)) {
             override suspend fun saveEntry(entry: LotteryEntry) {
+                throw IllegalStateException("Network failure")
+            }
+            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
                 throw IllegalStateException("Network failure")
             }
         }

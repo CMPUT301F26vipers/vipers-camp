@@ -1,10 +1,7 @@
 /*
  * LotteryDetailsController.kt
  * The controller (a ViewModel) handling data fetching, states, and joining logic for a specific lottery's detail screen.
- * Known issues: waiting-list capacity is currently checked client-side. Concurrent joins may both pass
- * the capacity check and exceed the limit. Correct enforcement requires a Firestore transaction and
- * an appropriate atomic count or data-model change, which is intentionally deferred to a follow-up
- * GitHub issue as agreed by the reviewer.
+ * Known issues: none. Waiting-list capacity is enforced atomically in a Firestore transaction via LotteryRepository.
  */
 package com.example.vipers.ui.lottery
 
@@ -22,6 +19,7 @@ import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.validateJoinLottery
 import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.CancellationException
@@ -206,11 +204,8 @@ class LotteryDetailsController(
             status = EntryStatus.WAITING,
         )
 
-        try {
-            lotteryRepository.saveEntry(newEntry)
-            userEntry = newEntry
-            joinSuccess = true
-            joinError = null
+        val joinResult = try {
+            lotteryRepository.joinWaitingList(newEntry)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -218,6 +213,32 @@ class LotteryDetailsController(
             joinError = "Unable to join waiting list. Please try again."
             isJoining = false
             return false
+        }
+
+        when (joinResult) {
+            is JoinWaitingListResult.Success -> {
+                userEntry = newEntry
+                joinSuccess = true
+                joinError = null
+            }
+            is JoinWaitingListResult.WaitlistFull -> {
+                joinSuccess = false
+                joinError = "Waiting list is full"
+                isJoining = false
+                return false
+            }
+            is JoinWaitingListResult.AlreadyJoined -> {
+                joinSuccess = false
+                joinError = "Already on the waiting list"
+                isJoining = false
+                return false
+            }
+            is JoinWaitingListResult.Error -> {
+                joinSuccess = false
+                joinError = joinResult.message
+                isJoining = false
+                return false
+            }
         }
 
         try {

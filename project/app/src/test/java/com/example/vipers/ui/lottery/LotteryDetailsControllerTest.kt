@@ -13,6 +13,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -363,6 +364,60 @@ class LotteryDetailsControllerTest {
     }
 
     @Test
+    fun joinWaitingList_whenConcurrentJoinFillsWaitlist_atomicJoinReportsWaitlistFull() = runTest {
+        // Controller initial state sees 0 waiting entries, but repository simulates a concurrent join
+        // that fills the capacity before this entrant's transaction commits.
+        val openLottery = setupOpenLottery(waitlistCapacity = 1)
+        val fakeRepo = FakeLotteryRepository(listOf(openLottery))
+        val fullRepo = object : LotteryRepository by fakeRepo {
+            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
+                return JoinWaitingListResult.WaitlistFull
+            }
+        }
+        val controller = LotteryDetailsController(
+            fullRepo,
+            profileRepository,
+            lotteryId,
+            currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
+        )
+        controller.fetchData()
+
+        controller.joinWaitingList(groupSize = 1)
+
+        assertFalse(controller.joinSuccess)
+        assertFalse(controller.isJoining)
+        assertFalse(controller.isJoined)
+        assertEquals("Waiting list is full", controller.joinError)
+    }
+
+    @Test
+    fun joinWaitingList_whenConcurrentJoinAlreadyExists_atomicJoinReportsAlreadyJoined() = runTest {
+        val openLottery = setupOpenLottery(waitlistCapacity = 5)
+        val fakeRepo = FakeLotteryRepository(listOf(openLottery))
+        val conflictRepo = object : LotteryRepository by fakeRepo {
+            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
+                return JoinWaitingListResult.AlreadyJoined
+            }
+        }
+        val controller = LotteryDetailsController(
+            conflictRepo,
+            profileRepository,
+            lotteryId,
+            currentUserId = "user-entrant",
+            campsiteRepository = campsiteRepository,
+        )
+        controller.fetchData()
+
+        controller.joinWaitingList(groupSize = 1)
+
+        assertFalse(controller.joinSuccess)
+        assertFalse(controller.isJoining)
+        assertFalse(controller.isJoined)
+        assertEquals("Already on the waiting list", controller.joinError)
+    }
+
+    @Test
     fun joinWaitingList_whenCapacityIsUnlimited_allowsJoining() = runTest {
         setupOpenLottery(waitlistCapacity = null)
         for (i in 1..25) {
@@ -425,6 +480,9 @@ class LotteryDetailsControllerTest {
         val fakeRepo = FakeLotteryRepository(listOf(openLottery))
         val failingRepo = object : LotteryRepository by fakeRepo {
             override suspend fun saveEntry(entry: LotteryEntry) {
+                throw RuntimeException("Database error")
+            }
+            override suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult {
                 throw RuntimeException("Database error")
             }
         }

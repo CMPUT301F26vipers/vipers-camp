@@ -1,13 +1,20 @@
 /*
  * LotteryRepository.kt
  * What the app can do with lotteries and their waiting-list entries (Repository pattern).
- * Known issues: only the methods needed for the half-way checkpoint. Joining with limits,
- * the draw and the replacement draw run as transactions and are added by those stories.
+ * Known issues: only the draw and the replacement draw run as transactions and are added by those stories.
  */
 package com.example.vipers.domain.repository
 
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+
+/** Result of an atomic waiting list join operation. */
+sealed interface JoinWaitingListResult {
+    data object Success : JoinWaitingListResult
+    data object WaitlistFull : JoinWaitingListResult
+    data object AlreadyJoined : JoinWaitingListResult
+    data class Error(val message: String) : JoinWaitingListResult
+}
 
 /** Saves and loads [Lottery]s and their [LotteryEntry]s. */
 interface LotteryRepository {
@@ -29,4 +36,10 @@ interface LotteryRepository {
 
     /** Loads every entry in [lotteryId]. */
     suspend fun getEntries(lotteryId: String): List<LotteryEntry>
+
+    /**
+     * Atomically adds [entry] to the lottery's waiting list in a transaction, enforcing
+     * [Lottery.waitlistCapacity] and preventing duplicate entries.
+     */
+    suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult
 }

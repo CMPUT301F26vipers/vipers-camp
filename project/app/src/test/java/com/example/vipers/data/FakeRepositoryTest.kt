@@ -10,13 +10,19 @@ import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
+import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.JoinWaitingListResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FakeRepositoryTest {
@@ -129,5 +135,131 @@ class FakeRepositoryTest {
         val entries = repo.getEntries("lottery-1")
         assertEquals(1, entries.size)
         assertEquals(EntryStatus.WON, entries[0].status)
+    }
+
+    @Test
+    fun joinWaitingList_enforcesCapacityBoundary() = runBlocking {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-1",
+            registrationStart = now - 1000L,
+            registrationEnd = now + 10_000L,
+            waitlistCapacity = 2,
+        )
+        val repo = FakeLotteryRepository(listOf(lottery))
+
+        val result1 = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-1"))
+        val result2 = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"))
+        val result3 = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-3"))
+
+        assertEquals(JoinWaitingListResult.Success, result1)
+        assertEquals(JoinWaitingListResult.Success, result2)
+        assertEquals(JoinWaitingListResult.WaitlistFull, result3)
+
+        assertEquals(2, repo.getEntries("lottery-1").size)
+        assertEquals(2, repo.getLottery("lottery-1")?.waitingCount)
+    }
+
+    @Test
+    fun joinWaitingList_whenCapacityIsNull_allowsUnlimitedJoins() = runBlocking {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-1",
+            registrationStart = now - 1000L,
+            registrationEnd = now + 10_000L,
+            waitlistCapacity = null,
+        )
+        val repo = FakeLotteryRepository(listOf(lottery))
+
+        for (i in 1..10) {
+            val result = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-$i"))
+            assertEquals(JoinWaitingListResult.Success, result)
+        }
+
+        assertEquals(10, repo.getEntries("lottery-1").size)
+        assertEquals(10, repo.getLottery("lottery-1")?.waitingCount)
+    }
+
+    @Test
+    fun joinWaitingList_duplicateEntrant_returnsAlreadyJoined() = runBlocking {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-1",
+            registrationStart = now - 1000L,
+            registrationEnd = now + 10_000L,
+            waitlistCapacity = 5,
+        )
+        val repo = FakeLotteryRepository(listOf(lottery))
+
+        val first = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-1"))
+        val duplicate = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-1"))
+
+        assertEquals(JoinWaitingListResult.Success, first)
+        assertEquals(JoinWaitingListResult.AlreadyJoined, duplicate)
+        assertEquals(1, repo.getEntries("lottery-1").size)
+    }
+
+    @Test
+    fun joinWaitingList_concurrentJoins_strictlyEnforcesCapacity() = runBlocking {
+        // Simulates concurrent joining coroutines. Note that in unit tests, FakeLotteryRepository
+        // uses Mutex synchronization to guarantee thread-safe atomic checks and writes, mimicking
+        // the Firestore transaction behavior implemented by FirestoreLotteryRepository in production.
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-1",
+            registrationStart = now - 1000L,
+            registrationEnd = now + 10_000L,
+            waitlistCapacity = 3,
+        )
+        val repo = FakeLotteryRepository(listOf(lottery))
+
+        val jobs = (1..10).map { i ->
+            async(Dispatchers.Default) {
+                repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "entrant-$i"))
+            }
+        }
+        val results = jobs.awaitAll()
+
+        val successes = results.count { it is JoinWaitingListResult.Success }
+        val fulls = results.count { it is JoinWaitingListResult.WaitlistFull }
+
+        assertEquals(3, successes)
+        assertEquals(7, fulls)
+        assertEquals(3, repo.getEntries("lottery-1").size)
+        assertEquals(3, repo.getLottery("lottery-1")?.waitingCount)
+    }
+
+    @Test
+    fun saveEntry_whenEntryLeavesWaitingOrIsRemoved_updatesWaitingCountAccurately() = runBlocking {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-1",
+            registrationStart = now - 1000L,
+            registrationEnd = now + 10_000L,
+            waitlistCapacity = 1,
+        )
+        val repo = FakeLotteryRepository(listOf(lottery))
+
+        val entry1 = LotteryEntry(lotteryId = "lottery-1", userId = "user-1", status = EntryStatus.WAITING)
+        val res1 = repo.joinWaitingList(entry1)
+        assertEquals(JoinWaitingListResult.Success, res1)
+        assertEquals(1, repo.getLottery("lottery-1")?.waitingCount)
+
+        // Waitlist is full for user-2
+        val res2Blocked = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"))
+        assertEquals(JoinWaitingListResult.WaitlistFull, res2Blocked)
+
+        // user-1 wins the draw (status changes from WAITING to WON)
+        repo.saveEntry(entry1.copy(status = EntryStatus.WON))
+        assertEquals(0, repo.getLottery("lottery-1")?.waitingCount)
+
+        // Capacity is freed; user-2 can now successfully join
+        val res2Allowed = repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"))
+        assertEquals(JoinWaitingListResult.Success, res2Allowed)
+        assertEquals(1, repo.getLottery("lottery-1")?.waitingCount)
+
+        // user-2 is removed by an admin or leaves
+        repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.REMOVED))
+        assertEquals(0, repo.getLottery("lottery-1")?.waitingCount)
     }
 }
