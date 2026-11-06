@@ -36,6 +36,7 @@ import com.example.vipers.ui.profile.SettingsScreen
 import com.example.vipers.ui.reservations.MyReservationsScreen
 import com.example.vipers.ui.reservations.OwnerReservationDetailsScreen
 import com.example.vipers.ui.reservations.OwnerReservationsScreen
+import com.example.vipers.ui.reservations.ReserveScreen
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
 
@@ -86,6 +87,30 @@ fun AppNavigation(
                 val campsiteId = backStackEntry.arguments?.getString("campsiteId") ?: ""
                 CampsiteDetailsScreen(
                     campsiteId = campsiteId,
+                    onBack = { navController.popBackStack() },
+                    onReserve = { lotteryId ->
+                        val route = Routes.RESERVE
+                            .replace("{lotteryId}", lotteryId)
+                            .replace("{campsiteId}", campsiteId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            composable(
+                route = Routes.RESERVE,
+                arguments = listOf(
+                    navArgument("lotteryId") { type = NavType.StringType },
+                    // optional: the win notification only knows the lottery (T-13)
+                    navArgument("campsiteId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { backStackEntry ->
+                ReserveScreen(
+                    lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: "",
+                    campsiteId = backStackEntry.arguments?.getString("campsiteId"),
                     onBack = { navController.popBackStack() },
                 )
             }

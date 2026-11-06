@@ -2,7 +2,8 @@
  * CampsiteDetailsScreen.kt
  * The entrant's view of one campsite (mockups E05 and E05b, US 01.01.05), opened by tapping a
  * search result on Home: all its details and, if it has one, the lottery they can join with its
- * registration deadline. CampsiteDetailsController loads the data.
+ * registration deadline. A user who won a lottery here sees "You won!" and a Reserve button that
+ * opens the Reserve screen (US 01.04.01). CampsiteDetailsController loads the data.
  * Known issues: the photo is a placeholder until promo images (02.01.02b), the map comes with
  * T-04, and Rate (01.13.01) and Join Waiting List (01.01.06) are added by those stories.
  */
@@ -12,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +39,8 @@ import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.common.shortDate
+import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.Primary
@@ -48,12 +53,14 @@ import com.example.vipers.ui.theme.TextMuted
  *
  * @param campsiteId ID of the campsite being viewed.
  * @param onBack Called when pressing back; Home keeps its search text.
+ * @param onReserve Called with the won lottery's ID when tapping Reserve (US 01.04.01).
  * @param controller ViewModel that loads the campsite and its active lottery.
  */
 @Composable
 fun CampsiteDetailsScreen(
     campsiteId: String,
     onBack: () -> Unit,
+    onReserve: (String) -> Unit = {},
     controller: CampsiteDetailsController =
         viewModel(factory = CampsiteDetailsController.factory(campsiteId)),
 ) {
@@ -99,6 +106,9 @@ fun CampsiteDetailsScreen(
                     Text(campsite.summaryText(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(ratingWithCount(campsite))
                 }
+                controller.wonLottery?.let { won ->
+                    WinBox(won, onReserve = { onReserve(won.id) })
+                }
                 LotteryBox(controller.activeLottery, controller.spotsLeft)
                 CampsiteDetails(campsite, showSummary = false)
             }
@@ -110,6 +120,36 @@ fun CampsiteDetailsScreen(
 private fun ratingWithCount(campsite: Campsite): String {
     if (campsite.ratingCount == 0) return campsite.ratingText()
     return "${campsite.ratingText()} (${campsite.ratingCount})"
+}
+
+/**
+ * The box for a [lottery] the user won here: "You won! Reserve by May 31" and a Reserve button that
+ * opens the Reserve screen (US 01.04.01).
+ */
+@Composable
+private fun WinBox(lottery: Lottery, onReserve: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(GreenFill, RoundedCornerShape(12.dp))
+            .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+            .testTag("win_box"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "You won! Reserve by ${shortDate(lottery.bookingEnd)}",
+            color = Primary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        Button(
+            onClick = onReserve,
+            shape = ButtonShape,
+            modifier = Modifier.testTag("button_reserve"),
+        ) {
+            Text("Reserve", fontWeight = FontWeight.SemiBold)
+        }
+    }
 }
 
 /**
