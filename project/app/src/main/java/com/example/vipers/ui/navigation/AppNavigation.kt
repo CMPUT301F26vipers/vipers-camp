@@ -39,6 +39,7 @@ import com.example.vipers.ui.reservations.OwnerReservationsScreen
 import com.example.vipers.ui.reservations.ReserveScreen
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
+import com.example.vipers.ui.lottery.WaitingListScreen
 
 import androidx.compose.foundation.layout.Column
 import com.example.vipers.ui.common.Placeholder
@@ -217,8 +218,18 @@ fun AppNavigation(
                 val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
                 LotteryDetailsScreen(
                     lotteryId = lotteryId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onViewWaitingList = {
+                        navController.navigate(Routes.WAITING_LIST.replace("{lotteryId}", lotteryId))
+                    },
                 )
+            }
+            composable(
+                route = Routes.WAITING_LIST,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
+                WaitingListScreen(lotteryId = lotteryId, onBack = { navController.popBackStack() })
             }
             composable(Routes.NOTIFICATIONS) {
                 NotificationsScreen(

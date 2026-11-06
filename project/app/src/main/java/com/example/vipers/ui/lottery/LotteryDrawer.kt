@@ -2,9 +2,9 @@
  * LotteryDrawer.kt
  * Runs the random draw for a lottery, following the Project Part 2 CRC card specifications.
  * Randomly picks the set number of winners from WAITING entries, writes chunked manifests,
- * commits the atomic Phase 1 draw transaction, reconciles entry statuses, and dispatches
- * idempotent notifications: the winners' through NotificationService (US 01.03.01), the losers'
- * directly until US 01.03.02 moves them there.
+ * commits the atomic Phase 1 draw transaction, reconciles entry statuses, and has
+ * NotificationService send the idempotent "You won" (US 01.03.01) and "Not selected" (US 01.03.02)
+ * notices.
  * Known issues: Draw transaction not tested against real Firestore yet. Nothing in the app starts
  * a draw yet; DrawAndNotifyWorker (US 02.05.01b) will. The replacement draw after a decline
  * (US 01.04.03) isn't built.
@@ -13,10 +13,7 @@ package com.example.vipers.ui.lottery
 
 import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
-import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
-import com.example.vipers.domain.model.Notification
-import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.LotteryRepository
@@ -45,8 +42,9 @@ sealed class LotteryDrawResult {
  * @param notificationRepository Repository to deliver idempotent inbox notifications.
  * @param campsiteRepository Repository to resolve campsite names.
  * @param random Injected [Random] instance for reproducible, testable draws.
- * @param notificationService Sends the winners' "You won" notices (US 01.03.01); by default one
- *   built from [notificationRepository] and [campsiteRepository].
+ * @param notificationService Sends the winners' "You won" (US 01.03.01) and the losers' "Not
+ *   selected" (US 01.03.02) notices; by default one built from [notificationRepository] and
+ *   [campsiteRepository].
  */
 class LotteryDrawer(
     private val lotteryRepository: LotteryRepository,
@@ -194,44 +192,12 @@ class LotteryDrawer(
         val totalParticipants = manifestWinners.size + manifestLosers.size
 
         // Phase 3: Deliver notifications idempotently strictly to manifest participants.
-        // The winners' notices come from NotificationService (US 01.03.01).
+        // NotificationService sends the winners' (US 01.03.01) and losers' (US 01.03.02) notices.
         notificationService.sendDrawResults(
             DrawResult(committedLottery, manifestWinners.toList(), manifestLosers.toList()),
             now,
         )
 
-        // The losers' notices move to NotificationService with US 01.03.02.
-        val (notifCampsiteId, campsiteSummary) = resolveCampsiteNotificationInfo(committedLottery)
-        for (loserId in manifestLosers) {
-            val notif = Notification(
-                id = "draw_${lotteryId}_$loserId",
-                recipientId = loserId,
-                senderId = "system",
-                campsiteId = notifCampsiteId,
-                lotteryId = lotteryId,
-                type = NotificationType.NOT_SELECTED,
-                title = "Not selected this time",
-                message = campsiteSummary,
-                createdAt = committedLottery.drawnAt ?: now,
-            )
-            notificationRepository.saveNotification(notif)
-        }
-
         return LotteryDrawResult.Success(winnerCount = manifestWinners.size, totalCount = totalParticipants)
-    }
-
-    private suspend fun resolveCampsiteNotificationInfo(lottery: Lottery): Pair<String?, String> {
-        if (lottery.campsiteIds.size == 1) {
-            val cid = lottery.campsiteIds[0]
-            val name = campsiteRepository.getCampsite(cid)?.name ?: "Campsite"
-            return Pair(cid, name)
-        }
-        val summary = if (!lottery.nightsDescription.isNullOrBlank()) {
-            lottery.nightsDescription
-        } else {
-            val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }
-            if (names.isEmpty()) "Campsites" else names.joinToString(", ")
-        }
-        return Pair(null, summary)
     }
 }
