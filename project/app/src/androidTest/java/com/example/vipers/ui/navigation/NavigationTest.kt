@@ -252,7 +252,7 @@ class NavigationTest {
 
         // Matches the specific node that has the text "Reservations" AND the Button role
         composeRule.onNode(hasText("Reservations") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
-        assertShown("List of reservations for your campsites is added in US 02.07.01")
+        assertShown("No active reservations")
 
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("My Campsites")

@@ -80,9 +80,14 @@ class CampsiteSummaryTest {
         composeRule.setContent { VipersTheme { HomeScreen(controller) } }
     }
 
-    /** The result card for the campsite called [name]. */
-    private fun card(name: String): SemanticsNodeInteraction =
-        composeRule.onNode(hasTestTag("campsite_result") and hasAnyDescendant(hasText(name)))
+    /**
+     * The result card for the campsite called [name]. Cards can be tapped (US 01.01.05), which
+     * merges their text into one node, so this looks at the unmerged tree to see each line.
+     */
+    private fun card(name: String): SemanticsNodeInteraction = composeRule.onNode(
+        hasTestTag("campsite_result") and hasAnyDescendant(hasText(name)),
+        useUnmergedTree = true,
+    )
 
     private fun SemanticsNodeInteraction.assertShows(text: String) =
         assert(hasAnyDescendant(hasText(text)))

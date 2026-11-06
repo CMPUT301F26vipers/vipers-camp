@@ -1,10 +1,10 @@
 /*
  * HomeScreen.kt
  * The Home tab (mockups E02, E02b, E02c), where the app opens. The entrant searches campsites by
- * name here (US 01.01.01), and each result shows a summary card (US 01.01.04);
- * CampsiteSearchController does the searching.
- * Known issues: Filters (01.01.02), the result count and loading indicator (01.01.03), opening a
- * campsite's details (01.01.05) and Scan QR (01.12.01) are added by those stories. The picture on
+ * name here (US 01.01.01), each result shows a summary card (US 01.01.04), and tapping a card
+ * opens its Campsite Details (US 01.01.05); CampsiteSearchController does the searching.
+ * Known issues: Filters (01.01.02), the result count and loading indicator (01.01.03) and Scan QR
+ * (01.12.01) are added by those stories. The picture on
  * each card is a placeholder until campsites have promo images (02.01.02b), and the "% match"
  * on the mockup is the WOW factor (W-01).
  */
@@ -59,11 +59,13 @@ import com.example.vipers.ui.theme.TextMuted
 
 /**
  * The Home screen. The mockup titles it "Campsites" because it's where you search for them.
- * Tests pass their own [controller] with a fake repository.
+ * Tapping a result calls [onOpenCampsite] with its ID. Tests pass their own [controller] with a
+ * fake repository.
  */
 @Composable
 fun HomeScreen(
     controller: CampsiteSearchController = viewModel(factory = CampsiteSearchController.Factory),
+    onOpenCampsite: (String) -> Unit = {},
 ) {
     // load each time Home opens, so newly added campsites show up
     LaunchedEffect(Unit) { controller.loadCampsites() }
@@ -92,7 +94,11 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(results, key = { it.id }) { campsite ->
-                    CampsiteResultRow(campsite, hasOpenLottery = controller.hasOpenLottery(campsite))
+                    CampsiteResultRow(
+                        campsite,
+                        hasOpenLottery = controller.hasOpenLottery(campsite),
+                        onClick = { onOpenCampsite(campsite.id) },
+                    )
                 }
             }
         }
@@ -143,8 +149,9 @@ private fun SearchField(text: String, onTextChange: (String) -> Unit, modifier: 
  * are cut short with "…" so the card keeps its size.
  */
 @Composable
-private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean) {
+private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean, onClick: () -> Unit) {
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth().testTag("campsite_result"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
