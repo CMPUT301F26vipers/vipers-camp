@@ -10,6 +10,7 @@ package com.example.vipers.data.firestore
 
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
@@ -173,24 +174,19 @@ class FirestoreReservationRepository(
 
                 // Notify the entrant that their reservation is confirmed (US 01.05.01)
                 val notifDoc = notifications.document("reservation_${reservationDoc.id}")
-                tx.set(
-                    notifDoc,
-                    mapOf(
-                        "id" to notifDoc.id,
-                        "recipientId" to userId,
-                        "senderId" to "system",
-                        "campsiteId" to campsite.id,
-                        "lotteryId" to lottery.id,
-                        "reservationId" to reservationDoc.id,
-                        "type" to NotificationType.RESERVATION_CONFIRMED.name,
-                        "title" to "Reservation confirmed",
-                        "message" to "${campsite.name}: $checkIn to $checkOut",
-                        "read" to false,
-                        "shownOnDevice" to false,
-                        "createdAt" to now,
-                    ),
-                    SetOptions.merge(),
+                val notice = Notification(
+                    id = notifDoc.id,
+                    recipientId = userId,
+                    senderId = "system",
+                    campsiteId = campsite.id,
+                    lotteryId = lottery.id,
+                    reservationId = reservationDoc.id,
+                    type = NotificationType.RESERVATION_CONFIRMED,
+                    title = "Reservation confirmed",
+                    message = "${campsite.name}: $checkIn to $checkOut",
+                    createdAt = now,
                 )
+                tx.set(notifDoc, notice.toMap(), SetOptions.merge())
 
                 ReserveResult.Success(reservation)
             }.await()

@@ -40,6 +40,14 @@ data class LotteryEntry(
         status == EntryStatus.WON && lottery.isBookingExpired(now)
 
     /**
+     * Tells whether the entrant can decline this win at time [now] (milliseconds since 1970),
+     * so the Reserve screen offers Decline (US 01.04.03). The same rule as [canReserve]: only a
+     * [EntryStatus.WON] entry while [lottery] booking is open, so a win that was already reserved,
+     * declined or has expired can't be declined.
+     */
+    fun canDecline(lottery: Lottery, now: Long): Boolean = canReserve(lottery, now)
+
+    /**
      * Tells whether the entrant can leave the waiting list for [lottery].
      * Returns true only when [status] is [EntryStatus.WAITING] and the lottery has not been drawn.
      */
