@@ -173,15 +173,16 @@ class ViewCampsiteDetailsTest {
 
     @Test
     fun campsiteSavedFromTheAddFormShowsCorrectly() {
-        // what the Add Campsite form saves today: no price, rules or policy yet (T-09, T-11)
+        // what the Add Campsite form saves today: no rules or policy yet (T-11)
         val fromForm = Campsite(
             id = "new", ownerId = "owner-daniel", name = "Kananaskis Lakes Sites",
             address = "Kananaskis Trail, AB", region = Region.KANANASKIS, maxOccupancy = 6,
             description = "Mountain views and hiking trails.", tags = listOf("Hiking", "Playground"),
+            pricePerNightCents = 4000,
         )
         openScreen(campsites = listOf(fromForm), campsiteId = "new")
         assertShown("Kananaskis Lakes Sites")
-        assertShown("Kananaskis Trail, AB · Up to 6 guests")
+        assertShown("Kananaskis Trail, AB · Up to 6 guests · $40 / night")
         assertShown("Region: Kananaskis")
         assertShown("Mountain views and hiking trails.")
         assertShown("Hiking")

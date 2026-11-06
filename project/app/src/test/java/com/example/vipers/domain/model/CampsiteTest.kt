@@ -35,6 +35,20 @@ class CampsiteTest {
     }
 
     @Test
+    fun priceInDollars_showsCentsOnlyWhenThereAreSome() {
+        assertEquals("50", Campsite(pricePerNightCents = 5000).priceInDollars())
+        assertEquals("65.50", Campsite(pricePerNightCents = 6550).priceInDollars())
+        assertEquals("0", Campsite(pricePerNightCents = 0).priceInDollars())
+    }
+
+    @Test
+    fun totalPriceCents_isThePriceTimesTheNights() {
+        // 2 nights at $65 is $130
+        assertEquals(13000L, Campsite(pricePerNightCents = 6500).totalPriceCents(2))
+        assertEquals(0L, Campsite(pricePerNightCents = 0).totalPriceCents(3))
+    }
+
+    @Test
     fun hasLocation_needsBothCoordinates() {
         assertTrue(Campsite(lat = 53.405, lng = -117.585).hasLocation())
         assertFalse(Campsite(lat = 53.405).hasLocation())
