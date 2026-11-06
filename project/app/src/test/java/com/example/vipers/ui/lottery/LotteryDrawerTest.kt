@@ -1,7 +1,8 @@
 /*
  * LotteryDrawerTest.kt
  * Unit tests for LotteryDrawer covering winner selection, concurrency, recovery,
- * terminal status preservation, notification delivery, and multi-campsite formatting.
+ * terminal status preservation, notification delivery, and multi-campsite formatting, plus the
+ * losers' "Not selected" notices (US 01.03.02).
  * Known issues: none.
  */
 package com.example.vipers.ui.lottery
@@ -14,9 +15,13 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.NotificationType
+import com.example.vipers.domain.repository.NotificationRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -403,5 +408,101 @@ class LotteryDrawerTest {
         val notif = notificationRepository.getNotificationsFor("user-1")[0]
         assertEquals("camp-1", notif.campsiteId)
         assertTrue(notif.message.contains("Pine Ridge"))
+    }
+
+    // US 01.03.02: the losers' "Not selected" notices, drawn with Random(42) from setUp
+
+    private val fiveEntrants = (1..5).map { "user-$it" }
+
+    /** A one-campsite lottery picking 2 winners, with [fiveEntrants] on its waiting list. */
+    private suspend fun lotteryWithFiveEntrants(): Lottery {
+        val lottery = createTestLottery(campsiteIds = listOf("camp-1"), winnersCount = 2)
+        for (userId in fiveEntrants) {
+            lotteryRepository.seedEntry(
+                LotteryEntry(lotteryId = lottery.id, userId = userId, status = EntryStatus.WAITING),
+            )
+        }
+        return lottery
+    }
+
+    private suspend fun noticesOf(type: NotificationType): List<Notification> =
+        fiveEntrants.flatMap { notificationRepository.getNotificationsFor(it) }.filter { it.type == type }
+
+    @Test
+    fun drawLottery_fiveEntrantsTwoWinners_sendsThreeNotSelectedOnePerLoser() = runBlocking {
+        val lottery = lotteryWithFiveEntrants()
+        drawer.drawLottery(lottery.id, now)
+
+        val losers = lotteryRepository.getEntries(lottery.id)
+            .filter { it.status == EntryStatus.LOST }.map { it.userId }
+        val notSelected = noticesOf(NotificationType.NOT_SELECTED)
+        assertEquals(3, notSelected.size)
+        assertEquals(losers.toSet(), notSelected.map { it.recipientId }.toSet())
+    }
+
+    @Test
+    fun drawLottery_anyDraw_noUserGetsBothWonAndNotSelected() = runBlocking {
+        val lottery = lotteryWithFiveEntrants()
+        drawer.drawLottery(lottery.id, now)
+
+        val wonIds = noticesOf(NotificationType.WON).map { it.recipientId }.toSet()
+        val lostIds = noticesOf(NotificationType.NOT_SELECTED).map { it.recipientId }.toSet()
+        assertEquals(2, wonIds.size)
+        assertTrue(wonIds.intersect(lostIds).isEmpty())
+    }
+
+    @Test
+    fun drawLottery_runTwice_everyEntrantKeepsExactlyOneNotice() = runBlocking {
+        val lottery = lotteryWithFiveEntrants()
+        drawer.drawLottery(lottery.id, now)
+        val first = fiveEntrants.associateWith { notificationRepository.getNotificationsFor(it) }
+        for (userId in fiveEntrants) {
+            assertEquals(userId, 1, first.getValue(userId).size)
+        }
+
+        drawer.drawLottery(lottery.id, now)
+
+        for (userId in fiveEntrants) {
+            val notices = notificationRepository.getNotificationsFor(userId)
+            assertEquals(userId, listOf("draw_${lottery.id}_$userId"), notices.map { it.id })
+            assertEquals(userId, first.getValue(userId).single().type, notices.single().type)
+        }
+    }
+
+    @Test
+    fun drawLottery_oneCampsite_notSelectedNamesItAndOpensIt() = runBlocking {
+        val lottery = lotteryWithFiveEntrants()
+        drawer.drawLottery(lottery.id, now)
+
+        for (notice in noticesOf(NotificationType.NOT_SELECTED)) {
+            assertTrue(notice.message, notice.message.contains("Pine Ridge"))
+            assertEquals("camp-1", notice.campsiteId)
+            assertEquals(NotificationTarget.OpenCampsite("camp-1"), notice.target)
+        }
+    }
+
+    @Test
+    fun drawLottery_emptyWaitingList_sendsNothing() = runBlocking {
+        var saved = 0
+        val counting = object : NotificationRepository by notificationRepository {
+            override suspend fun addAll(notifications: List<Notification>) {
+                saved += notifications.size
+            }
+
+            override suspend fun saveNotification(notification: Notification): String {
+                saved++
+                return notification.id
+            }
+
+            override suspend fun addNotification(notification: Notification): String {
+                saved++
+                return notification.id
+            }
+        }
+        val countingDrawer = LotteryDrawer(lotteryRepository, counting, campsiteRepository, Random(42))
+        val lottery = createTestLottery(winnersCount = 2)
+
+        assertEquals(LotteryDrawResult.EmptyList, countingDrawer.drawLottery(lottery.id, now))
+        assertEquals(0, saved)
     }
 }

@@ -20,6 +20,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Random
 
 class NotificationServiceTest {
 
@@ -216,5 +217,44 @@ class NotificationServiceTest {
         )
 
         assertFalse(called)
+    }
+
+    // 5 entrants, 2 of them picked with Random(42), like LotteryDrawer's draw
+    private val fiveEntrants = listOf("sam", "alex", "jo", "kim", "lee")
+    private val fiveEntrantDraw = fiveEntrants.shuffled(Random(42)).let { shuffled ->
+        DrawResult(hintonLottery, shuffled.take(2), shuffled.drop(2))
+    }
+
+    private suspend fun noticesFor(userIds: List<String>) =
+        userIds.flatMap { notifications.getNotificationsFor(it) }
+
+    @Test
+    fun sendDrawResults_fiveEntrantsTwoWinners_addsThreeNotSelectedOnePerLoser() = runBlocking {
+        service.sendDrawResults(fiveEntrantDraw)
+
+        val notSelected = noticesFor(fiveEntrants).filter { it.type == NotificationType.NOT_SELECTED }
+        assertEquals(3, notSelected.size)
+        assertEquals(fiveEntrantDraw.loserIds.toSet(), notSelected.map { it.recipientId }.toSet())
+    }
+
+    @Test
+    fun sendDrawResults_fiveEntrants_noUserGetsBothWonAndNotSelected() = runBlocking {
+        service.sendDrawResults(fiveEntrantDraw)
+
+        for (userId in fiveEntrants) {
+            val types = notifications.getNotificationsFor(userId).map { it.type }
+            val expected = if (userId in fiveEntrantDraw.winnerIds) NotificationType.WON else NotificationType.NOT_SELECTED
+            assertEquals(userId, listOf(expected), types)
+        }
+    }
+
+    @Test
+    fun sendDrawResults_fiveEntrantsSentTwice_everyEntrantKeepsExactlyOneNotice() = runBlocking {
+        service.sendDrawResults(fiveEntrantDraw)
+        service.sendDrawResults(fiveEntrantDraw)
+
+        for (userId in fiveEntrants) {
+            assertEquals(userId, listOf("draw_may_$userId"), notifications.getNotificationsFor(userId).map { it.id })
+        }
     }
 }
