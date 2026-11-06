@@ -2,14 +2,13 @@
  * ReserveController.kt
  * The controller (a ViewModel) behind the Reserve screen (mockup E11, US 01.04.01). It loads the
  * won lottery, the campsite and its calendar, works out which of the lottery's nights are still
- * free, lets the winner pick nights in a row, and adds up the total. The winner can also decline
- * the win (US 01.04.03).
- * This is the "Load the Reserve screen" and "Decline a win" parts of the ReservationController CRC
- * card; it is its own class because ReservationController already runs the owner's reservation
- * list (02.07.01).
- * Known issues: reserving the nights (T-03), choosing between several campsites (01.04.02) and the
- * guests field are added by those stories. Declining doesn't pick a replacement winner yet; that's
- * the replacement draw (T-12).
+ * free, lets the winner pick nights in a row, select their group size, reserve the nights (T-03),
+ * and adds up the total. The winner can also decline the win (US 01.04.03).
+ * This is the "Load the Reserve screen", "Reserve" and "Decline a win" parts of the
+ * ReservationController CRC card; it is its own class because ReservationController already runs
+ * the owner's reservation list (02.07.01).
+ * Known issues: choosing between several campsites (01.04.02) is added by that story. Declining
+ * doesn't pick a replacement winner yet; that's the replacement draw (T-12).
  */
 package com.example.vipers.ui.reservations
 
@@ -26,8 +25,11 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.ReservationRepository
+import com.example.vipers.domain.repository.ReserveResult
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -54,7 +56,8 @@ enum class OfferState {
 
 /**
  * Loads the Reserve screen for [userId]'s win in the lottery [lotteryId] at the campsite
- * [campsiteId] (or the lottery's first campsite when it's null or not in the lottery).
+ * [campsiteId] (or the lottery's first campsite when it's null or not in the lottery),
+ * and handles reserving the chosen nights (T-03).
  * Takes the repositories in its constructor so tests can pass fake ones.
  */
 class ReserveController(
@@ -63,6 +66,7 @@ class ReserveController(
     private val userId: String,
     private val lotteryId: String,
     private val campsiteId: String? = null,
+    private val reservationRepository: ReservationRepository,
 ) : ViewModel() {
 
     /** The won lottery, or null until it loads, or if it wasn't found or was removed. */
@@ -89,12 +93,28 @@ class ReserveController(
     var selectedNights by mutableStateOf(emptyList<String>())
         private set
 
+    /** Number of guests in the group (US 01.04.01, T-03). Defaults to entry groupSize. */
+    var groupSize by mutableStateOf(1)
+        private set
+
     /** True while the screen is loading. */
     var loading by mutableStateOf(true)
         private set
 
-    /** A message to show if the last load failed, e.g. because the phone is offline. */
+    /** True while the reservation request is being processed. */
+    var isReserving by mutableStateOf(false)
+        private set
+
+    /** The confirmed reservation after a successful reserve (T-03, US 01.05.01). */
+    var confirmedReservation by mutableStateOf<Reservation?>(null)
+        private set
+
+    /** A message to show if loading failed. */
     var error by mutableStateOf<String?>(null)
+        private set
+
+    /** Error message from a reserve attempt, if any (T-03). */
+    var reserveError by mutableStateOf<String?>(null)
         private set
 
     /** The user's entry in the lottery, or null if they never joined or it hasn't loaded. */
@@ -175,6 +195,9 @@ class ReserveController(
             }
 
             val loadedEntry = lotteryRepository.getEntry(found.id, userId)
+            if (loadedEntry != null && loadedEntry.groupSize > 0) {
+                groupSize = loadedEntry.groupSize
+            }
             // the day of "now" on this phone's clock, to leave out nights that are already past
             val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
             var free = emptyList<String>()
@@ -237,6 +260,120 @@ class ReserveController(
         fetchData(now)
     }
 
+    /** Sets group size within 1..maxOccupancy (T-03). */
+    fun onGroupSizeChange(newSize: Int) {
+        val max = campsite?.maxOccupancy ?: 1
+        if (newSize in 1..max) {
+            groupSize = newSize
+        }
+    }
+
+    /** Increments group size by 1 up to campsite.maxOccupancy (T-03). */
+    fun incrementGroupSize() {
+        val max = campsite?.maxOccupancy ?: 1
+        if (groupSize < max) {
+            groupSize++
+        }
+    }
+
+    /** Decrements group size by 1 down to 1 (T-03). */
+    fun decrementGroupSize() {
+        if (groupSize > 1) {
+            groupSize--
+        }
+    }
+
+    /** Clears the current reservation error message. */
+    fun clearReserveError() {
+        reserveError = null
+    }
+
+    /** Dismisses the confirmed reservation after viewing (US 01.05.01). */
+    fun dismissConfirmation() {
+        confirmedReservation = null
+    }
+
+    /** Reserves the picked nights in the background (T-03). */
+    fun reserve() {
+        viewModelScope.launch { reserveNights() }
+    }
+
+    /**
+     * Reserves the picked nights for [groupSize] at time [now] (T-03).
+     * Enforces that the winner has an unused win during the booking period,
+     * groupSize <= maxOccupancy, and selected nights are not already held.
+     * If another winner reserved any of the same nights first, fails with a clear message
+     * and refreshes the calendar so the taken nights are greyed out (AC 4).
+     */
+    suspend fun reserveNights(now: Long = System.currentTimeMillis()): ReserveResult {
+        val site = campsite ?: run {
+            reserveError = "Campsite is not available."
+            return ReserveResult.Error(reserveError!!)
+        }
+        val lot = lottery ?: run {
+            reserveError = "Lottery is not available."
+            return ReserveResult.Error(reserveError!!)
+        }
+        if (offerState != OfferState.OPEN) {
+            reserveError = "Only winners with an open booking period can reserve."
+            return ReserveResult.NotEligible
+        }
+        if (selectedNights.isEmpty()) {
+            reserveError = "Please pick at least one night."
+            return ReserveResult.Error(reserveError!!)
+        }
+        if (groupSize > site.maxOccupancy) {
+            reserveError = "Group size cannot exceed the maximum occupancy of ${site.maxOccupancy}."
+            return ReserveResult.CapacityExceeded
+        }
+
+        isReserving = true
+        reserveError = null
+        try {
+            val result = reservationRepository.createReservation(
+                lotteryId = lot.id,
+                campsiteId = site.id,
+                userId = userId,
+                nights = selectedNights,
+                groupSize = groupSize,
+                now = now,
+            )
+            when (result) {
+                is ReserveResult.Success -> {
+                    confirmedReservation = result.reservation
+                    offerState = OfferState.USED
+                    fetchData(now)
+                }
+                is ReserveResult.Conflict -> {
+                    reserveError =
+                        "These nights were just booked by another winner. " +
+                            "Please pick different nights."
+                    fetchData(now)
+                }
+                is ReserveResult.CapacityExceeded -> {
+                    reserveError =
+                        "Group size cannot exceed the maximum occupancy of ${site.maxOccupancy}."
+                }
+                is ReserveResult.NotEligible -> {
+                    reserveError = "You are not eligible to reserve this win."
+                    fetchData(now)
+                }
+                is ReserveResult.Error -> {
+                    reserveError = result.message
+                }
+            }
+            return result
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val msg = "Unable to complete reservation. Please try again."
+            reserveError = msg
+            return ReserveResult.Error(msg)
+        } finally {
+            isReserving = false
+        }
+    }
+
     /**
      * Picks or un-picks [night]. Nights must be in a row, because a reservation has one check-in
      * and one check-out: a free night next to the picked ones is added, the first or last picked
@@ -280,6 +417,7 @@ class ReserveController(
                 ReserveController(
                     campsiteRepository = app.container.campsiteRepository,
                     lotteryRepository = app.container.lotteryRepository,
+                    reservationRepository = app.container.reservationRepository,
                     userId = app.container.deviceId,
                     lotteryId = lotteryId,
                     campsiteId = campsiteId,

@@ -1,12 +1,13 @@
 /*
  * ReserveScreen.kt
  * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details or the win
- * notification when the user won a lottery. It shows the reserve-by date, the campsite, the lottery's nights with the taken
- * ones greyed out, the nightly price times the picked nights and the total, and the campsite's
- * rules and cancellation policy. A winner can decline the win here (US 01.04.03, mockup E12).
+ * notification when the user won a lottery. It shows the reserve-by date, the campsite, the
+ * lottery's nights with the taken ones greyed out, the nightly price times the picked nights and
+ * total, the group size selector, the Reserve action button (T-03), the confirmation dialog
+ * (01.05.01), and the campsite rules. A winner can decline the win here (US 01.04.03, mockup E12).
  * ReserveController does the work.
- * Known issues: the Reserve button, the guests field and the "I accept the campsite rules" box
- * come with T-03 and 02.11.01. Declining doesn't pick a replacement winner yet (T-12).
+ * Known issues: choosing between several campsites (01.04.02) is added by that story. Declining
+ * doesn't pick a replacement winner yet (T-12).
  */
 package com.example.vipers.ui.reservations
 
@@ -24,10 +25,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -48,10 +53,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.ui.campsites.RulesAndPolicySection
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.common.shortDate
@@ -90,6 +97,17 @@ fun ReserveScreen(
     LaunchedEffect(Unit) { controller.loadData() }
     val lottery = controller.lottery
     val campsite = controller.campsite
+
+    val confirmed = controller.confirmedReservation
+    if (confirmed != null) {
+        ReservationConfirmationDialog(
+            reservation = confirmed,
+            onDismiss = {
+                controller.dismissConfirmation()
+                onBack()
+            },
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar(title = "Reserve", onBack = onBack)
@@ -141,6 +159,14 @@ fun ReserveScreen(
                     )
                 }
 
+                GuestsSection(
+                    groupSize = controller.groupSize,
+                    maxOccupancy = campsite.maxOccupancy,
+                    canEdit = controller.offerState == OfferState.OPEN,
+                    onDecrease = controller::decrementGroupSize,
+                    onIncrease = controller::incrementGroupSize,
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -158,6 +184,46 @@ fun ReserveScreen(
                 }
                 HorizontalDivider(color = Divider)
                 RulesAndPolicySection(campsite)
+
+                if (controller.reserveError != null) {
+                    Text(
+                        text = controller.reserveError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .testTag("reserve_error_message"),
+                    )
+                }
+
+                Button(
+                    onClick = controller::reserve,
+                    enabled = controller.offerState == OfferState.OPEN && !controller.isReserving,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("button_reserve"),
+                ) {
+                    if (controller.isReserving) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .testTag("reserve_loading"),
+                            strokeWidth = 2.5.dp,
+                        )
+                    } else {
+                        Text(
+                            "Reserve",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
 
                 DeclineSection(controller)
             }
@@ -280,7 +346,10 @@ private fun NightGrid(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         for (row in nights.chunked(7)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 for (night in row) {
                     NightChip(
                         night = night,
@@ -339,6 +408,192 @@ private fun RowScope.NightChip(
                 "Free" -> TextMain
                 else -> TextMuted
             },
+        )
+    }
+}
+
+/** Group size counter matching campsite max occupancy (T-03). */
+@Composable
+private fun GuestsSection(
+    groupSize: Int,
+    maxOccupancy: Int,
+    canEdit: Boolean,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Label("Guests")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "$groupSize ${if (groupSize == 1) "guest" else "guests"} (max $maxOccupancy)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("reserve_guests_text"),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val canDec = canEdit && groupSize > 1
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .border(
+                            BorderStroke(1.5.dp, if (canDec) Primary else TextMuted),
+                            CircleShape,
+                        )
+                        .clickable(enabled = canDec, onClick = onDecrease)
+                        .testTag("reserve_guests_decrease"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "−",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canDec) Primary else TextMuted,
+                    )
+                }
+
+                Text(
+                    text = "$groupSize",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .widthIn(min = 28.dp)
+                        .testTag("reserve_guests_count"),
+                )
+
+                val canInc = canEdit && groupSize < maxOccupancy
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .border(
+                            BorderStroke(1.5.dp, if (canInc) Primary else TextMuted),
+                            CircleShape,
+                        )
+                        .clickable(enabled = canInc, onClick = onIncrease)
+                        .testTag("reserve_guests_increase"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "+",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canInc) Primary else TextMuted,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The reservation confirmation dialog (mockup E12, US 01.05.01) shown after a winner
+ * reserves their nights. Shows the reservation number, campsite name, stay dates,
+ * guests count, and total price.
+ */
+@Composable
+fun ReservationConfirmationDialog(
+    reservation: Reservation,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("dialog_reservation_confirmed"),
+        title = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "Reservation Confirmed!",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Primary,
+                )
+                Text(
+                    text = reservation.reservationNumber,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("confirm_reservation_number"),
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ConfirmationRow(
+                    label = "Campsite",
+                    value = reservation.campsiteName,
+                    tag = "confirm_campsite_name",
+                )
+                ConfirmationRow(
+                    label = "Dates",
+                    value = formatStayDates(reservation.checkIn, reservation.checkOut),
+                    tag = "confirm_dates",
+                )
+                ConfirmationRow(
+                    label = "Guests",
+                    value = formatGuests(reservation.groupSize),
+                    tag = "confirm_guests",
+                )
+                ConfirmationRow(
+                    label = "Total",
+                    value = reservation.totalPriceText,
+                    tag = "confirm_total_price",
+                    isBold = true,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("button_confirm_done"),
+            ) {
+                Text("Done", color = Color.White, fontWeight = FontWeight.SemiBold)
+            }
+        },
+    )
+}
+
+/** A single label-value row inside the reservation confirmation dialog (US 01.05.01). */
+@Composable
+private fun ConfirmationRow(
+    label: String,
+    value: String,
+    tag: String,
+    isBold: Boolean = false,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.testTag(tag),
         )
     }
 }

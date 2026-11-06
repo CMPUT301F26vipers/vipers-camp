@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
@@ -88,7 +89,12 @@ class DeclineWinTest {
             ),
         )
         val controller = ReserveController(
-            campsites, lotteries, userId = "test-device", lotteryId = "lot-summer", campsiteId = "hinton",
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            userId = "test-device",
+            lotteryId = "lot-summer",
+            campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
         )
         composeRule.setContent {
             VipersTheme {

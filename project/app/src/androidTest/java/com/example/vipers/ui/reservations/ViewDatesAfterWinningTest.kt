@@ -104,12 +104,14 @@ class ViewDatesAfterWinningTest {
     ) {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         runBlocking { campsites.saveAvailability(theCalendar) }
+        val lotteries = FakeLotteryRepository(listOf(theLottery), listOf(samsEntry(status)))
         val controller = ReserveController(
-            campsites,
-            FakeLotteryRepository(listOf(theLottery), listOf(samsEntry(status))),
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
             userId = "test-device",
             lotteryId = "lot-summer",
             campsiteId = "hinton",
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
         )
         composeRule.setContent {
             VipersTheme {
