@@ -212,14 +212,14 @@ fun LotteryDetailsScreen(
                                         }
                                     }
 
-                                    if (controller.joinError != null) {
+                                    if (controller.actionError != null) {
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
                                             color = MaterialTheme.colorScheme.errorContainer,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text(
-                                                text = controller.joinError!!,
+                                                text = controller.actionError!!,
                                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 modifier = Modifier.padding(12.dp)

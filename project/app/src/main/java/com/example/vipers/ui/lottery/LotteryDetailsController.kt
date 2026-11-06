@@ -65,7 +65,7 @@ class LotteryDetailsController(
         private set
     var joinSuccess by mutableStateOf(false)
         private set
-    var joinError by mutableStateOf<String?>(null)
+    var actionError by mutableStateOf<String?>(null)
         private set
     var leaveSuccess by mutableStateOf(false)
         private set
@@ -157,25 +157,25 @@ class LotteryDetailsController(
      */
     suspend fun performJoin(groupSize: Int, now: Long = System.currentTimeMillis()): Boolean {
         if (currentUserId.isBlank()) {
-            joinError = "User ID is required to join."
+            actionError = "User ID is required to join."
             joinSuccess = false
             return false
         }
 
         val currentLottery = lottery ?: run {
-            joinError = "Lottery not found."
+            actionError = "Lottery not found."
             joinSuccess = false
             return false
         }
 
         if (currentLottery.ownerId == currentUserId) {
-            joinError = "Owners cannot join their own lottery."
+            actionError = "Owners cannot join their own lottery."
             joinSuccess = false
             return false
         }
 
         isJoining = true
-        joinError = null
+        actionError = null
         joinSuccess = false
         leaveSuccess = false
 
@@ -186,7 +186,7 @@ class LotteryDetailsController(
         } catch (e: Exception) {
             isJoining = false
             joinSuccess = false
-            joinError = "Unable to join waiting list. Please try again."
+            actionError = "Unable to join waiting list. Please try again."
             return false
         }
 
@@ -194,7 +194,7 @@ class LotteryDetailsController(
         if (limit == null) {
             isJoining = false
             joinSuccess = false
-            joinError = "Campsite occupancy information is unavailable. Please try again."
+            actionError = "Campsite occupancy information is unavailable. Please try again."
             return false
         }
         maxOccupancy = limit
@@ -210,7 +210,7 @@ class LotteryDetailsController(
 
         if (validationErrors.isNotEmpty()) {
             isJoining = false
-            joinError = validationErrors.first()
+            actionError = validationErrors.first()
             joinSuccess = false
             return false
         }
@@ -231,7 +231,7 @@ class LotteryDetailsController(
             throw e
         } catch (e: Exception) {
             joinSuccess = false
-            joinError = "Unable to join waiting list. Please try again."
+            actionError = "Unable to join waiting list. Please try again."
             isJoining = false
             return false
         }
@@ -240,23 +240,23 @@ class LotteryDetailsController(
             is JoinWaitingListResult.Success -> {
                 userEntry = newEntry
                 joinSuccess = true
-                joinError = null
+                actionError = null
             }
             is JoinWaitingListResult.WaitlistFull -> {
                 joinSuccess = false
-                joinError = "Waiting list is full"
+                actionError = "Waiting list is full"
                 isJoining = false
                 return false
             }
             is JoinWaitingListResult.AlreadyJoined -> {
                 joinSuccess = false
-                joinError = "Already on the waiting list"
+                actionError = "Already on the waiting list"
                 isJoining = false
                 return false
             }
             is JoinWaitingListResult.Error -> {
                 joinSuccess = false
-                joinError = joinResult.message
+                actionError = joinResult.message
                 isJoining = false
                 return false
             }
@@ -294,7 +294,7 @@ class LotteryDetailsController(
     fun clearJoinState() {
         joinSuccess = false
         leaveSuccess = false
-        joinError = null
+        actionError = null
     }
 
     /** Leaves the waiting list in the background for the current user. */
@@ -309,15 +309,15 @@ class LotteryDetailsController(
      */
     suspend fun performLeave(): Boolean {
         if (currentUserId.isBlank() || !isJoined) {
-            joinError = "Not on the waiting list."
+            actionError = "Not on the waiting list."
             return false
         }
-        if (lottery?.drawnAt != null) {
-            joinError = "Cannot leave after the lottery has been drawn."
+        if (!canLeave) {
+            actionError = "Cannot leave after the lottery has been drawn."
             return false
         }
 
-        joinError = null
+        actionError = null
         joinSuccess = false
         leaveSuccess = false
 
@@ -336,7 +336,7 @@ class LotteryDetailsController(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            joinError = "Couldn't leave the waiting list. Please try again."
+            actionError = "Couldn't leave the waiting list. Please try again."
             false
         }
     }
