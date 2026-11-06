@@ -149,8 +149,8 @@ fun HomeScreen(
         }
 
         when {
-            // show loading indicator while loading (US 01.01.03)
-            controller.isLoading -> {
+            // only show loading indicator if there is nothing from an earlier load to show (US 01.01.03)
+            controller.isLoading && results.isEmpty() -> {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -166,12 +166,6 @@ fun HomeScreen(
             // only show an error if there is nothing from an earlier load to show
             controller.loadFailed && results.isEmpty() ->
                 EmptyResults("Couldn't load campsites", "Check your connection and open Home again.")
-            results.isEmpty() ->
-                EmptyResults(
-                    "No campsites found",
-                    if (controller.hasActiveFilters) "Try adjusting or clearing your filters."
-                    else "Check the spelling, or clear the search.",
-                )
             else -> {
                 Text(
                     text = controller.resultCountText,
@@ -181,17 +175,25 @@ fun HomeScreen(
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                         .testTag("text_result_count"),
                 )
-                LazyColumn(
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.testTag("campsite_list"),
-                ) {
-                    items(results, key = { it.id }) { campsite ->
-                        CampsiteResultRow(
-                            campsite,
-                            hasOpenLottery = controller.hasOpenLottery(campsite),
-                            onClick = { onOpenCampsite(campsite.id) },
-                        )
+                if (results.isEmpty()) {
+                    EmptyResults(
+                        "No campsites found",
+                        if (controller.hasActiveFilters) "Try adjusting or clearing your filters."
+                        else "Check the spelling, or clear the search.",
+                    )
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.testTag("campsite_list"),
+                    ) {
+                        items(results, key = { it.id }) { campsite ->
+                            CampsiteResultRow(
+                                campsite,
+                                hasOpenLottery = controller.hasOpenLottery(campsite),
+                                onClick = { onOpenCampsite(campsite.id) },
+                            )
+                        }
                     }
                 }
             }

@@ -132,8 +132,9 @@ class ViewFilteredCampsitesTest {
         search("Unknown Campground")
         assertResultCount(0)
 
-        // Result count label is hidden, empty state message is shown
-        composeRule.onNodeWithTag("text_result_count").assertDoesNotExist()
+        // Result count shows 0 campsites, empty state message is shown
+        composeRule.onNodeWithTag("text_result_count").assertIsDisplayed()
+        composeRule.onNodeWithText("0 campsites").assertIsDisplayed()
         composeRule.onNodeWithText("No campsites found").assertIsDisplayed()
         composeRule.onNodeWithText("Check the spelling, or clear the search.").assertIsDisplayed()
     }
