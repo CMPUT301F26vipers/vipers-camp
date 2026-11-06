@@ -41,10 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -296,9 +293,9 @@ private fun LotteryRow(lottery: Lottery, entrySummary: String, onClick: () -> Un
 }
 
 /**
- * The Details section: location, maximum guests and price, then the description, tags, rules
- * and cancellation policy. Empty optional fields are left out, and so is a price of 0, which
- * campsites have until the form asks for one (T-09).
+ * The Details section: location, maximum guests and price, then the description, tags, and the
+ * rules and cancellation policy from [RulesAndPolicySection]. Empty optional fields are left out,
+ * and so is a price of 0, which campsites have until the form asks for one (T-09).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -325,24 +322,8 @@ private fun CampsiteDetails(campsite: Campsite) {
                 }
             }
         }
-        if (campsite.rules.isNotBlank()) {
-            LabelledText("Rules", campsite.rules)
-        }
-        if (campsite.cancellationPolicy.isNotBlank()) {
-            LabelledText("Cancellation", campsite.cancellationPolicy)
-        }
+        RulesAndPolicySection(campsite)
     }
-}
-
-/** Text like "Rules: quiet hours after 10 PM", with the [label] in bold. */
-@Composable
-private fun LabelledText(label: String, text: String) {
-    Text(
-        buildAnnotatedString {
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("$label: ") }
-            append(text)
-        }
-    )
 }
 
 private fun formatDate(timestamp: Long): String {
