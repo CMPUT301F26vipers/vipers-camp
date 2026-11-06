@@ -17,10 +17,28 @@ import com.google.firebase.firestore.FirebaseFirestore
 
 /** Stores notifications in Firestore. */
 class FirestoreNotificationRepository(
-    db: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : NotificationRepository {
 
     private val collection = db.collection("notifications")
+
+    override suspend fun addAll(notifications: List<Notification>) {
+        // check every ID first, so a bad one means nothing is written
+        require(notifications.none { it.id.isBlank() }) { "Every notification needs an id" }
+        // Firestore allows at most 500 writes in one batch, so a big draw goes in several
+        for (chunk in notifications.chunked(MAX_BATCH_WRITES)) {
+            val batch = db.batch()
+            for (notification in chunk) {
+                batch.set(collection.document(notification.id), notification.toMap())
+            }
+            batch.commit().await()
+        }
+    }
+
+    private companion object {
+        // the most writes Firestore allows in one batch
+        const val MAX_BATCH_WRITES = 500
+    }
 
     override suspend fun addNotification(notification: Notification): String {
         val doc = collection.document()

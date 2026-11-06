@@ -33,6 +33,18 @@ class FakeNotificationRepository(initial: List<Notification> = emptyList()) : No
         return id
     }
 
+    override suspend fun addAll(notifications: List<Notification>) {
+        // check every ID first, so a bad one means nothing is written, like the Firestore batch
+        require(notifications.none { it.id.isBlank() }) { "Every notification needs an id" }
+        for (notification in notifications) {
+            this.notifications[notification.id] = notification
+        }
+        // each changed inbox hears once, after the whole batch
+        for (recipientId in notifications.map { it.recipientId }.distinct()) {
+            notifyListeners(recipientId)
+        }
+    }
+
     override suspend fun getNotificationsFor(recipientId: String): List<Notification> = inboxOf(recipientId)
 
     override suspend fun markRead(id: String) {

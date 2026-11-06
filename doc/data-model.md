@@ -150,6 +150,12 @@ Computed, never stored (T-13): `target` is the screen a tap opens, a `Notificati
 `displayCategory` is the label the inbox shows: "Won", "Not selected", "Reservation",
 "Owner message", "Message" or "Campsite removed".
 
+To send many at once (e.g. a draw's results), use `addAll(notifications)` (US 01.03.01). It saves each
+notification under its own `id`, in Firestore batches of up to 500 (the most one batch allows), and
+writing the same IDs again overwrites them instead of adding copies. If a later batch fails the earlier
+ones stay saved, so call it again with the same list to finish. Set the `id` yourself; a blank `id`
+throws `IllegalArgumentException` and nothing is saved.
+
 The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
 that user's notifications, newest first, straight away and on every change, until the returned
 `Subscription` is cancelled. If the inbox can't be loaded (e.g. permission denied) it gets
