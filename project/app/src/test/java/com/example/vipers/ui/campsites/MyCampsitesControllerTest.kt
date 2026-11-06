@@ -1,3 +1,9 @@
+/*
+ * MyCampsitesControllerTest.kt
+ * Unit tests for MyCampsitesController (US 02.03.01): it loads only the current owner's campsites,
+ * and shows an empty list when they have none. Uses the fake campsite repository.
+ * Known issues: none.
+ */
 package com.example.vipers.ui.campsites
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
@@ -10,7 +16,7 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
-class MyCampsitesViewModelTest {
+class MyCampsitesControllerTest {
 
     @Before
     fun setup() {
@@ -30,7 +36,7 @@ class MyCampsitesViewModelTest {
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
 
         // 2. ACT: Create ViewModel. It automatically fetches in the init block now.
-        val viewModel = MyCampsitesViewModel(fakeRepo, myUserId)
+        val viewModel = MyCampsitesController(fakeRepo, myUserId)
 
         // 3. ASSERT: No longer uses .value because we switched to mutableStateOf
         val actualList = viewModel.campsites
@@ -49,7 +55,7 @@ class MyCampsitesViewModelTest {
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
 
         // 2. ACT: Create ViewModel
-        val viewModel = MyCampsitesViewModel(fakeRepo, myUserId)
+        val viewModel = MyCampsitesController(fakeRepo, myUserId)
 
         // 3. ASSERT
         val actualList = viewModel.campsites
@@ -70,7 +76,7 @@ class MyCampsitesViewModelTest {
         val fakeRepo = FakeCampsiteRepository(initial = dummyData)
 
         // 2. ACT: Create ViewModel
-        val viewModel = MyCampsitesViewModel(fakeRepo, myUserId)
+        val viewModel = MyCampsitesController(fakeRepo, myUserId)
 
         // 3. ASSERT
         val actualList = viewModel.campsites

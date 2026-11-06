@@ -1,7 +1,8 @@
 /*
- * MyCampsitesViewModel.kt
+ * MyCampsitesController.kt
  *
- * ViewModel for the My Campsites screen. Fetches and manages the state of the user's listed campsites.
+ * The controller (a ViewModel) for the My Campsites screen (O01). Fetches and manages the state of
+ * the user's listed campsites.
  *
  * Known issues: None.
  */
@@ -22,11 +23,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel for the My Campsites screen.
+ * Controller for the My Campsites screen.
  * Fetches and holds the state of campsites owned by the current user.
- * [camp_repo] is the current repository that holds all the campsites.
+ *
+ * @param camp_repo The repository that holds all the campsites.
+ * @param ownerId The current user's ID; only their campsites are shown.
  */
-class MyCampsitesViewModel(private val camp_repo: CampsiteRepository, private val ownerId: String): ViewModel() {
+class MyCampsitesController(private val camp_repo: CampsiteRepository, private val ownerId: String): ViewModel() {
 
     // Using 'by' allows Compose to treat this seamlessly as a List<Campsite>
     var campsites by mutableStateOf<List<Campsite>>(emptyList())
@@ -51,6 +54,7 @@ class MyCampsitesViewModel(private val camp_repo: CampsiteRepository, private va
     }
 
     companion object {
+        /** Builds a [MyCampsitesController] for this device's user with the app's repositories. */
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
 
@@ -58,7 +62,7 @@ class MyCampsitesViewModel(private val camp_repo: CampsiteRepository, private va
                 val container = application.container
 
                 // Build and return the ViewModel with the repository inside
-                MyCampsitesViewModel(container.campsiteRepository, container.deviceId)
+                MyCampsitesController(container.campsiteRepository, container.deviceId)
             }
         }
     }
