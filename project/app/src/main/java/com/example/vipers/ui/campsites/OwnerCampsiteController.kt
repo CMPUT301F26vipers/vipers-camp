@@ -29,17 +29,25 @@ import kotlinx.coroutines.launch
 /**
  * Loads one of the owner's campsites and its lotteries for the My Campsite screen.
  * Takes the [campsiteRepository] and [lotteryRepository] in its constructor so tests can pass
- * fake ones, and the [campsiteId] of the campsite to show.
+ * fake ones, the [campsiteId] of the campsite to show, and the [userId] of whoever is viewing it.
  */
 class OwnerCampsiteController(
     private val campsiteRepository: CampsiteRepository,
     private val lotteryRepository: LotteryRepository,
     private val campsiteId: String,
+    private val userId: String,
 ) : ViewModel() {
 
     /** The campsite with its latest saved details, or null until it loads or if it wasn't found. */
     var campsite by mutableStateOf<Campsite?>(null)
         private set
+
+    /**
+     * True only when the campsite has loaded and belongs to [userId] (US 02.01.03). Admins also
+     * open this screen from Browse Campsites, and they can't edit other owners' campsites.
+     */
+    val canEdit: Boolean
+        get() = campsite?.isOwnedBy(userId) == true
 
     /** The campsite's lotteries. */
     var lotteries by mutableStateOf<List<Lottery>>(emptyList())
@@ -98,14 +106,15 @@ class OwnerCampsiteController(
     }
 
     companion object {
-        /** Makes the controller for [campsiteId] with the app's real repositories. */
+        /** Makes the controller for [campsiteId] with the app's real repositories and this device's ID. */
         fun factory(campsiteId: String) = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as CampApp
                 OwnerCampsiteController(
                     campsiteRepository = app.container.campsiteRepository,
                     lotteryRepository = app.container.lotteryRepository,
-                    campsiteId = campsiteId
+                    campsiteId = campsiteId,
+                    userId = app.container.deviceId,
                 )
             }
         }

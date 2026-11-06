@@ -23,6 +23,15 @@ interface CampsiteRepository {
     /** Loads the campsite with this [id], or returns null if there is none. */
     suspend fun getCampsite(id: String): Campsite?
 
+    /**
+     * Saves the details an owner can edit (name, address, region, description, maxOccupancy, tags,
+     * pricePerNightCents, rules and cancellationPolicy) to the campsite with [campsite]'s ID
+     * (US 02.01.03). Every other stored field keeps its saved value, whatever [campsite] holds.
+     *
+     * @throws NoSuchElementException if there is no campsite with that ID.
+     */
+    suspend fun updateCampsite(campsite: Campsite)
+
     /** Loads the campsites listed by [ownerId] that haven't been removed (My Campsites). */
     suspend fun getCampsitesByOwner(ownerId: String): List<Campsite>
 

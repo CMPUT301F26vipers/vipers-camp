@@ -1,7 +1,8 @@
 /*
  * CampsiteFormScreen.kt
  * The Add Campsite screen (mockup O02), opened from the "+" on My Campsites (US 02.01.01,
- * 02.01.02a). CampsiteController checks and saves what the owner types.
+ * 02.01.02a), and the Edit Campsite screen (mockup O05), opened from Edit on My Campsite
+ * (US 02.01.03). CampsiteController checks and saves what the owner types.
  * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
  * cancellation policy (T-11) are added by those stories.
  */
@@ -31,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -65,32 +67,66 @@ import com.example.vipers.ui.theme.InputShape
 import com.example.vipers.ui.theme.Primary
 
 /**
- * The form for a new campsite. [onBack] leaves without saving (asking first if anything was
- * typed), and [onPublished] is called once the campsite is saved.
+ * The form for a new campsite or, when [campsiteId] is set, for editing that campsite
+ * (US 02.01.03). [onBack] leaves without saving (asking first if anything was typed or changed),
+ * and [onPublished] is called once the campsite is saved.
  * Tests pass their own [controller] with a fake repository.
  */
 @Composable
 fun CampsiteFormScreen(
     onBack: () -> Unit,
     onPublished: () -> Unit,
+    campsiteId: String? = null,
     controller: CampsiteController = viewModel(factory = CampsiteController.Factory),
 ) {
     val context = LocalContext.current
     var showDiscardDialog by remember { mutableStateOf(false) }
+    val editing = campsiteId != null
 
-    // ask before throwing away a half-filled form, for both the back arrow and the phone's Back
-    val leave = { if (controller.hasUnsavedChanges) showDiscardDialog = true else onBack() }
-    BackHandler(enabled = controller.hasUnsavedChanges) { showDiscardDialog = true }
+    // ask before throwing away a half-filled form, for both the back arrow and the phone's Back;
+    // with no form showing there's nothing to throw away
+    val askBeforeLeaving = controller.hasUnsavedChanges && !controller.notAllowed
+    val leave = { if (askBeforeLeaving) showDiscardDialog = true else onBack() }
+    BackHandler(enabled = askBeforeLeaving) { showDiscardDialog = true }
+
+    LaunchedEffect(campsiteId) {
+        // the controller outlives a screen rotation, so don't load over what the owner has typed
+        if (campsiteId != null && controller.mode != FormMode.EDIT) {
+            controller.loadForEdit(campsiteId)
+        }
+    }
 
     LaunchedEffect(controller.published) {
         if (controller.published) {
-            Toast.makeText(context, "Campsite published", Toast.LENGTH_SHORT).show()
+            val message = if (editing) "Changes saved" else "Campsite published"
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             onPublished()
         }
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        TopBar(title = "Add Campsite", onBack = leave)
+        TopBar(title = if (editing) "Edit Campsite" else "Add Campsite", onBack = leave)
+
+        // when editing, the form only shows once it's filled in, so Publish can't add a new campsite
+        when {
+            editing && controller.notAllowed -> {
+                Text("You can only edit your own campsites", Modifier.padding(16.dp))
+                return@Column
+            }
+            editing && controller.loadFailed -> {
+                Text(
+                    "Couldn't load the campsite. Check your connection and try again.",
+                    Modifier.padding(16.dp),
+                )
+                return@Column
+            }
+            editing && controller.mode != FormMode.EDIT -> {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                return@Column
+            }
+        }
 
         Column(
             Modifier
@@ -165,15 +201,21 @@ fun CampsiteFormScreen(
                 .height(ButtonHeight)
                 .testTag("button_publish"),
         ) {
-            Text(if (controller.isSaving) "Publishing…" else "Publish", fontWeight = FontWeight.SemiBold)
+            val label = when {
+                editing -> if (controller.isSaving) "Saving…" else "Save changes"
+                else -> if (controller.isSaving) "Publishing…" else "Publish"
+            }
+            Text(label, fontWeight = FontWeight.SemiBold)
         }
     }
 
     if (showDiscardDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
-            title = { Text("Discard this campsite?") },
-            text = { Text("What you've filled in won't be saved.") },
+            title = { Text(if (editing) "Discard your changes?" else "Discard this campsite?") },
+            text = {
+                Text(if (editing) "Your changes won't be saved." else "What you've filled in won't be saved.")
+            },
             confirmButton = {
                 TextButton(onClick = { showDiscardDialog = false; onBack() }) {
                     Text("Discard", color = MaterialTheme.colorScheme.error)

@@ -11,10 +11,12 @@ import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class FakeRepositoryTest {
@@ -30,6 +32,68 @@ class FakeRepositoryTest {
     @Test
     fun getCampsite_isNullWhenMissing() = runBlocking {
         assertNull(FakeCampsiteRepository().getCampsite("nope"))
+    }
+
+    @Test
+    fun updateCampsite_existingCampsite_changesEditedFieldsAndKeepsTheRest() = runBlocking {
+        val saved = Campsite(
+            id = "hinton",
+            ownerId = "priya-phone",
+            name = "Hinton Ridge Campground",
+            address = "Hinton, AB",
+            region = Region.HINTON,
+            description = "Outdoor cookhouse",
+            maxOccupancy = 8,
+            tags = listOf("Cookhouse"),
+            pricePerNightCents = 6500,
+            rules = "Quiet hours after 10 PM",
+            cancellationPolicy = "Free up to 7 days before",
+            imageId = "photo-1",
+            lat = 53.405,
+            lng = -117.585,
+            ratingSum = 46,
+            ratingCount = 10,
+        )
+        val repo = FakeCampsiteRepository(listOf(saved))
+
+        // only the ID matches, so the fields the owner can't edit are all different here
+        repo.updateCampsite(
+            Campsite(
+                id = "hinton",
+                ownerId = "someone-else",
+                name = "Hinton Ridge Sites",
+                address = "Jasper, AB",
+                region = Region.JASPER,
+                description = "Tennis court",
+                maxOccupancy = 6,
+                tags = listOf("Tennis court"),
+                pricePerNightCents = 7000,
+                rules = "No fires",
+                cancellationPolicy = "No refunds",
+                removed = true,
+            )
+        )
+
+        val expected = saved.copy(
+            name = "Hinton Ridge Sites",
+            address = "Jasper, AB",
+            region = Region.JASPER,
+            description = "Tennis court",
+            maxOccupancy = 6,
+            tags = listOf("Tennis court"),
+            pricePerNightCents = 7000,
+            rules = "No fires",
+            cancellationPolicy = "No refunds",
+        )
+        assertEquals(expected, repo.getCampsite("hinton"))
+    }
+
+    @Test
+    fun updateCampsite_missingId_throws() {
+        val repo = FakeCampsiteRepository()
+        assertThrows(NoSuchElementException::class.java) {
+            runBlocking { repo.updateCampsite(Campsite(id = "nope")) }
+        }
     }
 
     @Test

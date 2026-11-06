@@ -1,9 +1,11 @@
 /*
  * CampsiteController.kt
  * The controller (a ViewModel) behind the Add Campsite form (US 02.01.01, 02.01.02a). It holds
- * what the owner has typed, checks it, and saves the campsite with the owner's device ID.
+ * what the owner has typed, checks it, and saves the campsite with the owner's device ID. It can
+ * also fill the form from a saved campsite and save its owner's changes (US 02.01.03).
  * Known issues: photo (02.01.02b), Find location (02.01.02c), price (T-09), and rules and
- * cancellation policy (T-11) are added to the form by those stories.
+ * cancellation policy (T-11) are added to the form by those stories. Until then an edit keeps their
+ * saved values, and those stories need to add their fields to withFormValues.
  */
 package com.example.vipers.ui.campsites
 
@@ -23,13 +25,30 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Holds the Add Campsite form and publishes the campsite for [ownerId].
+ * Holds the Add Campsite and Edit Campsite form, and publishes the campsite for [ownerId] or saves
+ * the changes to it.
  * Takes the [campsiteRepository] in its constructor so tests can pass a fake one.
  */
 class CampsiteController(
     private val campsiteRepository: CampsiteRepository,
     private val ownerId: String,
 ) : ViewModel() {
+
+    /** Whether the form is adding a new campsite or editing a saved one (US 02.01.03). */
+    var mode by mutableStateOf(FormMode.CREATE)
+        private set
+
+    /** The saved campsite being edited, or null unless [loadForEdit] filled the form (US 02.01.03). */
+    var loadedCampsite by mutableStateOf<Campsite?>(null)
+        private set
+
+    /** True if the campsite to edit doesn't exist or isn't this owner's (US 02.01.03). */
+    var notAllowed by mutableStateOf(false)
+        private set
+
+    /** True if the campsite to edit couldn't be loaded, e.g. offline with no saved copy (US 02.01.03). */
+    var loadFailed by mutableStateOf(false)
+        private set
 
     var name by mutableStateOf("")
         private set
@@ -89,16 +108,25 @@ class CampsiteController(
         tags = tags - tag
     }
 
-    /** True if the owner has filled in anything, so leaving should ask first. */
+    /**
+     * True if leaving should ask first: when adding, if the owner has filled in anything; when
+     * editing, if the form differs from what was loaded (US 02.01.03).
+     */
     val hasUnsavedChanges: Boolean
-        get() = !published && (
-            name.isNotBlank() || address.isNotBlank() || region != null ||
+        get() {
+            if (published) return false
+            val loaded = loadedCampsite
+            if (mode == FormMode.EDIT && loaded != null) {
+                return loaded.withFormValues(toCampsite()) != loaded
+            }
+            return name.isNotBlank() || address.isNotBlank() || region != null ||
                 maxGuests.isNotBlank() || description.isNotBlank() || tags.isNotEmpty()
-            )
+        }
 
     /**
      * Checks the form and, if everything is filled in correctly, saves the campsite in the
-     * background. If something is wrong, [errors] says what and nothing is saved.
+     * background: a new one with [save], or the owner's changes with [saveEdits] (US 02.01.03).
+     * If something is wrong, [errors] says what and nothing is saved.
      */
     fun publish() {
         if (isSaving) return
@@ -115,16 +143,44 @@ class CampsiteController(
         errors = formErrors
         if (formErrors.isNotEmpty()) return
 
-        viewModelScope.launch { save(campsite) }
+        viewModelScope.launch {
+            if (mode == FormMode.EDIT) saveEdits(campsite) else save(campsite)
+        }
     }
 
     /** Saves [campsite] and sets [published] or [saveFailed]. Unit tests call it directly. */
     suspend fun save(campsite: Campsite) {
+        runSave {
+            campsiteRepository.addCampsite(campsite)
+            published = true
+        }
+    }
+
+    /**
+     * Saves the form values in [campsite] over the campsite [loadForEdit] loaded, keeping its ID and
+     * every field the form doesn't have (US 02.01.03). First re-checks the saved campsite still
+     * belongs to this owner; if not, sets [notAllowed] and saves nothing. Sets [published] or
+     * [saveFailed] like [save]. Unit tests call it directly.
+     */
+    suspend fun saveEdits(campsite: Campsite) {
+        runSave {
+            val loaded = loadedCampsite
+            val saved = loaded?.let { campsiteRepository.getCampsite(it.id) }
+            if (saved == null || !saved.isOwnedBy(ownerId)) {
+                notAllowed = true
+            } else {
+                campsiteRepository.updateCampsite(loaded.withFormValues(campsite))
+                published = true
+            }
+        }
+    }
+
+    // What save and saveEdits share: runs write, tracking isSaving and saveFailed.
+    private suspend fun runSave(write: suspend () -> Unit) {
         isSaving = true
         saveFailed = false
         try {
-            campsiteRepository.addCampsite(campsite)
-            published = true
+            write()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -132,6 +188,39 @@ class CampsiteController(
         } finally {
             isSaving = false
         }
+    }
+
+    /**
+     * Loads the campsite with this [campsiteId] for editing (US 02.01.03). If it exists and belongs
+     * to this owner, switches to [FormMode.EDIT] and fills in the form. Otherwise sets [notAllowed]
+     * and fills in nothing. If the load itself fails, sets [loadFailed] and fills in nothing.
+     */
+    suspend fun loadForEdit(campsiteId: String) {
+        notAllowed = false
+        loadFailed = false
+        try {
+            val campsite = campsiteRepository.getCampsite(campsiteId)
+            if (campsite != null && campsite.isOwnedBy(ownerId)) {
+                fillForm(campsite)
+            } else {
+                notAllowed = true
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            loadFailed = true
+        }
+    }
+
+    private fun fillForm(campsite: Campsite) {
+        loadedCampsite = campsite
+        mode = FormMode.EDIT
+        name = campsite.name
+        address = campsite.address
+        region = campsite.region
+        maxGuests = campsite.maxOccupancy.toString()
+        description = campsite.description
+        tags = campsite.tags
     }
 
     /** The campsite the form describes right now. */
@@ -143,6 +232,16 @@ class CampsiteController(
         description = description.trim(),
         maxOccupancy = maxGuests.trim().toIntOrNull() ?: 0,
         tags = tags,
+    )
+
+    // This campsite with the fields the form has replaced by those in form.
+    private fun Campsite.withFormValues(form: Campsite) = copy(
+        name = form.name,
+        address = form.address,
+        region = form.region,
+        description = form.description,
+        maxOccupancy = form.maxOccupancy,
+        tags = form.tags,
     )
 
     private fun clearError(field: String) {

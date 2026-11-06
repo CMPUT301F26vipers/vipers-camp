@@ -44,11 +44,21 @@ data class Lottery(
      * The lottery's stage at time [now] (milliseconds since 1970), worked out from its
      * periods and whether it has been drawn. A lottery with no times set counts as CLOSED.
      */
-    fun status(now: Long): LotteryStatus = when {
-        now > bookingEnd -> LotteryStatus.CLOSED
+    fun status(now: Long = System.currentTimeMillis()): LotteryStatus = when {
+        removed -> LotteryStatus.CLOSED
+        now > bookingEnd && bookingEnd > 0L -> LotteryStatus.CLOSED
         drawnAt != null -> LotteryStatus.DRAWN
+        registrationStart <= 0L || registrationEnd <= 0L -> LotteryStatus.CLOSED
+        registrationEnd <= registrationStart -> LotteryStatus.CLOSED
         now < registrationStart -> LotteryStatus.UPCOMING
         now <= registrationEnd -> LotteryStatus.OPEN
         else -> LotteryStatus.CLOSED
     }
+
+    /**
+     * Checks if registration is currently open for entrants at time [now] (milliseconds since 1970).
+     * Registration is open between [registrationStart] and [registrationEnd] (inclusive).
+     */
+    fun canEntrantJoin(now: Long = System.currentTimeMillis()): Boolean =
+        status(now) == LotteryStatus.OPEN
 }

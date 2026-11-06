@@ -95,6 +95,14 @@ data class Campsite(
     }
 
     /**
+     * True if [userId] is this campsite's owner, so they may edit it (US 02.01.03). An empty
+     * [userId] is never the owner, even on a campsite with no [ownerId] set.
+     */
+    fun isOwnedBy(userId: String): Boolean {
+        return userId.isNotEmpty() && ownerId == userId
+    }
+
+    /**
      * Checks the fields the Add Campsite form requires (US 02.01.02a) and returns an error
      * message for each field that's wrong, keyed by field name. An empty map means it's valid.
      */

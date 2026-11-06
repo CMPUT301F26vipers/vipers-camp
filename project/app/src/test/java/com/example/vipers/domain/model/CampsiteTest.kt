@@ -102,6 +102,23 @@ class CampsiteTest {
     }
 
     @Test
+    fun isOwnedBy_ownerId_isTrue() {
+        assertTrue(Campsite(ownerId = "priya-phone").isOwnedBy("priya-phone"))
+    }
+
+    @Test
+    fun isOwnedBy_anotherId_isFalse() {
+        assertFalse(Campsite(ownerId = "priya-phone").isOwnedBy("sam-phone"))
+    }
+
+    @Test
+    fun isOwnedBy_emptyId_isFalse() {
+        assertFalse(Campsite(ownerId = "priya-phone").isOwnedBy(""))
+        // a campsite with no owner set doesn't belong to an empty ID either
+        assertFalse(Campsite(ownerId = "").isOwnedBy(""))
+    }
+
+    @Test
     fun validate_validCampsiteHasNoErrors() {
         val campsite = Campsite(name = "Hinton Ridge Campground", address = "Hinton, AB", maxOccupancy = 6)
         assertTrue(campsite.validate().isEmpty())
