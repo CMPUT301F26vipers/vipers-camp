@@ -1,8 +1,8 @@
 /*
  * CampsiteSearchControllerTest.kt
  * Unit tests for CampsiteSearchController: searching by name (US 01.01.01), filtering by region,
- * date range, and guests (US 01.01.02), and marking which campsites have an open lottery (US 01.01.04),
- * using the fake campsite and lottery repositories.
+ * date range, and guests (US 01.01.02), result count formatting (US 01.01.03), and marking which
+ * campsites have an open lottery (US 01.01.04), using the fake campsite and lottery repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.home
@@ -362,5 +362,20 @@ class CampsiteSearchControllerTest {
         assertFalse(controller.isLoading)
         assertEquals(3, controller.results.size)
         assertTrue(controller.results.none { controller.hasOpenLottery(it) })
+    }
+
+    @Test
+    fun resultCountText_showsPluralForZeroOrMultipleCampsites() {
+        val controller = loadedController()
+        assertEquals("3 campsites", controller.resultCountText)
+        controller.onSearchTextChange("lake louise")
+        assertEquals("0 campsites", controller.resultCountText)
+    }
+
+    @Test
+    fun resultCountText_showsSingularForOneCampsite() {
+        val controller = loadedController()
+        controller.onSearchTextChange("Bow")
+        assertEquals("1 campsite", controller.resultCountText)
     }
 }

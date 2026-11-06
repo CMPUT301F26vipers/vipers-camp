@@ -2,12 +2,12 @@
  * CampsiteSearchController.kt
  * The controller (a ViewModel) behind the Home search (US 01.01.01). It loads the campsites once
  * and filters them by name on the device as the user types, as the CRC card describes. It also
- * filters them by region, date range, and guests (US 01.01.02), and marks which campsites have a
- * lottery open for registration, for the result cards (US 01.01.04).
- * Known issues: the result count and loading indicator (01.01.03) are added by that story.
- * Finding the open lotteries and availability takes Firestore queries per campsite, which is
- * fine for now but slow with many campsites. If the lotteries or availability can't be loaded,
- * the campsites still show.
+ * filters them by region, date range, and guests (US 01.01.02), tracks result counts and loading
+ * state (US 01.01.03), and marks which campsites have a lottery open for registration, for the
+ * result cards (US 01.01.04).
+ * Known issues: Finding the open lotteries and availability takes Firestore queries per campsite,
+ * which is fine for now but slow with many campsites. If the lotteries or availability can't be
+ * loaded, the campsites still show.
  */
 package com.example.vipers.ui.home
 
@@ -122,6 +122,12 @@ class CampsiteSearchController(
                 }
                 .sortedBy { it.name.lowercase() }
         }
+
+    /**
+     * Formats the count of matching campsites for display on Home, e.g. "4 campsites" or "1 campsite" (US 01.01.03).
+     */
+    val resultCountText: String
+        get() = if (results.size == 1) "1 campsite" else "${results.size} campsites"
 
     /** Called as the user types; the [results] update right away. */
     fun onSearchTextChange(text: String) {
