@@ -4,8 +4,7 @@
  * Details and sees the reserve-by date, the lottery's nights with taken ones greyed out, and the
  * price and total for the nights they pick; plus the "no nights left" and "offer expired" cases.
  * Uses the fake repositories, so it doesn't touch Firestore.
- * Known issues: opening the screen from the win notification is tested by T-13 (#77) once both
- * are merged.
+ * Known issues: opening the screen from the win notification isn't wired up yet.
  */
 package com.example.vipers.ui.reservations
 
@@ -121,8 +120,8 @@ class ViewDatesAfterWinningTest {
     private fun hasState(state: String) =
         SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, state)
 
-    @Test
-    fun winnerOpensReserveFromCampsiteDetails() {
+    /** Starts the whole app for "test-device", whose entry in the lottery has [status]. */
+    private fun startApp(status: EntryStatus) {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         runBlocking { campsites.saveAvailability(calendar) }
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
@@ -133,52 +132,43 @@ class ViewDatesAfterWinningTest {
                 listOf(UserProfile(id = "test-device", name = "Sam Patel")),
             ),
             campsiteRepository = campsites,
-            lotteryRepository = FakeLotteryRepository(
-                listOf(lottery), listOf(samsEntry(EntryStatus.WON)),
-            ),
+            lotteryRepository = FakeLotteryRepository(listOf(lottery), listOf(samsEntry(status))),
             reservationRepository = FakeReservationRepository(),
             notificationRepository = FakeNotificationRepository(),
         )
         composeRule.setContent {
             VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) }
         }
+    }
 
-        composeRule.onNodeWithTag("search_field").performTextInput("Hinton")
-        composeRule.onNodeWithText("Hinton Ridge Campground").performClick()
-        val reserveBy = "Reserve by ${shortDate(lottery.bookingEnd)}"
-        composeRule.onNodeWithText("You won! $reserveBy").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("button_reserve").performClick()
-
-        composeRule.onNodeWithTag("reserve_banner").assertTextEquals("You won! $reserveBy")
+    /** Checks that the Reserve screen is open for Sam's win at Hinton. */
+    private fun assertReserveIsOpen() {
+        composeRule.onNodeWithTag("reserve_banner")
+            .assertTextEquals("You won! Reserve by ${shortDate(lottery.bookingEnd)}")
         composeRule.onNodeWithTag("reserve_campsite").assertTextEquals("Hinton Ridge Campground")
     }
 
     @Test
-    fun noReserveButtonForSomeoneWhoLost() {
-        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
-            as CampApp
-        app.container = AppContainer(
-            deviceId = "test-device",
-            profileRepository = FakeProfileRepository(
-                listOf(UserProfile(id = "test-device", name = "Sam Patel")),
-            ),
-            campsiteRepository = FakeCampsiteRepository(listOf(hinton)),
-            lotteryRepository = FakeLotteryRepository(
-                listOf(lottery), listOf(samsEntry(EntryStatus.LOST)),
-            ),
-            reservationRepository = FakeReservationRepository(),
-            notificationRepository = FakeNotificationRepository(),
-        )
-        composeRule.setContent {
-            VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) }
-        }
+    fun winnerOpensReserveFromCampsiteDetails() {
+        startApp(EntryStatus.WON)
 
         composeRule.onNodeWithTag("search_field").performTextInput("Hinton")
         composeRule.onNodeWithText("Hinton Ridge Campground").performClick()
-        // Campsite Details is open, but without the win box
-        composeRule.onNodeWithTag("lottery_box").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("win_box").assertDoesNotExist()
-        composeRule.onNodeWithTag("button_reserve").assertDoesNotExist()
+        composeRule.onNodeWithText("You won! Reserve by", substring = true).performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("reserve_button").performScrollTo().performClick()
+
+        assertReserveIsOpen()
+    }
+
+    @Test
+    fun noReserveButtonForSomeoneWhoLost() {
+        startApp(EntryStatus.LOST)
+
+        composeRule.onNodeWithTag("search_field").performTextInput("Hinton")
+        composeRule.onNodeWithText("Hinton Ridge Campground").performClick()
+        composeRule.onNodeWithText("Not selected this time").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("reserve_button").assertDoesNotExist()
     }
 
     @Test

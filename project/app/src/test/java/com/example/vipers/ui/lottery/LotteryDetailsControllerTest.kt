@@ -232,7 +232,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 3)
 
         assertTrue(controller.joinSuccess)
-        assertNull(controller.joinError)
+        assertNull(controller.actionError)
         assertFalse(controller.isJoining)
         assertTrue(controller.isJoined)
         assertNotNull(controller.userEntry)
@@ -265,7 +265,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 1)
 
         assertFalse(controller.joinSuccess)
-        assertEquals("Owners cannot join their own lottery.", controller.joinError)
+        assertEquals("Owners cannot join their own lottery.", controller.actionError)
         assertFalse(controller.isJoined)
         assertNull(lotteryRepository.getEntry(lotteryId, "owner-1"))
     }
@@ -296,7 +296,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 2)
 
         assertFalse(controller.joinSuccess)
-        assertEquals("Already on the waiting list", controller.joinError)
+        assertEquals("Already on the waiting list", controller.actionError)
     }
 
     @Test
@@ -314,7 +314,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 1)
 
         assertFalse(controller.joinSuccess)
-        assertEquals("Registration is closed", controller.joinError)
+        assertEquals("Registration is closed", controller.actionError)
         assertFalse(controller.isJoined)
     }
 
@@ -333,7 +333,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 1)
 
         assertFalse(controller.joinSuccess)
-        assertEquals("Registration has not started", controller.joinError)
+        assertEquals("Registration has not started", controller.actionError)
         assertFalse(controller.isJoined)
     }
 
@@ -359,7 +359,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 1)
 
         assertFalse(controller.joinSuccess)
-        assertEquals("Waiting list is full", controller.joinError)
+        assertEquals("Waiting list is full", controller.actionError)
         assertFalse(controller.isJoined)
         assertNull(lotteryRepository.getEntry(lotteryId, "user-3"))
     }
@@ -389,7 +389,7 @@ class LotteryDetailsControllerTest {
         assertFalse(controller.joinSuccess)
         assertFalse(controller.isJoining)
         assertFalse(controller.isJoined)
-        assertEquals("Waiting list is full", controller.joinError)
+        assertEquals("Waiting list is full", controller.actionError)
     }
 
     @Test
@@ -415,7 +415,7 @@ class LotteryDetailsControllerTest {
         assertFalse(controller.joinSuccess)
         assertFalse(controller.isJoining)
         assertFalse(controller.isJoined)
-        assertEquals("Already on the waiting list", controller.joinError)
+        assertEquals("Already on the waiting list", controller.actionError)
     }
 
     @Test
@@ -459,11 +459,11 @@ class LotteryDetailsControllerTest {
 
         controller.joinWaitingList(groupSize = 0)
         assertFalse(controller.joinSuccess)
-        assertEquals("Group size must be at least 1", controller.joinError)
+        assertEquals("Group size must be at least 1", controller.actionError)
 
         controller.joinWaitingList(groupSize = -2)
         assertFalse(controller.joinSuccess)
-        assertEquals("Group size must be at least 1", controller.joinError)
+        assertEquals("Group size must be at least 1", controller.actionError)
     }
 
     @Test
@@ -498,7 +498,7 @@ class LotteryDetailsControllerTest {
         assertFalse(controller.joinSuccess)
         assertFalse(controller.isJoining)
         assertFalse(controller.isJoined)
-        assertEquals("Unable to join waiting list. Please try again.", controller.joinError)
+        assertEquals("Unable to join waiting list. Please try again.", controller.actionError)
     }
 
     @Test
@@ -521,7 +521,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 4)
 
         assertTrue(controller.joinSuccess)
-        assertNull(controller.joinError)
+        assertNull(controller.actionError)
         assertFalse(controller.isJoining)
         assertTrue(controller.isJoined)
         assertEquals(1, controller.waitingEntries.size)
@@ -542,7 +542,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 1)
 
         assertFalse(controller.joinSuccess)
-        assertEquals("User ID is required to join.", controller.joinError)
+        assertEquals("User ID is required to join.", controller.actionError)
         assertFalse(controller.isJoined)
         assertNull(controller.userEntry)
         assertTrue(lotteryRepository.getEntries(lotteryId).isEmpty())
@@ -570,7 +570,7 @@ class LotteryDetailsControllerTest {
         assertFalse(controller.joinSuccess)
         assertFalse(controller.isJoining)
         assertFalse(controller.isJoined)
-        assertEquals("Unable to join waiting list. Please try again.", controller.joinError)
+        assertEquals("Unable to join waiting list. Please try again.", controller.actionError)
     }
 
     @Test
@@ -600,7 +600,7 @@ class LotteryDetailsControllerTest {
         controller.joinWaitingList(groupSize = 2)
 
         assertTrue(controller.joinSuccess)
-        assertNull(controller.joinError)
+        assertNull(controller.actionError)
         assertFalse(controller.isJoining)
         assertTrue(controller.isJoined)
         assertNotNull(controller.userEntry)
@@ -707,7 +707,7 @@ class LotteryDetailsControllerTest {
 
         assertFalse(controller.joinSuccess)
         assertFalse(controller.isJoined)
-        assertEquals("Campsite occupancy information is unavailable. Please try again.", controller.joinError)
+        assertEquals("Campsite occupancy information is unavailable. Please try again.", controller.actionError)
     }
 
     @Test
@@ -729,7 +729,7 @@ class LotteryDetailsControllerTest {
 
         assertFalse(controller.joinSuccess)
         assertFalse(controller.isJoined)
-        assertEquals("Group size cannot exceed maximum occupancy of 4", controller.joinError)
+        assertEquals("Group size cannot exceed maximum occupancy of 4", controller.actionError)
     }
 
     @Test
@@ -751,7 +751,7 @@ class LotteryDetailsControllerTest {
 
         assertTrue(controller.joinSuccess)
         assertTrue(controller.isJoined)
-        assertNull(controller.joinError)
+        assertNull(controller.actionError)
         assertEquals(6, controller.userEntry?.groupSize)
     }
     @Test
@@ -787,5 +787,178 @@ class LotteryDetailsControllerTest {
         assertEquals(3, controller.allEntries.size)
         val wonCount = controller.allEntries.count { it.status == EntryStatus.WON }
         assertEquals(3, wonCount)
+    }
+
+    @Test
+    fun performLeave_whenUserOnWaitlist_succeedsAndUpdatesState() = runTest {
+        setupData()
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertTrue(controller.isJoined)
+        assertTrue(controller.canLeave)
+        assertEquals(2, controller.waitingEntries.size)
+
+        val result = controller.performLeave()
+        assertTrue(result)
+        assertTrue(controller.leaveSuccess)
+        assertNull(controller.actionError)
+        assertFalse(controller.isJoined)
+        assertNull(controller.userEntry)
+        assertEquals(1, controller.waitingEntries.size)
+        assertFalse(controller.waitingEntries.any { it.userId == "user-1" })
+
+        // Verify repository state
+        assertNull(lotteryRepository.getEntry(lotteryId, "user-1"))
+        val updatedLottery = lotteryRepository.getLottery(lotteryId)!!
+        assertFalse(updatedLottery.waitingUserIds.contains("user-1"))
+    }
+
+    @Test
+    fun performLeave_whenUserNotOnWaitlist_failsAndSetsError() = runTest {
+        setupData()
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "unjoined-user",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertFalse(controller.isJoined)
+        val result = controller.performLeave()
+        assertFalse(result)
+        assertFalse(controller.leaveSuccess)
+        assertEquals("Not on the waiting list.", controller.actionError)
+    }
+
+    @Test
+    fun performLeave_whenLotteryAlreadyDrawn_failsAndSetsError() = runTest {
+        val now = System.currentTimeMillis()
+        val drawnLottery = Lottery(
+            id = "drawn-lottery",
+            ownerId = "owner-1",
+            campsiteIds = listOf(campsiteId),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000,
+            registrationEnd = now - 5_000,
+            bookingStart = now - 4_000,
+            bookingEnd = now + 100_000,
+            drawnAt = now - 3_000,
+        )
+        val entry = LotteryEntry(
+            id = LotteryEntry.idFor("drawn-lottery", "user-1"),
+            lotteryId = "drawn-lottery",
+            userId = "user-1",
+            status = EntryStatus.WAITING,
+        )
+        val repo = FakeLotteryRepository(
+            initialLotteries = listOf(drawnLottery),
+            initialEntries = listOf(entry),
+        )
+        val controller = LotteryDetailsController(
+            lotteryRepository = repo,
+            profileRepository = profileRepository,
+            lotteryId = "drawn-lottery",
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertFalse(controller.canLeave)
+        val result = controller.performLeave()
+        assertFalse(result)
+        assertFalse(controller.leaveSuccess)
+        assertEquals("Cannot leave after the lottery has been drawn.", controller.actionError)
+    }
+
+    @Test
+    fun performLeave_whenRepositoryThrowsException_setsErrorAndPreservesState() = runTest {
+        setupData()
+        val failingRepo = object : LotteryRepository by lotteryRepository {
+            override suspend fun leaveWaitingList(lotteryId: String, userId: String) {
+                throw Exception("Network failure")
+            }
+        }
+        val controller = LotteryDetailsController(
+            lotteryRepository = failingRepo,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertTrue(controller.isJoined)
+        val result = controller.performLeave()
+        assertFalse(result)
+        assertFalse(controller.leaveSuccess)
+        assertEquals("Couldn't leave the waiting list. Please try again.", controller.actionError)
+        assertTrue(controller.isJoined)
+    }
+
+    @Test
+    fun performLeave_whenRefreshFailsAfterSuccessfulLeave_stillReflectsLeaveSuccessAndUnjoinedState() = runTest {
+        setupData()
+        var leaveCalled = false
+        val repoWithFailingRefresh = object : LotteryRepository by lotteryRepository {
+            override suspend fun leaveWaitingList(lotteryId: String, userId: String) {
+                lotteryRepository.leaveWaitingList(lotteryId, userId)
+                leaveCalled = true
+            }
+
+            override suspend fun getEntries(lotteryId: String): List<LotteryEntry> {
+                if (leaveCalled) {
+                    throw RuntimeException("Network dropped during refresh")
+                }
+                return lotteryRepository.getEntries(lotteryId)
+            }
+        }
+        val controller = LotteryDetailsController(
+            lotteryRepository = repoWithFailingRefresh,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+            campsiteRepository = campsiteRepository,
+        )
+
+        assertTrue(controller.isJoined)
+        val result = controller.performLeave()
+        assertTrue(result)
+        assertTrue(controller.leaveSuccess)
+        assertFalse(controller.isJoined)
+        assertNull(controller.userEntry)
+        assertNull(controller.actionError)
+    }
+
+    @Test
+    fun canLeave_evaluatesCorrectly() = runTest {
+        setupData()
+        val joinedController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-1",
+        )
+        assertTrue(joinedController.canLeave)
+
+        val ownerController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "owner-1",
+        )
+        assertFalse(ownerController.canLeave)
+
+        val nonJoinedController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "random-user",
+        )
+        assertFalse(nonJoinedController.canLeave)
     }
 }
