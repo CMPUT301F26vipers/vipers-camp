@@ -85,4 +85,31 @@ class AvailabilityCalendarTest {
         // the reservation is untouched
         assertEquals(listOf("2027-05-01"), opened.heldNights)
     }
+
+    @Test
+    fun hasAvailableNight_trueWhenRangeContainsFreeOpenNight() {
+        assertTrue(calendar.hasAvailableNight("2027-05-01", "2027-05-03"))
+        assertTrue(calendar.hasAvailableNight("2027-05-02", "2027-05-02"))
+    }
+
+    @Test
+    fun hasAvailableNight_falseWhenAllNightsInRangeAreHeld() {
+        assertFalse(calendar.hasAvailableNight("2027-05-01", "2027-05-01"))
+    }
+
+    @Test
+    fun hasAvailableNight_falseWhenNoOpenNightsInRange() {
+        assertFalse(calendar.hasAvailableNight("2027-05-05", "2027-05-10"))
+    }
+
+    @Test
+    fun hasAvailableNight_worksWhenDatesAreReversed() {
+        assertTrue(calendar.hasAvailableNight("2027-05-03", "2027-05-01"))
+    }
+
+    @Test
+    fun hasAvailableNight_falseWhenDatesAreBlank() {
+        assertFalse(calendar.hasAvailableNight("", "2027-05-02"))
+        assertFalse(calendar.hasAvailableNight("2027-05-01", ""))
+    }
 }

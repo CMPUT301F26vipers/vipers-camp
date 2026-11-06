@@ -67,4 +67,19 @@ data class AvailabilityCalendar(
         }
         return copy(openNights = (openNights + added).distinct().sorted())
     }
+
+    /**
+     * True if there is at least one night from [first] to [last] (inclusive, in either order)
+     * that the owner opened and no confirmed reservation holds (US 01.01.02).
+     */
+    fun hasAvailableNight(first: String, last: String): Boolean {
+        if (first.isBlank() || last.isBlank()) return false
+        var start = first
+        var end = last
+        if (end < start) {
+            start = last
+            end = first
+        }
+        return openNights.any { night -> night in start..end && isFree(night) }
+    }
 }
