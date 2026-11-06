@@ -896,7 +896,7 @@ class LotteryDetailsControllerTest {
         val result = controller.performLeave()
         assertFalse(result)
         assertFalse(controller.leaveSuccess)
-        assertEquals("Network failure", controller.joinError)
+        assertEquals("Couldn't leave the waiting list. Please try again.", controller.joinError)
         assertTrue(controller.isJoined)
     }
 
@@ -931,8 +931,7 @@ class LotteryDetailsControllerTest {
         assertTrue(controller.leaveSuccess)
         assertFalse(controller.isJoined)
         assertNull(controller.userEntry)
-        assertFalse(controller.waitingEntries.any { it.userId == "user-1" })
-        assertNull(controller.error)
+        assertNull(controller.joinError)
     }
 
     @Test

@@ -5,6 +5,7 @@
  */
 package com.example.vipers.ui.lottery
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -266,15 +267,15 @@ fun LotteryDetailsScreen(
                                                         color = MaterialTheme.colorScheme.onSecondaryContainer
                                                     )
                                                     if (controller.canLeave) {
-                                                        Button(
+                                                        OutlinedButton(
                                                             onClick = { showLeaveDialog = true },
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
                                                                 .testTag("leave_lottery_button"),
-                                                            colors = ButtonDefaults.buttonColors(
-                                                                containerColor = MaterialTheme.colorScheme.error,
-                                                                contentColor = MaterialTheme.colorScheme.onError
-                                                            )
+                                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                                contentColor = MaterialTheme.colorScheme.error,
+                                                            ),
+                                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                                                         ) {
                                                             Text("Leave Waiting List")
                                                         }
@@ -410,9 +411,9 @@ fun LotteryDetailsScreen(
     if (showLeaveDialog) {
         AlertDialog(
             onDismissRequest = { showLeaveDialog = false },
-            title = { Text("Leave Waiting List") },
+            title = { Text("Leave waiting list?") },
             text = {
-                Text("Are you sure you want to leave the waiting list? You will give up your place in this lottery.")
+                Text("You will not be in the draw for this campsite.")
             },
             confirmButton = {
                 Button(
@@ -431,7 +432,7 @@ fun LotteryDetailsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showLeaveDialog = false }) {
-                    Text("Cancel")
+                    Text("Stay")
                 }
             }
         )

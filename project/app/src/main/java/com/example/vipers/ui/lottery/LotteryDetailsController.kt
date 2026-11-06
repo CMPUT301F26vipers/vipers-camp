@@ -76,7 +76,7 @@ class LotteryDetailsController(
 
     /** True if the current user can leave the waiting list. */
     val canLeave: Boolean
-        get() = isJoined && lottery?.drawnAt == null && !isOwner
+        get() = !isOwner && lottery?.let { userEntry?.canLeave(it) } == true
 
     /** True if the lottery has a waitlist limit and the number of waiting entrants has reached or exceeded it. */
     val isFull: Boolean
@@ -324,26 +324,19 @@ class LotteryDetailsController(
         return try {
             lotteryRepository.leaveWaitingList(lotteryId, currentUserId)
             userEntry = null
-            waitingEntries = waitingEntries.filter { it.userId != currentUserId }
-            allEntries = allEntries.filter { it.userId != currentUserId }
-            lottery = lottery?.let { l ->
-                l.copy(waitingUserIds = l.waitingUserIds.filter { it != currentUserId })
-            }
             leaveSuccess = true
-
-            val prevError = error
-            fetchData()
-            if (error != null) {
-                error = prevError
+            try {
+                fetchData()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Refresh failure must not be reported as a failed leave
             }
-            userEntry = null
-            waitingEntries = waitingEntries.filter { it.userId != currentUserId }
-            allEntries = allEntries.filter { it.userId != currentUserId }
             true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            joinError = e.message ?: "Unable to leave waiting list."
+            joinError = "Couldn't leave the waiting list. Please try again."
             false
         }
     }

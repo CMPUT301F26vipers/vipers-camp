@@ -635,11 +635,12 @@ class LotteryIntentTest {
         composeRule.onNodeWithText("Leave Waiting List").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Join Waiting List").assertDoesNotExist()
 
-        // Open dialog and test Cancel
+        // Open dialog and test Stay
         composeRule.onNodeWithText("Leave Waiting List").performClick()
-        composeRule.onNodeWithText("Are you sure you want to leave the waiting list? You will give up your place in this lottery.").assertIsDisplayed()
-        composeRule.onNodeWithText("Cancel").performClick()
-        composeRule.onNodeWithText("Are you sure you want to leave the waiting list? You will give up your place in this lottery.").assertDoesNotExist()
+        composeRule.onNodeWithText("Leave waiting list?").assertIsDisplayed()
+        composeRule.onNodeWithText("You will not be in the draw for this campsite.").assertIsDisplayed()
+        composeRule.onNodeWithText("Stay").performClick()
+        composeRule.onNodeWithText("Leave waiting list?").assertDoesNotExist()
 
         // Open dialog and confirm Leave
         composeRule.onNodeWithText("Leave Waiting List").performScrollTo().performClick()
@@ -706,9 +707,9 @@ class LotteryIntentTest {
         composeRule.onNodeWithText("Leave").performClick()
 
         composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithText("Network failure").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("Couldn't leave the waiting list. Please try again.").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Network failure").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't leave the waiting list. Please try again.").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Leave Waiting List").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("On Waiting List").performScrollTo().assertIsDisplayed()
     }
