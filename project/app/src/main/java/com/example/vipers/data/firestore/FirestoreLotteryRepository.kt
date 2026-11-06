@@ -13,6 +13,9 @@ import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 /** Stores lotteries and their entries in Firestore. */
 class FirestoreLotteryRepository(
@@ -127,6 +130,20 @@ class FirestoreLotteryRepository(
             .whereEqualTo("lotteryId", lotteryId)
             .get().await()
             .documents.map { it.toLotteryEntry() }
+
+    /** Listens to [lotteryId]'s entries with a Firestore snapshot listener; stops when collection ends. */
+    override fun observeEntries(lotteryId: String): Flow<List<LotteryEntry>> = callbackFlow {
+        val registration = entries
+            .whereEqualTo("lotteryId", lotteryId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.documents?.map { it.toLotteryEntry() }.orEmpty())
+            }
+        awaitClose { registration.remove() }
+    }
 }
 
 /** Turns a lottery into the fields saved in its Firestore document. */

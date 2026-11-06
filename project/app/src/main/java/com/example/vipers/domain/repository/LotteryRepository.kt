@@ -7,6 +7,8 @@ package com.example.vipers.domain.repository
 
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /** Result of an atomic waiting list join operation. */
 sealed interface JoinWaitingListResult {
@@ -42,4 +44,13 @@ interface LotteryRepository {
      * [Lottery.waitlistCapacity] and preventing duplicate entries.
      */
     suspend fun joinWaitingList(entry: LotteryEntry): JoinWaitingListResult
+
+    /**
+     * Every entry in [lotteryId], sent again each time an entry is added, changed or removed, so a
+     * screen can show the waiting list live (US 02.09.01). The default sends the list once, so test
+     * doubles that don't need live updates still work; the Firestore and fake versions stay live.
+     */
+    fun observeEntries(lotteryId: String): Flow<List<LotteryEntry>> = flow {
+        emit(getEntries(lotteryId))
+    }
 }

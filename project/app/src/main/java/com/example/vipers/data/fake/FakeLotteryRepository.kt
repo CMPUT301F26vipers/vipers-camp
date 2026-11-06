@@ -10,6 +10,9 @@ import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -23,6 +26,9 @@ class FakeLotteryRepository(
     private val lotteries = initialLotteries.associateBy { it.id }.toMutableMap()
     private val entries = initialEntries.associateBy { it.id }.toMutableMap()
     private var nextId = 1
+
+    /** Every entry, sent again after each change so [observeEntries] behaves like a Firestore listener. */
+    private val allEntries = MutableStateFlow(entries.values.toList())
 
     init {
         for (entry in initialEntries) {
@@ -54,6 +60,7 @@ class FakeLotteryRepository(
     override suspend fun saveEntry(entry: LotteryEntry): Unit = mutex.withLock {
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
         entries[id] = entry.copy(id = id)
+        allEntries.value = entries.values.toList()
 
         val lottery = lotteries[entry.lotteryId]
         if (lottery != null) {
@@ -94,6 +101,7 @@ class FakeLotteryRepository(
         val id = LotteryEntry.idFor(entry.lotteryId, entry.userId)
         val saved = entry.copy(id = id, status = EntryStatus.WAITING)
         entries[id] = saved
+        allEntries.value = entries.values.toList()
         lotteries[entry.lotteryId] = lottery.copy(
             waitingUserIds = (lottery.waitingUserIds + entry.userId).distinct()
         )
@@ -107,4 +115,7 @@ class FakeLotteryRepository(
     override suspend fun getEntries(lotteryId: String): List<LotteryEntry> = mutex.withLock {
         entries.values.filter { it.lotteryId == lotteryId }
     }
+
+    override fun observeEntries(lotteryId: String): Flow<List<LotteryEntry>> =
+        allEntries.map { all -> all.filter { it.lotteryId == lotteryId } }
 }

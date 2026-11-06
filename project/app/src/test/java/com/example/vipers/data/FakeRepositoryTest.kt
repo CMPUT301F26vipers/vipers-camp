@@ -18,6 +18,7 @@ import com.example.vipers.domain.repository.JoinWaitingListResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -261,5 +262,30 @@ class FakeRepositoryTest {
         // user-2 is removed by an admin or leaves
         repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.REMOVED))
         assertEquals(0, repo.getLottery("lottery-1")?.waitingUserIds?.size)
+    }
+
+    @Test
+    fun observeEntries_sendsTheListAgainWhenAnEntryIsSaved() = runBlocking {
+        val repo = FakeLotteryRepository()
+        val updates = repo.observeEntries("lottery-1")
+        assertEquals(emptyList<LotteryEntry>(), updates.first())
+
+        repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1"))
+        // an entry in another lottery doesn't show up
+        repo.saveEntry(LotteryEntry(lotteryId = "lottery-2", userId = "user-2"))
+
+        assertEquals(listOf("user-1"), updates.first().map { it.userId })
+    }
+
+    @Test
+    fun observeEntries_showsStatusChangesSuchAsTheDrawResult() = runBlocking {
+        val repo = FakeLotteryRepository(
+            initialEntries = listOf(
+                LotteryEntry(id = "lottery-1_user-1", lotteryId = "lottery-1", userId = "user-1"),
+            ),
+        )
+        repo.saveEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1", status = EntryStatus.WON))
+
+        assertEquals(listOf(EntryStatus.WON), repo.observeEntries("lottery-1").first().map { it.status })
     }
 }
