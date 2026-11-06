@@ -142,6 +142,13 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | batchId | string? | groups one owner broadcast |
 | createdAt | number | ms |
 
+Computed, never stored (T-13): `target` is the screen a tap opens, a `NotificationTarget`
+(`OpenReserve(lotteryId)` for `WON`, `OpenReservation(reservationId)` for `RESERVATION_*`,
+`OpenThread(reservationId)` for `NEW_MESSAGE`, `OpenCampsite(campsiteId)` for `NOT_SELECTED`,
+`OWNER_BROADCAST` and `CAMPSITE_REMOVED`), or `null` if the ID it needs is missing.
+`displayCategory` is the label the inbox shows: "Won", "Not selected", "Reservation",
+"Owner message", "Message" or "Campsite removed".
+
 ### `messages`: `Message`
 Not used by a repository yet (added by the messaging story).
 
