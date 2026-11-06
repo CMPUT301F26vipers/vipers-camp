@@ -40,31 +40,43 @@ class NotificationsController(
     var isLoading by mutableStateOf(true)
         private set
 
+    /** "Couldn't load notifications" if the inbox couldn't be loaded, otherwise null (T-13). */
+    var error by mutableStateOf<String?>(null)
+        private set
+
     private val subscription = notificationService.listenToInbox(userId, this)
 
     /** Shows the latest [items], newest first, and ends loading (T-13). */
     override fun onInboxChanged(items: List<Notification>) {
         this.items = items
+        error = null
+        isLoading = false
+    }
+
+    /** Ends loading and sets [error], keeping any [items] already shown (T-13). */
+    override fun onInboxError() {
+        error = "Couldn't load notifications"
         isLoading = false
     }
 
     /**
-     * Opens [item]: marks it read in the background if it's unread, and returns the screen it
-     * opens, or null if it has nowhere to go (T-13).
+     * Opens [item]: marks it read in the background with [markRead] if it's unread, and returns
+     * the screen it opens, or null if it has nowhere to go (T-13).
      */
     fun open(item: Notification): NotificationTarget? {
-        if (!item.read) {
-            viewModelScope.launch {
-                try {
-                    notificationService.markRead(item.id)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // stays unread; the inbox listener shows the saved state
-                }
-            }
-        }
+        if (!item.read) viewModelScope.launch { markRead(item) }
         return item.target
+    }
+
+    /** Marks [item] read; if that fails it stays unread (T-13). Unit tests call it directly. */
+    suspend fun markRead(item: Notification) {
+        try {
+            notificationService.markRead(item.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // stays unread; the inbox listener shows the saved state
+        }
     }
 
     override fun onCleared() {

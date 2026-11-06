@@ -1,7 +1,8 @@
 /*
  * NotificationsControllerTest.kt
- * Unit tests for NotificationsController (T-13): the live inbox and opening a notification, using
- * the fake notification repository.
+ * Unit tests for NotificationsController (T-13): the live inbox, a failed load and opening a
+ * notification, using the fake notification repository. Marking read is a suspend fun, so the
+ * tests call it with runBlocking instead of going through viewModelScope.
  * Known issues: none.
  */
 package com.example.vipers.ui.notifications
@@ -14,29 +15,14 @@ import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.Subscription
 import com.example.vipers.domain.service.NotificationService
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 
 class NotificationsControllerTest {
-
-    @Before
-    fun setUp() {
-        // run viewModelScope work straight away in tests
-        Dispatchers.setMain(Dispatchers.Unconfined)
-    }
-
-    @After
-    fun tearDown() {
-        Dispatchers.resetMain()
-    }
 
     // Sam's inbox, saved out of order, plus one of Alex's
     private val samsWin = Notification(
@@ -58,6 +44,16 @@ class NotificationsControllerTest {
     private fun controllerFor(repo: NotificationRepository, userId: String = "sam") =
         NotificationsController(NotificationService(repo), userId)
 
+    /** A repository whose inbox listener is told the load failed, like Firestore denying the read. */
+    private fun failingToLoad(before: List<Notification>? = null) =
+        object : NotificationRepository by FakeNotificationRepository() {
+            override fun listenToInbox(recipientId: String, listener: InboxListener): Subscription {
+                before?.let { listener.onInboxChanged(it) }
+                listener.onInboxError()
+                return Subscription {}
+            }
+        }
+
     @Test
     fun items_onSubscribe_areTheUsersOwnNewestFirst() {
         val repo = FakeNotificationRepository(listOf(samsWin, alexsWin, samsOldNews, samsNewest))
@@ -65,6 +61,7 @@ class NotificationsControllerTest {
 
         assertEquals(listOf("new", "win", "old"), controller.items.map { it.id })
         assertFalse(controller.isLoading)
+        assertNull(controller.error)
     }
 
     @Test
@@ -93,18 +90,47 @@ class NotificationsControllerTest {
     }
 
     @Test
-    fun open_unreadItem_marksItRead() = runBlocking {
+    fun onInboxError_beforeTheInboxArrives_endsLoadingAndSetsError() {
+        val controller = controllerFor(failingToLoad())
+
+        assertFalse(controller.isLoading)
+        assertEquals("Couldn't load notifications", controller.error)
+        assertTrue(controller.items.isEmpty())
+    }
+
+    @Test
+    fun onInboxError_afterTheInboxArrived_keepsTheItems() {
+        val controller = controllerFor(failingToLoad(before = listOf(samsWin)))
+
+        assertEquals("Couldn't load notifications", controller.error)
+        assertEquals(listOf("win"), controller.items.map { it.id })
+    }
+
+    @Test
+    fun markRead_unreadItem_marksItRead() = runBlocking {
         val repo = FakeNotificationRepository(listOf(samsWin))
         val controller = controllerFor(repo)
 
-        controller.open(samsWin)
+        controller.markRead(samsWin)
 
         assertTrue(repo.getNotificationsFor("sam").single().read)
         assertTrue(controller.items.single().read)
     }
 
     @Test
-    fun open_readItem_doesNotMarkItAgain() {
+    fun markRead_whenTheRepositoryFails_leavesItUnread() = runBlocking {
+        val failing = object : NotificationRepository by FakeNotificationRepository(listOf(samsNewest)) {
+            override suspend fun markRead(id: String) = throw Exception("offline")
+        }
+        val controller = controllerFor(failing)
+
+        controller.markRead(samsNewest)
+
+        assertFalse(controller.items.single().read)
+    }
+
+    @Test
+    fun open_readItem_doesNotMarkItAgainAndReturnsItsTarget() {
         var markReadCalls = 0
         val counting = object : NotificationRepository by FakeNotificationRepository(listOf(samsOldNews)) {
             override suspend fun markRead(id: String) {
@@ -120,20 +146,10 @@ class NotificationsControllerTest {
     }
 
     @Test
-    fun open_won_returnsOpenReserveForTheLottery() {
-        val controller = controllerFor(FakeNotificationRepository(listOf(samsWin)))
+    fun open_readWin_returnsOpenReserveForTheLottery() {
+        val readWin = samsWin.copy(read = true)
+        val controller = controllerFor(FakeNotificationRepository(listOf(readWin)))
 
-        assertEquals(NotificationTarget.OpenReserve("may"), controller.open(samsWin))
-    }
-
-    @Test
-    fun open_whenMarkReadFails_stillReturnsTheTarget() {
-        val failing = object : NotificationRepository by FakeNotificationRepository(listOf(samsNewest)) {
-            override suspend fun markRead(id: String) = throw Exception("offline")
-        }
-        val controller = controllerFor(failing)
-
-        assertEquals(NotificationTarget.OpenReservation("r1"), controller.open(samsNewest))
-        assertFalse(controller.items.single().read)
+        assertEquals(NotificationTarget.OpenReserve("may"), controller.open(readWin))
     }
 }

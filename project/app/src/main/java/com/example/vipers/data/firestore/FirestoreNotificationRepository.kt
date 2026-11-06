@@ -3,9 +3,7 @@
  * The real NotificationRepository: saves and loads inbox items in the Firestore "notifications"
  * collection (Repository pattern).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
- * The inbox is sorted in the app instead of with orderBy, which would need an extra Firestore index.
- * If the live inbox listener gets an error, the listener isn't told and keeps the last inbox.
- */
+ * The inbox is sorted in the app instead of with orderBy, which would need an extra Firestore index. */
 package com.example.vipers.data.firestore
 
 import com.example.vipers.domain.model.Notification
@@ -46,8 +44,11 @@ class FirestoreNotificationRepository(
         val registration = collection
             .whereEqualTo("recipientId", recipientId)
             .addSnapshotListener { snapshot, error ->
-                // on an error (e.g. permission denied) keep showing the last inbox sent
-                if (error != null || snapshot == null) return@addSnapshotListener
+                // e.g. permission denied; Firestore stops this listener after an error
+                if (error != null || snapshot == null) {
+                    listener.onInboxError()
+                    return@addSnapshotListener
+                }
                 listener.onInboxChanged(
                     snapshot.documents.map { it.toNotification() }.sortedByDescending { it.createdAt },
                 )

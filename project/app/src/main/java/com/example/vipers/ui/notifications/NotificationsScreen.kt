@@ -56,7 +56,8 @@ import com.example.vipers.ui.theme.Shapes
 
 /**
  * The user's notification inbox (T-13): a loading indicator until the inbox arrives, then the
- * notifications from [controller], newest first, or "No notifications yet" if there are none.
+ * notifications from [controller], newest first, or "No notifications yet" if there are none
+ * ("Couldn't load notifications" if the inbox couldn't be loaded).
  * Tapping a row marks it read and calls the lambda for its target: [onOpenReserve] with the
  * lottery ID for a win (US 01.04.01), [onOpenCampsite], [onOpenReservation] or [onOpenThread]
  * with the campsite or reservation ID. A row with no target only gets marked read.
@@ -84,13 +85,7 @@ fun NotificationsScreen(
             controller.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.testTag("notifications_loading"))
             }
-            controller.items.isEmpty() -> Text(
-                "No notifications yet",
-                modifier = Modifier.fillMaxWidth().padding(32.dp),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
+            controller.items.isEmpty() -> InboxMessage(controller.error ?: "No notifications yet")
             else -> {
                 val now = System.currentTimeMillis()
                 LazyColumn(
@@ -109,6 +104,18 @@ fun NotificationsScreen(
             }
         }
     }
+}
+
+/** Grey centred [text] in place of the list, e.g. "No notifications yet" (T-13). */
+@Composable
+private fun InboxMessage(text: String) {
+    Text(
+        text,
+        modifier = Modifier.fillMaxWidth().padding(32.dp),
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
 }
 
 /**

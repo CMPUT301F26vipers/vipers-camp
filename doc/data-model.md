@@ -152,7 +152,8 @@ Computed, never stored (T-13): `target` is the screen a tap opens, a `Notificati
 
 The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
 that user's notifications, newest first, straight away and on every change, until the returned
-`Subscription` is cancelled. Firestore filters only by `recipientId` and sorts by `createdAt` on
+`Subscription` is cancelled. If the inbox can't be loaded (e.g. permission denied) it gets
+`onInboxError()` instead, and nothing more arrives. Firestore filters only by `recipientId` and sorts by `createdAt` on
 the device, so no composite index is needed. `Subscription` keeps Firestore's
 `ListenerRegistration` out of `domain/`.
 

@@ -273,6 +273,9 @@ class FakeRepositoryTest {
         override fun onInboxChanged(items: List<Notification>) {
             calls.add(items)
         }
+
+        // the fake never fails to load
+        override fun onInboxError() = throw AssertionError("the fake inbox never fails")
     }
 
     // Sam's win, sent at time 100
