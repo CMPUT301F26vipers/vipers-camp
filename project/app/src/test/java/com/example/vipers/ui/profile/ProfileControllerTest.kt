@@ -1,6 +1,7 @@
 /*
  * ProfileControllerTest.kt
- * Unit tests for ProfileController (T-01, US 01.07.03), using the fake profile repository.
+ * Unit tests for ProfileController (T-01, US 01.07.03) and its notifications switch (US 01.10.01),
+ * using the fake profile repository.
  * Known issues: none.
  */
 package com.example.vipers.ui.profile
@@ -312,5 +313,119 @@ class ProfileControllerTest {
         assertEquals("Another name", testController.name)
         assertFalse(testController.saved)
         assertFalse(testController.isSaving)
+    }
+
+    // Sam's saved profile, as Settings loads it; notifications are on by default (US 01.10.01)
+    private val sam = UserProfile(
+        id = "user1",
+        name = "Sam Patel",
+        email = "sam@example.com",
+        imageId = "profile-photo",
+        isAdmin = true,
+        createdAt = 1000L,
+    )
+
+    @Test
+    fun loadProfile_newProfile_hasNotificationsOn() {
+        val testController = ProfileController(FakeProfileRepository(listOf(sam)), "user1")
+
+        assertTrue(testController.notificationsEnabled)
+    }
+
+    @Test
+    fun loadProfile_showsNotificationsOffWhenTheProfileSaysSo() {
+        val repository = FakeProfileRepository(listOf(sam.copy(notificationsEnabled = false)))
+        val testController = ProfileController(repository, "user1")
+
+        assertFalse(testController.notificationsEnabled)
+    }
+
+    @Test
+    fun saveNotificationsEnabled_off_savesItAndKeepsTheOtherFields() = runBlocking {
+        val repository = FakeProfileRepository(listOf(sam))
+        val testController = ProfileController(repository, "user1")
+
+        testController.saveNotificationsEnabled(false)
+
+        assertFalse(testController.notificationsEnabled)
+        assertFalse(testController.notificationsSaveFailed)
+        assertEquals(sam.copy(notificationsEnabled = false), repository.getProfile("user1"))
+    }
+
+    @Test
+    fun saveNotificationsEnabled_off_isStillOffAfterRestarting() = runBlocking {
+        val repository = FakeProfileRepository(listOf(sam))
+        ProfileController(repository, "user1").saveNotificationsEnabled(false)
+
+        // a new controller is what the app makes after a restart
+        assertFalse(ProfileController(repository, "user1").notificationsEnabled)
+    }
+
+    @Test
+    fun saveNotificationsEnabled_backOn_savesItAgain() = runBlocking {
+        val repository = FakeProfileRepository(listOf(sam.copy(notificationsEnabled = false)))
+        val testController = ProfileController(repository, "user1")
+
+        testController.saveNotificationsEnabled(true)
+
+        assertTrue(testController.notificationsEnabled)
+        assertTrue(repository.getProfile("user1")!!.notificationsEnabled)
+    }
+
+    @Test
+    fun saveNotificationsEnabled_saveFails_setsTheSwitchBack() = runBlocking {
+        val fake = FakeProfileRepository(listOf(sam))
+        val failing = object : ProfileRepository by fake {
+            override suspend fun saveProfile(profile: UserProfile) {
+                throw IllegalStateException("Write failed")
+            }
+        }
+        val testController = ProfileController(failing, "user1")
+
+        testController.saveNotificationsEnabled(false)
+
+        assertTrue(testController.notificationsEnabled)
+        assertTrue(testController.notificationsSaveFailed)
+        assertTrue(fake.getProfile("user1")!!.notificationsEnabled)
+    }
+
+    @Test
+    fun saveNotificationsEnabled_noProfile_setsTheSwitchBackAndSavesNothing() = runBlocking {
+        val repository = FakeProfileRepository()
+        val testController = ProfileController(repository, "missing")
+
+        testController.saveNotificationsEnabled(false)
+
+        assertTrue(testController.notificationsEnabled)
+        assertTrue(testController.notificationsSaveFailed)
+        assertNull(repository.getProfile("missing"))
+    }
+
+    @Test
+    fun saveNotificationsEnabled_keepsANameSavedFromProfileAfterThisLoaded() = runBlocking {
+        val repository = FakeProfileRepository(listOf(sam))
+        val settings = ProfileController(repository, "user1")
+        repository.saveProfile(sam.copy(name = "Sam P."))
+
+        settings.saveNotificationsEnabled(false)
+
+        assertEquals("Sam P.", repository.getProfile("user1")!!.name)
+        assertFalse(repository.getProfile("user1")!!.notificationsEnabled)
+    }
+
+    @Test
+    fun saveProfile_keepsNotificationsOffSavedFromSettingsAfterThisLoaded() = runBlocking {
+        val repository = FakeProfileRepository(listOf(sam))
+        val profileScreen = ProfileController(repository, "user1")
+        // the user opens Settings from Profile and turns notifications off
+        ProfileController(repository, "user1").saveNotificationsEnabled(false)
+
+        profileScreen.onNameChange("Sam Patel-Lee")
+        profileScreen.saveProfile()
+
+        val saved = repository.getProfile("user1")!!
+        assertEquals("Sam Patel-Lee", saved.name)
+        assertFalse(saved.notificationsEnabled)
+        assertTrue(profileScreen.saved)
     }
 }
