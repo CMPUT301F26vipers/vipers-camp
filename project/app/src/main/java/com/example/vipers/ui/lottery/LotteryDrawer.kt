@@ -18,6 +18,7 @@ import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.service.DrawResult
 import com.example.vipers.domain.service.NotificationService
 import java.util.Random
@@ -41,18 +42,21 @@ sealed class LotteryDrawResult {
  * @param lotteryRepository Repository to access lotteries, entries, and manifests.
  * @param notificationRepository Repository to deliver idempotent inbox notifications.
  * @param campsiteRepository Repository to resolve campsite names.
+ * @param profileRepository Repository that tells which entrants turned notifications off
+ *   (US 01.10.01).
  * @param random Injected [Random] instance for reproducible, testable draws.
  * @param notificationService Sends the winners' "You won" (US 01.03.01) and the losers' "Not
- *   selected" (US 01.03.02) notices; by default one built from [notificationRepository] and
- *   [campsiteRepository].
+ *   selected" (US 01.03.02) notices; by default one built from [notificationRepository],
+ *   [campsiteRepository] and [profileRepository].
  */
 class LotteryDrawer(
     private val lotteryRepository: LotteryRepository,
     private val notificationRepository: NotificationRepository,
     private val campsiteRepository: CampsiteRepository,
+    private val profileRepository: ProfileRepository,
     private val random: Random = Random(),
     private val notificationService: NotificationService =
-        NotificationService(notificationRepository, campsiteRepository),
+        NotificationService(notificationRepository, campsiteRepository, profileRepository),
 ) {
 
     /**

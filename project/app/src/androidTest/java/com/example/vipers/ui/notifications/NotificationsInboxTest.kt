@@ -74,7 +74,11 @@ class NotificationsInboxTest {
     /** Shows the Notifications screen for "test-device" with [notifications] in a fake repository. */
     private fun openScreen(notifications: List<Notification>) {
         val controller = NotificationsController(
-            NotificationService(FakeNotificationRepository(notifications), FakeCampsiteRepository()),
+            NotificationService(
+                FakeNotificationRepository(notifications),
+                FakeCampsiteRepository(),
+                FakeProfileRepository(),
+            ),
             userId = "test-device",
         )
         composeRule.setContent {

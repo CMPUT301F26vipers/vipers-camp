@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
@@ -81,7 +82,8 @@ class WinNotificationTest {
     private val campsites = FakeCampsiteRepository(listOf(hinton))
     private val lotteries = FakeLotteryRepository(listOf(mayLottery), waiting)
     private val notifications = FakeNotificationRepository()
-    private val drawer = LotteryDrawer(lotteries, notifications, campsites, Random(42))
+    private val drawer =
+        LotteryDrawer(lotteries, notifications, campsites, FakeProfileRepository(), Random(42))
 
     // the lottery ID the screen last asked to reserve for
     private var reservedFor: String? = null
@@ -96,7 +98,7 @@ class WinNotificationTest {
     /** Shows this device's Notifications screen, reading the fake inbox the draw wrote to. */
     private fun openNotifications() {
         val controller = NotificationsController(
-            NotificationService(notifications, campsites),
+            NotificationService(notifications, campsites, FakeProfileRepository()),
             userId = "test-device",
         )
         composeRule.setContent {
