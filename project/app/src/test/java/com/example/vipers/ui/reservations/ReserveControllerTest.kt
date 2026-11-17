@@ -1,8 +1,9 @@
 /*
  * ReserveControllerTest.kt
- * Unit tests for ReserveController (US 01.04.01, T-03, US 01.04.03): which nights a winner can
- * pick, where the win stands during and after the booking period, picking nights in a row, group
- * size, reserving nights and handling conflicts, and declining the win, using fake repositories.
+ * Unit tests for ReserveController (US 01.04.01, T-03, US 01.04.03, US 02.11.01): which nights a
+ * winner can pick, where the win stands during and after the booking period, picking nights in a
+ * row, group size, campsite rules acceptance, reserving nights and handling conflicts, and
+ * declining the win, using fake repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -354,6 +355,7 @@ class ReserveControllerTest {
         controller.onNightTap("2027-05-22")
         controller.onNightTap("2027-05-23")
         controller.onGroupSizeChange(5)
+        controller.onRulesAcceptedChange(true, duringBooking)
 
         val result = controller.reserveNights(duringBooking)
         assertTrue(result is ReserveResult.Success)
@@ -364,6 +366,7 @@ class ReserveControllerTest {
         assertEquals("2027-05-24", reservation?.checkOut)
         assertEquals(5, reservation?.groupSize)
         assertEquals(10000L, reservation?.totalPriceCents)
+        assertEquals(duringBooking, reservation?.rulesAcceptedAt)
         assertEquals(OfferState.USED, controller.offerState)
         assertNull(controller.reserveError)
         assertFalse(controller.isReserving)
@@ -401,6 +404,7 @@ class ReserveControllerTest {
 
         controller.onNightTap("2027-05-22")
         controller.onNightTap("2027-05-23")
+        controller.onRulesAcceptedChange(true, duringBooking)
 
         // Another winner books May 22 while Sam was viewing the screen
         val cal = campsites.getAvailability("hinton")
@@ -433,6 +437,7 @@ class ReserveControllerTest {
     fun dismissConfirmation_clearsConfirmedReservation() = runBlocking {
         val controller = loaded()
         controller.onNightTap("2027-05-22")
+        controller.onRulesAcceptedChange(true, duringBooking)
         controller.reserveNights(duringBooking)
         assertNotNull(controller.confirmedReservation)
 
@@ -466,6 +471,7 @@ class ReserveControllerTest {
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
+        controller.onRulesAcceptedChange(true, duringBooking)
 
         assertEquals("Total $65.50", controller.totalText)
 
@@ -497,6 +503,7 @@ class ReserveControllerTest {
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
+        controller.onRulesAcceptedChange(true, duringBooking)
 
         val result = controller.reserveNights(duringBooking)
         assertTrue(result is ReserveResult.Success)
@@ -508,6 +515,47 @@ class ReserveControllerTest {
         assertEquals("Reservation confirmed", notice.title)
         assertTrue(notice.message.contains(hinton.name))
         assertEquals((result as ReserveResult.Success).reservation.id, notice.reservationId)
+    }
+
+    // US 02.11.01: rules acceptance before reserving
+
+    @Test
+    fun onRulesAcceptedChange_updatesAcceptedAndTimestamp() = runBlocking {
+        val controller = loaded()
+        assertFalse(controller.rulesAccepted)
+        assertNull(controller.rulesAcceptedAt)
+
+        controller.onRulesAcceptedChange(true, 12345L)
+        assertTrue(controller.rulesAccepted)
+        assertEquals(12345L, controller.rulesAcceptedAt)
+
+        controller.onRulesAcceptedChange(false)
+        assertFalse(controller.rulesAccepted)
+        assertNull(controller.rulesAcceptedAt)
+    }
+
+    @Test
+    fun reserveNights_failsWhenRulesNotAccepted() = runBlocking {
+        val controller = loaded()
+        controller.onNightTap("2027-05-22")
+        assertFalse(controller.rulesAccepted)
+
+        val result = controller.reserveNights(duringBooking)
+        assertTrue(result is ReserveResult.Error)
+        assertEquals("You must accept the rules and policies to reserve.", controller.reserveError)
+        assertNull(controller.confirmedReservation)
+    }
+
+    @Test
+    fun reserveNights_savesRulesAcceptedAtTimestamp() = runBlocking {
+        val controller = loaded()
+        controller.onNightTap("2027-05-22")
+        val acceptedAt = duringBooking - 5000L
+        controller.onRulesAcceptedChange(true, acceptedAt)
+
+        val result = controller.reserveNights(duringBooking)
+        assertTrue(result is ReserveResult.Success)
+        assertEquals(acceptedAt, controller.confirmedReservation?.rulesAcceptedAt)
     }
 
     // US 01.04.03: declining the win

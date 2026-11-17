@@ -163,12 +163,15 @@ package "controllers (ViewModels)" {
     freeNights: List<String>
     selectedNights: List<String>
     groupSize: Int
+    rulesAccepted: Boolean
+    rulesAcceptedAt: Long?
     confirmedReservation: Reservation?
     canDecline: Boolean
     totalText: String?
     suspend fetchData(now: Long)
     onNightTap(night: String)
     onGroupSizeChange(newSize: Int)
+    onRulesAcceptedChange(accepted: Boolean, now: Long)
     suspend reserveNights(now: Long): ReserveResult
     suspend decline(now: Long)
   }

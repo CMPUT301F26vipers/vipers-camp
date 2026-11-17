@@ -173,6 +173,7 @@ class ReceiveReservationConfirmationTest {
         controller.onNightTap("2027-05-23")
         controller.incrementGroupSize()
         controller.incrementGroupSize()
+        controller.onRulesAcceptedChange(true, now)
 
         val result = controller.reserveNights(now)
         assertTrue(result is ReserveResult.Success)
