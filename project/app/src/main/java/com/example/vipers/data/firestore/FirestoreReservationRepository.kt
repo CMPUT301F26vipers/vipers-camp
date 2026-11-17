@@ -3,7 +3,7 @@
  * The real ReservationRepository: saves and loads reservations in the Firestore "reservations"
  * collection (Repository pattern).
  * Supports atomic reservation transactions with conflict checks (T-03) and saves confirmation
- * notifications (US 01.05.01).
+ * notifications (US 01.05.01). Cancelling or rejecting is one transaction too (US 01.07.01).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  */
 package com.example.vipers.data.firestore
@@ -193,6 +193,50 @@ class FirestoreReservationRepository(
         } catch (e: Exception) {
             ReserveResult.Error(e.message ?: "Failed to complete reservation")
         }
+    }
+
+    override suspend fun changeStatus(
+        id: String,
+        status: ReservationStatus,
+        reason: String?,
+        now: Long,
+    ): Boolean {
+        require(status != ReservationStatus.CONFIRMED) { "Can only cancel or reject" }
+        val reservationDoc = collection.document(id)
+
+        return db.runTransaction { tx ->
+            val reservationSnap = tx.get(reservationDoc)
+            if (!reservationSnap.exists()) return@runTransaction false
+            val reservation = reservationSnap.toReservation()
+            // another device may have cancelled or rejected it first
+            if (reservation.status != ReservationStatus.CONFIRMED) return@runTransaction false
+
+            val availabilityDoc = availability.document(reservation.campsiteId)
+            val availabilitySnap = tx.get(availabilityDoc)
+
+            val changed = reservation.copy(
+                status = status,
+                statusChangedAt = now,
+                rejectionReason = if (status == ReservationStatus.REJECTED) reason else null,
+            )
+            tx.update(
+                reservationDoc,
+                mapOf(
+                    "status" to changed.status.name,
+                    "statusChangedAt" to changed.statusChangedAt,
+                    "rejectionReason" to changed.rejectionReason,
+                ),
+            )
+
+            if (availabilitySnap.exists()) {
+                val heldNights = availabilitySnap.getStringList("heldNights")
+                tx.update(availabilityDoc, "heldNights", heldNights - reservation.nights().toSet())
+            }
+
+            val notice = changed.statusNotice(now)
+            tx.set(notifications.document(notice.id), notice.toMap(), SetOptions.merge())
+            true
+        }.await()
     }
 }
 

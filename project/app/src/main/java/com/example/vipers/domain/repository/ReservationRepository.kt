@@ -1,12 +1,14 @@
 /*
  * ReservationRepository.kt
  * What the app can do with reservations, without saying how they are stored (Repository pattern).
- * Booking nights holds them in a transaction (T-03).
- * Known issues: cancelling and rejecting release nights in a transaction and are added by those stories.
+ * Booking nights holds them in a transaction (T-03); cancelling or rejecting gives them back in
+ * one too (US 01.07.01).
+ * Known issues: none.
  */
 package com.example.vipers.domain.repository
 
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.ReservationStatus
 
 /** Result of an atomic reservation attempt (T-03). */
 sealed interface ReserveResult {
@@ -56,4 +58,23 @@ interface ReservationRepository {
         groupSize: Int,
         now: Long = System.currentTimeMillis(),
     ): ReserveResult
+
+    /**
+     * Moves a CONFIRMED reservation to [status], which is CANCELLED (by the entrant, US 01.07.01)
+     * or REJECTED (by the owner, US 02.08.01), all in one transaction:
+     * sets [status] and statusChangedAt to [now], saves [reason] as the rejectionReason (only for
+     * REJECTED), takes the reservation's nights out of the campsite's heldNights, and writes the
+     * RESERVATION_CANCELLED or RESERVATION_REJECTED notification to the entrant.
+     * The lottery entry stays RESERVED.
+     *
+     * @return true if the status changed; false if the reservation doesn't exist or isn't
+     * CONFIRMED any more (e.g. it was already cancelled on another device).
+     * @throws IllegalArgumentException if [status] is CONFIRMED.
+     */
+    suspend fun changeStatus(
+        id: String,
+        status: ReservationStatus,
+        reason: String? = null,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean
 }
