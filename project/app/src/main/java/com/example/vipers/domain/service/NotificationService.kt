@@ -16,6 +16,7 @@ import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.Subscription
+import kotlinx.coroutines.CancellationException
 import java.text.DateFormat
 import java.util.Date
 
@@ -44,13 +45,22 @@ class NotificationService(
 
     /**
      * The users in [userIds] who still want notifications, in the same order and without
-     * duplicates (US 01.10.01). A user is dropped only when their profile has notifications
-     * turned off; a user with no profile is kept. Every place that sends a notification to a
-     * user calls this first, so the Settings switch works everywhere.
+     * duplicates (US 01.10.01). A user is dropped only when their profile says notifications are
+     * off. A user with no profile, or whose profile can't be read, is kept, so one failed read
+     * doesn't stop everyone else's notifications. Every place that sends a notification to a user
+     * calls this first, so the Settings switch works everywhere.
      */
     suspend fun optedIn(userIds: List<String>): List<String> =
-        userIds.distinct().filter { userId ->
+        userIds.distinct().filter { userId -> wantsNotifications(userId) }
+
+    // False only when the user's saved profile has notifications turned off.
+    private suspend fun wantsNotifications(userId: String): Boolean =
+        try {
             profileRepository.getProfile(userId)?.notificationsEnabled ?: true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            true
         }
 
     /**

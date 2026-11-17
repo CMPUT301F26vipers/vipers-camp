@@ -17,6 +17,7 @@ import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.NotificationRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -352,5 +353,35 @@ class NotificationServiceTest {
 
         val rileyIds = notifications.getNotificationsFor("riley").map { it.id }
         assertEquals(listOf("draw_june_riley"), rileyIds)
+    }
+
+    @Test
+    fun optedIn_profileThatCantBeRead_keepsThatUserAndChecksTheOthers() = runBlocking {
+        // Jo's profile read fails (e.g. offline); Riley's says notifications are off
+        val flaky = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? {
+                if (id == "jo") throw IllegalStateException("Read failed")
+                return profiles.getProfile(id)
+            }
+        }
+        val service = NotificationService(notifications, campsites, flaky)
+
+        assertEquals(listOf("sam", "jo"), service.optedIn(listOf("sam", "jo", "riley")))
+    }
+
+    @Test
+    fun sendDrawResults_oneProfileReadFails_stillSendsEveryoneElsesNotices() = runBlocking {
+        val flaky = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? {
+                if (id == "sam") throw IllegalStateException("Read failed")
+                return profiles.getProfile(id)
+            }
+        }
+        NotificationService(notifications, campsites, flaky)
+            .sendDrawResults(DrawResult(hintonLottery, listOf("sam"), listOf("jo", "riley")))
+
+        assertEquals(1, notifications.getNotificationsFor("sam").size)
+        assertEquals(1, notifications.getNotificationsFor("jo").size)
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
     }
 }
