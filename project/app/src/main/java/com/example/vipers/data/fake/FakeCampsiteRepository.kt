@@ -40,6 +40,8 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
             pricePerNightCents = campsite.pricePerNightCents,
             rules = campsite.rules,
             cancellationPolicy = campsite.cancellationPolicy,
+            lat = campsite.lat,
+            lng = campsite.lng,
         )
     }
 
