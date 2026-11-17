@@ -3,8 +3,9 @@
  * The owner's view of one of their campsites (mockup O04, US 02.01.04): all its saved details,
  * buttons to manage it, and its lotteries with a Create Lottery button (US 02.04.01).
  * OwnerCampsiteController loads the data.
- * Known issues: the photo and map are placeholders until 02.01.02b and 02.01.02c, and the QR Code
- * button stays off until 02.02.01.
+ * Known issues: the photo is a placeholder until 02.01.02b. The map box shows the map location's
+ * coordinates (US 02.01.02c), and is hidden when there is none, until T-04 draws a map there.
+ * The QR Code button stays off until 02.02.01.
  */
 package com.example.vipers.ui.campsites
 
@@ -122,7 +123,7 @@ fun OwnerCampsiteScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    PhotoAndMap()
+                    PhotoAndMap(campsite)
                     Text(
                         text = campsite.name,
                         style = MaterialTheme.typography.titleLarge,
@@ -180,16 +181,37 @@ fun OwnerCampsiteScreen(
     }
 }
 
-/** The photo and map boxes at the top; placeholders until 02.01.02b and 02.01.02c. */
+/**
+ * The photo and map boxes at the top. The photo is a placeholder until 02.01.02b. The map box shows
+ * [campsite]'s map coordinates (US 02.01.02c) until T-04 puts a map there, and isn't shown at all
+ * when the campsite has no map location.
+ */
 @Composable
-private fun PhotoAndMap() {
+private fun PhotoAndMap(campsite: Campsite) {
+    val coordinates = campsite.coordinatesText()
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        for (icon in listOf(R.drawable.ic_image, R.drawable.ic_campsite)) {
-            Box(
-                Modifier.weight(1f).height(96.dp).background(GreenFill, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
+        Box(
+            Modifier.weight(1f).height(96.dp).background(GreenFill, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(R.drawable.ic_image), contentDescription = null, tint = Primary)
+        }
+        if (coordinates != null) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .height(96.dp)
+                    .background(GreenFill, RoundedCornerShape(12.dp))
+                    .testTag("owner_map_location"),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(painterResource(icon), contentDescription = null, tint = Primary)
+                Icon(
+                    painterResource(R.drawable.ic_campsite),
+                    contentDescription = null,
+                    tint = Primary,
+                )
+                Text(coordinates, style = MaterialTheme.typography.bodySmall, color = TextMuted)
             }
         }
     }
