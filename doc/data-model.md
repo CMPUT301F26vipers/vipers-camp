@@ -133,6 +133,11 @@ winner; that is the replacement draw (T-12). Transactions need a connection, so 
 
 **Active** = `CONFIRMED` and check-out is today or later. Everything else is **Past**.
 
+A reservation is created by `createReservation(lotteryId, campsiteId, userId, nights, groupSize,
+rulesAcceptedAt, now)` in an atomic transaction (T-03, US 02.11.01). It verifies the entrant won
+the lottery, booking is open, nights are offered and unheld, records the entrant's
+`rulesAcceptedAt` timestamp, and marks the entrant's `LotteryEntry` as `RESERVED`.
+
 ### `notifications`: `Notification` (`NotificationRepository`)
 
 | Field | Type | Notes |

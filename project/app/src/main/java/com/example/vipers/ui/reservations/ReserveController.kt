@@ -336,6 +336,7 @@ class ReserveController(
                 userId = userId,
                 nights = selectedNights,
                 groupSize = groupSize,
+                rulesAcceptedAt = now,
                 now = now,
             )
             when (result) {

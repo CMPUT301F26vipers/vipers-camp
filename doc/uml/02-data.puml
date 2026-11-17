@@ -60,7 +60,7 @@ package "domain.repository" {
     suspend getReservation(id: String): Reservation?
     suspend getReservationsForUser(userId: String): List<Reservation>
     suspend getReservationsForOwner(ownerId: String): List<Reservation>
-    suspend createReservation(lotteryId, campsiteId, userId, nights, groupSize, now): ReserveResult
+    suspend createReservation(lotteryId, campsiteId, userId, nights, groupSize, rulesAcceptedAt, now): ReserveResult
   }
 
   interface NotificationRepository {
@@ -184,7 +184,8 @@ end note
 note top of ReservationRepository
   createReservation runs one transaction:
   it holds the nights, sets the entry to
-  RESERVED, saves the reservation and its
+  RESERVED, records rulesAcceptedAt, saves
+  the reservation and its
   RESERVATION_CONFIRMED notification, or
   returns Conflict if the nights were taken.
 end note

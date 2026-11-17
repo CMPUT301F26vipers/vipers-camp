@@ -580,6 +580,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01", "2027-06-02"),
             groupSize = 3,
+            rulesAcceptedAt = 1900,
             now = 2000,
         )
 
@@ -592,6 +593,7 @@ class FakeRepositoryTest {
         assertEquals(10000L, reservation.totalPriceCents)
         assertEquals("$100", reservation.totalPriceText)
         assertEquals(3, reservation.groupSize)
+        assertEquals(1900L, reservation.rulesAcceptedAt)
         assertEquals(ReservationStatus.CONFIRMED, reservation.status)
 
         // Campsite calendar now holds those nights
@@ -637,6 +639,7 @@ class FakeRepositoryTest {
             userId = "user-2",
             nights = listOf("2027-06-01", "2027-06-02"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -667,6 +670,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 6,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -696,6 +700,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 6000,
             now = 6000,
         )
         assertEquals(ReserveResult.NotEligible, resultExpired)
@@ -708,6 +713,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
         assertEquals(ReserveResult.NotEligible, resultNotWon)
@@ -742,6 +748,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -781,6 +788,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-05"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -834,6 +842,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -850,5 +859,49 @@ class FakeRepositoryTest {
         assertEquals("site-1", notice.campsiteId)
         assertEquals("lot-1", notice.lotteryId)
         assertEquals(NotificationTarget.OpenReservation(reservation.id), notice.target)
+    }
+
+    @Test
+    fun createReservation_savesRulesAcceptedAtTimestamp() = runBlocking {
+        val campsite = Campsite(id = "site-1", ownerId = "owner-1", maxOccupancy = 4)
+        val calendar = AvailabilityCalendar(
+            campsiteId = "site-1",
+            openNights = listOf("2027-06-01"),
+        )
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        campsiteRepo.saveAvailability(calendar)
+
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
+        val entry = LotteryEntry(
+            id = "lot-1_user-1",
+            lotteryId = "lot-1",
+            userId = "user-1",
+            status = EntryStatus.WON,
+        )
+        val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
+        val reservationRepo = FakeReservationRepository(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+        )
+
+        val result = reservationRepo.createReservation(
+            lotteryId = "lot-1",
+            campsiteId = "site-1",
+            userId = "user-1",
+            nights = listOf("2027-06-01"),
+            groupSize = 2,
+            rulesAcceptedAt = 1850,
+            now = 2000,
+        )
+
+        assertTrue(result is ReserveResult.Success)
+        val reservation = (result as ReserveResult.Success).reservation
+        assertEquals(1850L, reservation.rulesAcceptedAt)
     }
 }

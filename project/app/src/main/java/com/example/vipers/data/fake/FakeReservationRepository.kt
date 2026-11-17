@@ -1,8 +1,9 @@
 /*
  * FakeReservationRepository.kt
  * An in-memory ReservationRepository for unit and intent tests (test double for Repository).
- * Supports atomic reservation transactions with conflict checks (T-03) and sends confirmation
- * notifications to the entrant's inbox (US 01.05.01).
+ * Supports atomic reservation transactions with conflict checks (T-03), sends confirmation
+ * notifications to the entrant's inbox (US 01.05.01), and records rules acceptance time
+ * (US 02.11.01).
  * Known issues: none.
  */
 package com.example.vipers.data.fake
@@ -83,6 +84,7 @@ class FakeReservationRepository(
         userId: String,
         nights: List<String>,
         groupSize: Int,
+        rulesAcceptedAt: Long,
         now: Long,
     ): ReserveResult = mutex.withLock {
         if (nights.isEmpty()) return ReserveResult.Error("No nights selected")
@@ -154,7 +156,7 @@ class FakeReservationRepository(
             checkOut = checkOut,
             groupSize = groupSize,
             totalPriceCents = totalPriceCents,
-            rulesAcceptedAt = now,
+            rulesAcceptedAt = rulesAcceptedAt,
             status = ReservationStatus.CONFIRMED,
             statusChangedAt = now,
         )
