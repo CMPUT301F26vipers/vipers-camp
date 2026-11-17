@@ -3,9 +3,9 @@
  * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details or the win
  * notification when the user won a lottery. It shows the reserve-by date, the campsite, the
  * lottery's nights with the taken ones greyed out, the nightly price times the picked nights and
- * total, the group size selector, the Reserve action button (T-03), the confirmation dialog
- * (01.05.01), and the campsite rules. A winner can decline the win here (US 01.04.03, mockup E12).
- * ReserveController does the work.
+ * total, the group size selector, campsite rules and cancellation policy with acceptance checkbox
+ * (US 02.11.01), the Reserve action button (T-03), the confirmation dialog (01.05.01), and a
+ * Decline option (US 01.04.03, mockup E12). ReserveController does the work.
  * Known issues: choosing between several campsites (01.04.02) is added by that story. Declining
  * doesn't pick a replacement winner yet (T-12).
  */
@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -34,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -183,7 +185,36 @@ fun ReserveScreen(
                     )
                 }
                 HorizontalDivider(color = Divider)
-                RulesAndPolicySection(campsite)
+                RulesAndPolicySection(
+                    campsite = campsite,
+                    emptyRulesText = "No specific rules",
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = controller.offerState == OfferState.OPEN) {
+                            controller.onRulesAcceptedChange(!controller.rulesAccepted)
+                        }
+                        .testTag("row_accept_rules"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = controller.rulesAccepted,
+                        onCheckedChange = { checked ->
+                            controller.onRulesAcceptedChange(checked)
+                        },
+                        enabled = controller.offerState == OfferState.OPEN,
+                        modifier = Modifier.testTag("checkbox_accept_rules"),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "I have read and accept",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMain,
+                        modifier = Modifier.testTag("text_accept_rules"),
+                    )
+                }
 
                 if (controller.reserveError != null) {
                     Text(
@@ -199,7 +230,9 @@ fun ReserveScreen(
 
                 Button(
                     onClick = controller::reserve,
-                    enabled = controller.offerState == OfferState.OPEN && !controller.isReserving,
+                    enabled = controller.offerState == OfferState.OPEN &&
+                        controller.rulesAccepted &&
+                        !controller.isReserving,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     modifier = Modifier
