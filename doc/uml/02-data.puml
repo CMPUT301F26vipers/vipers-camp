@@ -61,6 +61,7 @@ package "domain.repository" {
     suspend getReservationsForUser(userId: String): List<Reservation>
     suspend getReservationsForOwner(ownerId: String): List<Reservation>
     suspend createReservation(lotteryId, campsiteId, userId, nights, groupSize, now): ReserveResult
+    suspend changeStatus(id, status, reason, now): Boolean
   }
 
   interface NotificationRepository {
@@ -187,6 +188,9 @@ note top of ReservationRepository
   RESERVED, saves the reservation and its
   RESERVATION_CONFIRMED notification, or
   returns Conflict if the nights were taken.
+  changeStatus (cancel or reject) is one
+  transaction too: it sets the status, gives
+  the nights back and saves the notice.
 end note
 
 note bottom of NotificationRepository
