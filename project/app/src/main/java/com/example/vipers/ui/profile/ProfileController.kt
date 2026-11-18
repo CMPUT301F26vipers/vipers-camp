@@ -5,7 +5,10 @@
  * under this device's ID (US 01.09.01).
  * Known issues: Saving doesn't wait for the server (so it works offline).
  * If Firestore rejects the write, the app still opens Home, and Welcome
- * appears again on the next launch.
+ * appears again on the next launch. Saving the Profile form and the Settings switch first reads
+ * the latest saved profile (so they don't undo each other's changes). Offline, that read only
+ * works if the profile is in Firestore's cache on the phone; if it isn't, saving shows
+ * "Couldn't save" instead of saving for later.
  */
 package com.example.vipers.ui.profile
 

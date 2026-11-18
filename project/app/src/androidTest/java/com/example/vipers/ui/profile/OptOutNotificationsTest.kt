@@ -10,6 +10,9 @@
 package com.example.vipers.ui.profile
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -148,9 +151,26 @@ class OptOutNotificationsTest {
 
     @Test
     fun switchIsStillOffAfterRestarting() {
-        // what Settings loads after the app restarts with notifications turned off
-        openSettings(FakeProfileRepository(listOf(sam.copy(notificationsEnabled = false))))
+        val profiles = FakeProfileRepository(listOf(sam))
+        // the screen shows whichever controller this holds; a new one stands for a restart
+        var controller by mutableStateOf(ProfileController(profiles, "test-device"))
+        composeRule.setContent {
+            VipersTheme {
+                SettingsScreen(
+                    onBack = {},
+                    onOpenPolicy = {},
+                    onLoadDemoData = {},
+                    controller = controller,
+                )
+            }
+        }
+        switch().performClick()
+        waitForSaved(profiles, on = false)
 
+        // "restart": a new controller loads the profile again from the same repository
+        controller = ProfileController(profiles, "test-device")
+
+        composeRule.waitUntil(5_000) { !controller.isLoading }
         switch().assertIsOff()
         composeRule.onNodeWithText("Off: no lottery results or messages will be sent to you")
             .assertIsDisplayed()
