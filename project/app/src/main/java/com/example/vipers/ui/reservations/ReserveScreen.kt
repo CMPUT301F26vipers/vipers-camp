@@ -209,7 +209,7 @@ fun ReserveScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "I have read and accept",
+                        text = "I accept the campsite rules",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextMain,
                         modifier = Modifier.testTag("text_accept_rules"),
