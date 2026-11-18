@@ -1,6 +1,6 @@
 /*
  * LotteryController.kt
- * The controller (a ViewModel) handling the creation logic and date availability mapping for a new lottery.
+ * The controller (a ViewModel) handling the creation and editing logic and date availability mapping for a lottery.
  * Known issues: none.
  */
 package com.example.vipers.ui.lottery
@@ -17,24 +17,28 @@ import com.example.vipers.CampApp
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryStatus
 import com.example.vipers.domain.model.validateLottery
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.UpdateLotteryResult
+import com.example.vipers.ui.campsites.FormMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
+import java.time.ZoneId
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 /**
- * ViewModel controller for managing the creation of a new lottery for a campsite.
+ * ViewModel controller for managing the creation and editing of a lottery for a campsite.
  *
  * @param campsiteRepository Repository to access campsite details and availability.
- * @param lotteryRepository Repository to store new lotteries.
+ * @param lotteryRepository Repository to store and update lotteries.
  * @param ownerId Device ID of the current user.
- * @param campsiteId ID of the campsite for which the lottery is created.
+ * @param campsiteId ID of the campsite for which the lottery is created or edited.
  */
 class LotteryController(
     private val campsiteRepository: CampsiteRepository,
@@ -42,6 +46,30 @@ class LotteryController(
     private val ownerId: String,
     private val campsiteId: String,
 ) : ViewModel() {
+
+    /** Whether the form is creating a new lottery or editing an existing one (US 02.04.06). */
+    var mode by mutableStateOf(FormMode.CREATE)
+        private set
+
+    /** The saved lottery being edited, or null when creating (US 02.04.06). */
+    var loadedLottery by mutableStateOf<Lottery?>(null)
+        private set
+
+    /** True if the lottery to edit is not owned by this owner or does not exist (US 02.04.06). */
+    var notAllowed by mutableStateOf(false)
+        private set
+
+    /** True if loading the lottery or campsite failed (US 02.04.06). */
+    var loadFailed by mutableStateOf(false)
+        private set
+
+    /** True if the loaded lottery's stored status is no longer UPCOMING or OPEN (US 02.04.06). */
+    var isReadOnly by mutableStateOf(false)
+        private set
+
+    /** User-facing explanation for why editing is disabled when [isReadOnly] is true (US 02.04.06). */
+    var readOnlyReason by mutableStateOf<String?>(null)
+        private set
 
     var campsite by mutableStateOf<Campsite?>(null)
         private set
@@ -109,6 +137,10 @@ class LotteryController(
 
     /** Loads the campsite details and current availability calendar. Unit tests can call it directly. */
     suspend fun fetchCampsiteData() {
+        if (campsiteId.isBlank()) {
+            loading = false
+            return
+        }
         loading = true
         error = null
         try {
@@ -124,6 +156,81 @@ class LotteryController(
             throw e
         } catch (e: Exception) {
             error = "Unable to load campsite availability."
+        } finally {
+            loading = false
+        }
+    }
+
+    /** Loads an existing lottery for editing in the background (US 02.04.06). */
+    fun loadForEdit(lotteryId: String) {
+        viewModelScope.launch { fetchLotteryForEdit(lotteryId) }
+    }
+
+    /**
+     * Loads the existing lottery with [lotteryId] for editing (US 02.04.06).
+     *
+     * Validates owner identity and stored lottery status. If valid, switches to [FormMode.EDIT]
+     * and pre-fills the form fields. If status is CLOSED, DRAWN, or REMOVED, sets [isReadOnly] with
+     * a clear user-facing explanation in [readOnlyReason].
+     */
+    suspend fun fetchLotteryForEdit(
+        lotteryId: String,
+        now: Long = System.currentTimeMillis(),
+    ) {
+        loading = true
+        error = null
+        notAllowed = false
+        loadFailed = false
+        isReadOnly = false
+        readOnlyReason = null
+
+        try {
+            val stored = lotteryRepository.getLottery(lotteryId)
+            if (stored == null || stored.ownerId != ownerId) {
+                notAllowed = true
+                error = "Lottery not found or you do not own it."
+                return
+            }
+
+            loadedLottery = stored
+            mode = FormMode.EDIT
+
+            // Pre-fill editable fields
+            selectedNights = stored.nightsOffered.toSet()
+            availableNights = (availableNights + stored.nightsOffered).distinct().sorted()
+            nightsOfferedText = stored.nightsDescription ?: ""
+            registrationStartMillis = stored.registrationStart
+            registrationEndMillis = stored.registrationEnd
+            bookingStartMillis = stored.bookingStart
+            bookingEndMillis = stored.bookingEnd
+            winnersCountText = stored.winnersCount.toString()
+            waitlistCapacityText = stored.waitlistCapacity?.toString() ?: ""
+            waitlistCapacityError = null
+
+            // If campsiteId was not set, populate it from stored lottery
+            val targetCampsiteId = stored.campsiteIds.firstOrNull() ?: campsiteId
+            if (targetCampsiteId.isNotBlank() && campsite == null) {
+                campsite = campsiteRepository.getCampsite(targetCampsiteId)
+                availability = campsiteRepository.getAvailability(targetCampsiteId)
+            }
+
+            // Evaluate read-only state based on stored status
+            val status = stored.status(now)
+            if (stored.removed) {
+                isReadOnly = true
+                readOnlyReason = "This lottery has been removed and cannot be edited."
+            } else if (stored.drawnAt != null || status == LotteryStatus.DRAWN) {
+                isReadOnly = true
+                readOnlyReason = "This lottery has already been drawn and cannot be edited."
+            } else if (status == LotteryStatus.CLOSED) {
+                isReadOnly = true
+                readOnlyReason = "Registration has closed; this lottery can no longer be edited."
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            loadFailed = true
+            error = "Couldn't load the lottery. Check your connection and try again."
         } finally {
             loading = false
         }
@@ -266,11 +373,19 @@ class LotteryController(
         error = null
     }
 
-    /** Validates and saves the created lottery asynchronously. */
-    fun saveLottery() {
+    /** Validates and saves the created or edited lottery asynchronously. */
+    fun saveLottery(now: Long? = null) {
         if (saving) return
         saving = true
         error = null
+
+        val currentTime = now ?: System.currentTimeMillis()
+
+        if (mode == FormMode.EDIT && isReadOnly) {
+            error = readOnlyReason ?: "This lottery cannot be edited."
+            saving = false
+            return
+        }
 
         val nightsList = selectedNights.sorted()
         val nightsDesc = nightsOfferedText.takeIf { it.isNotBlank() }
@@ -286,47 +401,107 @@ class LotteryController(
         }
         val waitlistCapacity: Int? = waitlistCapacityText.trim().toIntOrNull()
 
-        val lottery = Lottery(
-            ownerId = ownerId,
-            campsiteIds = listOf(campsiteId),
-            nightsOffered = nightsList,
-            nightsDescription = nightsDesc,
-            registrationStart = registrationStartMillis ?: 0L,
-            registrationEnd = registrationEndMillis ?: 0L,
-            bookingStart = bookingStartMillis ?: 0L,
-            bookingEnd = bookingEndMillis ?: 0L,
-            winnersCount = winnersCount,
-            waitlistCapacity = waitlistCapacity,
-        )
+        val proposedLottery: Lottery
+        val stored = loadedLottery
+        if (mode == FormMode.EDIT && stored != null) {
+            proposedLottery = stored.copy(
+                nightsOffered = nightsList,
+                nightsDescription = nightsDesc,
+                registrationStart = registrationStartMillis ?: 0L,
+                registrationEnd = registrationEndMillis ?: 0L,
+                bookingStart = bookingStartMillis ?: 0L,
+                bookingEnd = bookingEndMillis ?: 0L,
+                winnersCount = winnersCount,
+                waitlistCapacity = waitlistCapacity,
+            )
+        } else {
+            proposedLottery = Lottery(
+                ownerId = ownerId,
+                campsiteIds = listOf(campsiteId),
+                nightsOffered = nightsList,
+                nightsDescription = nightsDesc,
+                registrationStart = registrationStartMillis ?: 0L,
+                registrationEnd = registrationEndMillis ?: 0L,
+                bookingStart = bookingStartMillis ?: 0L,
+                bookingEnd = bookingEndMillis ?: 0L,
+                winnersCount = winnersCount,
+                waitlistCapacity = waitlistCapacity,
+            )
+        }
 
-        val validationErrors = validateLottery(lottery)
+        val validationErrors = validateLottery(
+            lottery = proposedLottery,
+            now = currentTime,
+            storedLottery = stored,
+            currentWaitingCount = stored?.waitingUserIds?.size ?: 0,
+        )
         if (validationErrors.isNotEmpty()) {
-            error = validationErrors.first()
+            val firstError = validationErrors.first()
+            error = firstError
+            if (firstError.contains("Registration has closed", ignoreCase = true) ||
+                firstError.contains("already been drawn", ignoreCase = true) ||
+                firstError.contains("removed", ignoreCase = true)
+            ) {
+                isReadOnly = true
+                readOnlyReason = firstError
+            }
             saving = false
             return
         }
 
         viewModelScope.launch {
             try {
-                val latestCalendar = campsiteRepository.getAvailability(campsiteId)
-                val invalidNights = selectedNights.filter {
-                    it !in latestCalendar.openNights || it in latestCalendar.heldNights
+                if (mode == FormMode.EDIT) {
+                    val provider: () -> Long = if (now != null) { { now } } else { { System.currentTimeMillis() } }
+                    saveEdits(proposedLottery, nowProvider = provider)
+                } else {
+                    saveNew(proposedLottery)
                 }
-
-                if (invalidNights.isNotEmpty()) {
-                    error = "One or more selected nights are no longer available. Please reload the nights."
-                    saving = false
-                    return@launch
-                }
-
-                lotteryRepository.addLottery(lottery)
-                saved = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = "Unable to save lottery."
+                error = "Couldn't save. Check your connection and try again."
             } finally {
                 saving = false
+            }
+        }
+    }
+
+    /** Saves a new lottery. */
+    suspend fun saveNew(lottery: Lottery) {
+        val latestCalendar = campsiteRepository.getAvailability(campsiteId)
+        val invalidNights = selectedNights.filter {
+            it !in latestCalendar.openNights || it in latestCalendar.heldNights
+        }
+
+        if (invalidNights.isNotEmpty()) {
+            error = "One or more selected nights are no longer available. Please reload the nights."
+            return
+        }
+
+        lotteryRepository.addLottery(lottery)
+        saved = true
+    }
+
+    /** Saves edits to an existing lottery via repository transaction (US 02.04.06). */
+    suspend fun saveEdits(
+        lottery: Lottery,
+        nowProvider: () -> Long = { System.currentTimeMillis() },
+        zone: ZoneId = ZoneId.systemDefault(),
+    ) {
+        when (val result = lotteryRepository.updateLottery(lottery, callerId = ownerId, nowProvider = nowProvider, zone = zone)) {
+            is UpdateLotteryResult.Success -> {
+                saved = true
+            }
+            is UpdateLotteryResult.Error -> {
+                error = result.message
+                if (result.message.contains("Registration has closed", ignoreCase = true) ||
+                    result.message.contains("already been drawn", ignoreCase = true) ||
+                    result.message.contains("removed", ignoreCase = true)
+                ) {
+                    isReadOnly = true
+                    readOnlyReason = result.message
+                }
             }
         }
     }
@@ -340,6 +515,18 @@ class LotteryController(
                     lotteryRepository = app.container.lotteryRepository,
                     ownerId = app.container.deviceId,
                     campsiteId = campsiteId
+                )
+            }
+        }
+
+        fun editFactory(lotteryId: String) = viewModelFactory {
+            initializer {
+                val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as CampApp
+                LotteryController(
+                    campsiteRepository = app.container.campsiteRepository,
+                    lotteryRepository = app.container.lotteryRepository,
+                    ownerId = app.container.deviceId,
+                    campsiteId = ""
                 )
             }
         }

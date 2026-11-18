@@ -87,11 +87,11 @@ data class Lottery(
 
     /**
      * Checks if the booking period has expired at time [now] (milliseconds since 1970).
-     * Expired when a valid booking period exists ([bookingStart] > 0 and [bookingEnd] > [bookingStart])
-     * and [now] is strictly after [bookingEnd].
+     * Expired when a valid booking period exists ([bookingStart] > 0 and [bookingEnd] > [bookingStart]),
+     * the lottery has not been removed, and [now] is strictly after [bookingEnd].
      */
     fun isBookingExpired(now: Long = System.currentTimeMillis()): Boolean =
-        bookingStart > 0L && bookingEnd > bookingStart && now > bookingEnd
+        !removed && bookingStart > 0L && bookingEnd > bookingStart && now > bookingEnd
 
     /**
      * The nights this lottery offers that a winner can still pick at one campsite, in date order

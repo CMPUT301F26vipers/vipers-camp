@@ -11,11 +11,15 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.validateLottery
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.UpdateLotteryResult
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -45,6 +49,49 @@ class FirestoreLotteryRepository(
             .whereEqualTo("removed", false)
             .get().await()
             .documents.map { it.toLottery() }
+
+    override suspend fun updateLottery(
+        lottery: Lottery,
+        callerId: String,
+        nowProvider: () -> Long,
+        zone: ZoneId,
+    ): UpdateLotteryResult {
+        val lotteryRef = lotteries.document(lottery.id)
+        return try {
+            db.runTransaction { tx ->
+                val snapshot = tx.get(lotteryRef)
+                if (!snapshot.exists()) {
+                    return@runTransaction UpdateLotteryResult.Error("Lottery not found")
+                }
+                val stored = snapshot.toLottery()
+
+                if (callerId.isBlank() || stored.ownerId != callerId) {
+                    return@runTransaction UpdateLotteryResult.Error("You do not own this lottery")
+                }
+
+                val currentTime = nowProvider()
+                val currentWaitingCount = stored.waitingUserIds.size
+
+                val validationErrors = validateLottery(
+                    lottery = lottery,
+                    now = currentTime,
+                    storedLottery = stored,
+                    currentWaitingCount = currentWaitingCount,
+                    zone = zone,
+                )
+                if (validationErrors.isNotEmpty()) {
+                    return@runTransaction UpdateLotteryResult.Error(validationErrors.first())
+                }
+
+                tx.update(lotteryRef, lottery.toEditableFields())
+                UpdateLotteryResult.Success
+            }.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            UpdateLotteryResult.Error("Unable to update lottery")
+        }
+    }
 
     override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult {
         val lotteryRef = lotteries.document(entry.lotteryId)
@@ -401,6 +448,22 @@ fun Lottery.toMap(): Map<String, Any?> = mapOf(
     "manifestChunkCount" to manifestChunkCount,
     "participantCount" to participantCount,
     "winnerCount" to winnerCount,
+)
+
+/**
+ * The fields an owner can edit in a lottery (US 02.04.06).
+ * Leaving out id, ownerId, campsiteIds, drawnAt, removed, waitingUserIds, entriesVersion,
+ * and draw metadata preserves their saved values in Firestore.
+ */
+fun Lottery.toEditableFields(): Map<String, Any?> = mapOf(
+    "nightsOffered" to nightsOffered,
+    "nightsDescription" to nightsDescription,
+    "registrationStart" to registrationStart,
+    "registrationEnd" to registrationEnd,
+    "bookingStart" to bookingStart,
+    "bookingEnd" to bookingEnd,
+    "winnersCount" to winnersCount,
+    "waitlistCapacity" to waitlistCapacity,
 )
 
 /** Builds a lottery from its Firestore document. Missing fields get the model's defaults. */

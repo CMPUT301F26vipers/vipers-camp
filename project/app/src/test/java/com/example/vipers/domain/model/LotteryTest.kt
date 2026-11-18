@@ -145,6 +145,13 @@ class LotteryTest {
     }
 
     @Test
+    fun isBookingExpired_returnsFalseWhenRemoved() {
+        val removedLottery = lottery.copy(removed = true)
+        // Strictly after bookingEnd, but removed == true
+        assertFalse(removedLottery.isBookingExpired(at("2027-06-01T00:00")))
+    }
+
+    @Test
     fun isBookingExpired_returnsFalseBeforeAndDuringBooking() {
         assertFalse(lottery.isBookingExpired(at("2027-05-11T23:59")))
         assertFalse(lottery.isBookingExpired(at("2027-05-12T00:00")))

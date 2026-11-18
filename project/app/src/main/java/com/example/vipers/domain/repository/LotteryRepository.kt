@@ -9,8 +9,15 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+
+/** Result of an atomic lottery update attempt (US 02.04.06). */
+sealed interface UpdateLotteryResult {
+    data object Success : UpdateLotteryResult
+    data class Error(val message: String) : UpdateLotteryResult
+}
 
 /** Result of an atomic waiting list join operation. */
 sealed interface JoinWaitingListResult {
@@ -46,6 +53,37 @@ interface LotteryRepository {
 
     /** Loads the lotteries that cover [campsiteId] and haven't been removed. */
     suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery>
+
+    /**
+     * Atomically updates editable fields of an existing [lottery] in a transaction (US 02.04.06).
+     *
+     * In one transaction, reads the latest stored lottery, enforces caller ownership ([callerId]),
+     * checks edit eligibility (not drawn, removed, or closed), validates proposed fields against
+     * the current waiting-list count (preventing capacity from being set below current entrants),
+     * and updates only editable fields while preserving all unedited fields.
+     *
+     * @param lottery Proposed lottery fields to update.
+     * @param callerId The device ID of the authenticated user performing the edit.
+     * @param nowProvider Lambda returning the current time in milliseconds, evaluated freshly on each transaction attempt.
+     * @param zone Timezone used to evaluate date boundaries.
+     * @return [UpdateLotteryResult.Success] on success, or [UpdateLotteryResult.Error] with a user-facing error message.
+     */
+    suspend fun updateLottery(
+        lottery: Lottery,
+        callerId: String,
+        nowProvider: () -> Long = { System.currentTimeMillis() },
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): UpdateLotteryResult
+
+    /**
+     * Overload for [updateLottery] with a fixed timestamp [now], primarily for testing.
+     */
+    suspend fun updateLottery(
+        lottery: Lottery,
+        callerId: String,
+        now: Long,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): UpdateLotteryResult = updateLottery(lottery, callerId, { now }, zone)
 
     /**
      * Atomically adds an entrant to the lottery waiting list.

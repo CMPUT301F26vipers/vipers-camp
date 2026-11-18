@@ -7,6 +7,9 @@ package com.example.vipers.domain.model
 
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Locale
 
 private fun isValidIsoDate(text: String): Boolean {
@@ -18,14 +21,43 @@ private fun isValidIsoDate(text: String): Boolean {
 }
 
 /**
- * Validates a [lottery] against business logic rules.
+ * Validates a proposed [lottery] configuration against business logic rules.
  *
- * @param lottery The lottery to validate.
+ * For new lotteries, [storedLottery] should be null.
+ * When editing an existing lottery, pass the authoritative [storedLottery] currently saved in the database
+ * and the [currentWaitingCount].
+ *
+ * @param lottery The proposed lottery configuration to validate.
  * @param now Current timestamp in milliseconds (defaults to system time).
+ * @param storedLottery The existing lottery before edits, or null if creating a new lottery.
+ * @param currentWaitingCount Current number of entrants on the waiting list (used when editing).
+ * @param zone Timezone used to determine the calendar date of [lottery.bookingStart].
  * @return A list of validation error message strings. Empty if valid.
  */
-fun validateLottery(lottery: Lottery, now: Long = System.currentTimeMillis()): List<String> {
+fun validateLottery(
+    lottery: Lottery,
+    now: Long = System.currentTimeMillis(),
+    storedLottery: Lottery? = null,
+    currentWaitingCount: Int = 0,
+    zone: ZoneId = ZoneId.systemDefault(),
+): List<String> {
     val errors = mutableListOf<String>()
+
+    if (storedLottery != null) {
+        val storedStatus = storedLottery.status(now)
+        if (storedLottery.drawnAt != null || storedStatus == LotteryStatus.DRAWN) {
+            errors.add("Cannot edit a lottery that has already been drawn")
+            return errors
+        }
+        if (storedLottery.removed) {
+            errors.add("Cannot edit a removed lottery")
+            return errors
+        }
+        if (storedStatus == LotteryStatus.CLOSED) {
+            errors.add("Registration has closed; lottery can no longer be edited")
+            return errors
+        }
+    }
 
     if (lottery.ownerId.isBlank()) errors.add("Owner is required")
     if (lottery.campsiteIds.isEmpty()) errors.add("Select a campsite")
@@ -37,8 +69,18 @@ fun validateLottery(lottery: Lottery, now: Long = System.currentTimeMillis()): L
     if (lottery.registrationStart <= 0L || lottery.registrationEnd <= 0L) {
         errors.add("Both registration start and end times must be set")
     } else {
-        if (lottery.registrationStart < now) errors.add("Registration cannot start in the past")
-        if (lottery.registrationEnd <= lottery.registrationStart) errors.add("Invalid registration period")
+        // When editing an already open lottery, registrationStart may already be in the past.
+        // For new lotteries or upcoming edits, registration cannot start in the past.
+        val allowPastRegStart = storedLottery != null && storedLottery.status(now) == LotteryStatus.OPEN
+        if (lottery.registrationStart < now && !allowPastRegStart) {
+            errors.add("Registration cannot start in the past")
+        }
+        if (allowPastRegStart && lottery.registrationEnd < now) {
+            errors.add("Registration cannot end in the past")
+        }
+        if (lottery.registrationEnd <= lottery.registrationStart) {
+            errors.add("Invalid registration period")
+        }
     }
 
     // Booking period validation: required timestamps
@@ -55,8 +97,27 @@ fun validateLottery(lottery: Lottery, now: Long = System.currentTimeMillis()): L
 
     if (lottery.winnersCount < 1) errors.add("At least one winner is required")
 
-    if (lottery.waitlistCapacity != null && lottery.waitlistCapacity < 1) {
-        errors.add("Waitlist limit must be at least 1")
+    if (lottery.waitlistCapacity != null) {
+        if (lottery.waitlistCapacity < 1) {
+            errors.add("Waitlist limit must be at least 1")
+        } else if (storedLottery != null && lottery.waitlistCapacity < currentWaitingCount) {
+            errors.add("Waitlist limit cannot be less than current entrant count ($currentWaitingCount)")
+        }
+    }
+
+    // Offered nights validation: nights offered must be on or after the booking start date
+    if (lottery.bookingStart > 0L && lottery.nightsOffered.isNotEmpty()) {
+        val bookingStartDate = Instant.ofEpochMilli(lottery.bookingStart).atZone(zone).toLocalDate()
+        val hasNightsBeforeBooking = lottery.nightsOffered.any { night ->
+            if (isValidIsoDate(night)) {
+                LocalDate.parse(night).isBefore(bookingStartDate)
+            } else {
+                false
+            }
+        }
+        if (hasNightsBeforeBooking) {
+            errors.add("Offered nights must be on or after booking start")
+        }
     }
 
     return errors

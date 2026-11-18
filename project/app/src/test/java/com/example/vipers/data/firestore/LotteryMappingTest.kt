@@ -62,4 +62,22 @@ class LotteryMappingTest {
         assertNull(map["waitlistCapacity"])
         assertNull(map["nightsDescription"])
     }
+
+    @Test
+    fun toEditableFields_always_holdsOnlyTheFieldsAnOwnerEdits() {
+        // updateLottery writes exactly these, so nothing else can be overwritten (US 02.04.06)
+        assertEquals(
+            setOf(
+                "nightsOffered",
+                "nightsDescription",
+                "registrationStart",
+                "registrationEnd",
+                "bookingStart",
+                "bookingEnd",
+                "winnersCount",
+                "waitlistCapacity",
+            ),
+            lottery.toEditableFields().keys
+        )
+    }
 }
