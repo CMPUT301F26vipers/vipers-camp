@@ -78,6 +78,22 @@ data class Lottery(
         status(now) == LotteryStatus.OPEN
 
     /**
+     * Returns the user-facing reason why this lottery can no longer be edited at time [now],
+     * or null if editing is allowed (US 02.04.06).
+     */
+    fun editBlockedReason(now: Long = System.currentTimeMillis()): String? {
+        if (removed) return "Cannot edit a removed lottery"
+        val currentStatus = status(now)
+        if (drawnAt != null || currentStatus == LotteryStatus.DRAWN) {
+            return "Cannot edit a lottery that has already been drawn"
+        }
+        if (currentStatus == LotteryStatus.CLOSED) {
+            return "Registration has closed; this lottery can no longer be edited."
+        }
+        return null
+    }
+
+    /**
      * Checks if the booking period is currently open at time [now] (milliseconds since 1970).
      * Reserving is open between [bookingStart] and [bookingEnd] (inclusive) when the lottery has
      * not been removed and booking timestamps are valid ([bookingEnd] > [bookingStart] > 0).

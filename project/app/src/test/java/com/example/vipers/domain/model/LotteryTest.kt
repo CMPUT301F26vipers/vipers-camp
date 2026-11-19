@@ -8,6 +8,7 @@ package com.example.vipers.domain.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -189,6 +190,63 @@ class LotteryTest {
     fun isBookingExpired_returnsFalseWhenBookingStartNotSet() {
         val noStart = Lottery(bookingStart = 0L, bookingEnd = 1000L)
         assertFalse(noStart.isBookingExpired(1500L))
+    }
+
+    @Test
+    fun editBlockedReason_returnsNullWhenUpcomingOrOpen() {
+        assertNull(lottery.editBlockedReason(at("2027-05-01T08:59")))
+        assertNull(lottery.editBlockedReason(at("2027-05-01T09:00")))
+        assertNull(lottery.editBlockedReason(at("2027-05-05T12:00")))
+        assertNull(lottery.editBlockedReason(at("2027-05-10T15:00")))
+    }
+
+    @Test
+    fun editBlockedReason_returnsReasonWhenRemoved() {
+        val removedLottery = lottery.copy(removed = true)
+        assertEquals("Cannot edit a removed lottery", removedLottery.editBlockedReason(at("2027-05-05T12:00")))
+    }
+
+    @Test
+    fun editBlockedReason_returnsReasonWhenDrawn() {
+        assertEquals("Cannot edit a lottery that has already been drawn", drawn.editBlockedReason(at("2027-05-10T15:30")))
+    }
+
+    @Test
+    fun editBlockedReason_returnsReasonWhenClosed() {
+        assertEquals("Registration has closed; this lottery can no longer be edited.", lottery.editBlockedReason(at("2027-05-10T15:01")))
+    }
+
+    @Test
+    fun editBlockedReason_registrationEndBoundary() {
+        // At exact registrationEnd boundary: still open/null
+        assertNull(lottery.editBlockedReason(lottery.registrationEnd))
+        // 1 ms past registrationEnd: closed
+        assertEquals(
+            "Registration has closed; this lottery can no longer be edited.",
+            lottery.editBlockedReason(lottery.registrationEnd + 1L)
+        )
+    }
+
+    @Test
+    fun editBlockedReason_removedTakesPrecedenceOverDrawnAndClosed() {
+        val removedDrawnAndClosed = lottery.copy(
+            removed = true,
+            drawnAt = at("2027-05-10T15:15")
+        )
+        // Evaluated at a time when the lottery is both drawn and closed
+        assertEquals(
+            "Cannot edit a removed lottery",
+            removedDrawnAndClosed.editBlockedReason(at("2027-06-01T00:00"))
+        )
+    }
+
+    @Test
+    fun editBlockedReason_drawnTakesPrecedenceOverClosed() {
+        // Evaluated after registrationEnd and after bookingEnd
+        assertEquals(
+            "Cannot edit a lottery that has already been drawn",
+            drawn.editBlockedReason(at("2027-06-01T00:00"))
+        )
     }
 
     // Two May weekends offered; the owner opened all but May 15, and May 8 is already booked.

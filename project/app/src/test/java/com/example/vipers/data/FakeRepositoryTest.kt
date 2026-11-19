@@ -556,8 +556,8 @@ class FakeRepositoryTest {
         val proposed = original.copy(registrationEnd = 3_000L)
         val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
 
-        assertTrue(result is UpdateLotteryResult.Error)
-        assertEquals("Registration has closed; lottery can no longer be edited", (result as UpdateLotteryResult.Error).message)
+        assertTrue(result is UpdateLotteryResult.ReadOnly)
+        assertEquals("Registration has closed; this lottery can no longer be edited.", (result as UpdateLotteryResult.ReadOnly).reason)
     }
 
     @Test
@@ -579,8 +579,8 @@ class FakeRepositoryTest {
         val proposed = original.copy(winnersCount = 10)
         val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
 
-        assertTrue(result is UpdateLotteryResult.Error)
-        assertEquals("Cannot edit a lottery that has already been drawn", (result as UpdateLotteryResult.Error).message)
+        assertTrue(result is UpdateLotteryResult.ReadOnly)
+        assertEquals("Cannot edit a lottery that has already been drawn", (result as UpdateLotteryResult.ReadOnly).reason)
     }
 
     @Test
@@ -602,8 +602,8 @@ class FakeRepositoryTest {
         val proposed = original.copy(winnersCount = 10)
         val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
 
-        assertTrue(result is UpdateLotteryResult.Error)
-        assertEquals("Cannot edit a removed lottery", (result as UpdateLotteryResult.Error).message)
+        assertTrue(result is UpdateLotteryResult.ReadOnly)
+        assertEquals("Cannot edit a removed lottery", (result as UpdateLotteryResult.ReadOnly).reason)
     }
 
     @Test

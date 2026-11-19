@@ -44,17 +44,9 @@ fun validateLottery(
     val errors = mutableListOf<String>()
 
     if (storedLottery != null) {
-        val storedStatus = storedLottery.status(now)
-        if (storedLottery.drawnAt != null || storedStatus == LotteryStatus.DRAWN) {
-            errors.add("Cannot edit a lottery that has already been drawn")
-            return errors
-        }
-        if (storedLottery.removed) {
-            errors.add("Cannot edit a removed lottery")
-            return errors
-        }
-        if (storedStatus == LotteryStatus.CLOSED) {
-            errors.add("Registration has closed; lottery can no longer be edited")
+        val blockedReason = storedLottery.editBlockedReason(now)
+        if (blockedReason != null) {
+            errors.add(blockedReason)
             return errors
         }
     }

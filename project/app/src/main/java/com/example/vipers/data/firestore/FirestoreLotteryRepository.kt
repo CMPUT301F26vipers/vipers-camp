@@ -53,7 +53,7 @@ class FirestoreLotteryRepository(
     override suspend fun updateLottery(
         lottery: Lottery,
         callerId: String,
-        nowProvider: () -> Long,
+        now: Long,
         zone: ZoneId,
     ): UpdateLotteryResult {
         val lotteryRef = lotteries.document(lottery.id)
@@ -69,12 +69,16 @@ class FirestoreLotteryRepository(
                     return@runTransaction UpdateLotteryResult.Error("You do not own this lottery")
                 }
 
-                val currentTime = nowProvider()
+                val blockedReason = stored.editBlockedReason(now)
+                if (blockedReason != null) {
+                    return@runTransaction UpdateLotteryResult.ReadOnly(blockedReason)
+                }
+
                 val currentWaitingCount = stored.waitingUserIds.size
 
                 val validationErrors = validateLottery(
                     lottery = lottery,
-                    now = currentTime,
+                    now = now,
                     storedLottery = stored,
                     currentWaitingCount = currentWaitingCount,
                     zone = zone,
@@ -89,7 +93,7 @@ class FirestoreLotteryRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            UpdateLotteryResult.Error("Unable to update lottery")
+            UpdateLotteryResult.Error("Couldn't save. Check your connection and try again.")
         }
     }
 

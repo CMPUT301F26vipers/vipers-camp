@@ -1,6 +1,6 @@
 /*
  * LotteryFormScreen.kt
- * The screen to create a new lottery for a campsite (mockup O06) or edit an existing one (mockup O06b).
+ * The screen to create a new lottery for a campsite (mockup O08) or edit an existing one (mockup O10).
  * Known issues: none.
  */
 package com.example.vipers.ui.lottery
@@ -60,7 +60,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Screen allowing campsite owners to configure and publish a new lottery or edit an existing one (mockup O06b),
+ * Screen allowing campsite owners to configure and publish a new lottery or edit an existing one (mockup O10),
  * including available night selection, nights description, registration period, booking period,
  * winner count, and optional waiting list limit.
  *
@@ -239,7 +239,7 @@ fun LotteryFormScreen(
                 controller.loading && !editing -> CircularProgressIndicator()
                 controller.error != null && controller.campsite == null && !editing -> Text(controller.error!!)
                 else -> {
-                    // O06b Header / Status Banner when editing
+                    // O10 Header / Status Banner when editing
                     if (editing && controller.loadedLottery != null) {
                         val loaded = controller.loadedLottery!!
                         val now = System.currentTimeMillis()

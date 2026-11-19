@@ -530,7 +530,7 @@ class LotteryValidationTest {
         val afterBoundaryTime = boundaryTime + 1L
         val afterBoundaryErrors = validateLottery(proposed, storedLottery = stored, currentWaitingCount = 0, now = afterBoundaryTime, zone = edmonton)
         assertEquals(1, afterBoundaryErrors.size)
-        assertTrue(afterBoundaryErrors.contains("Registration has closed; lottery can no longer be edited"))
+        assertTrue(afterBoundaryErrors.contains("Registration has closed; this lottery can no longer be edited."))
     }
 
     @Test
@@ -551,7 +551,7 @@ class LotteryValidationTest {
         )
         val errors = validateLottery(proposed, storedLottery = stored, currentWaitingCount = 5, now = currentTime, zone = edmonton)
         assertEquals(1, errors.size)
-        assertTrue(errors.contains("Registration has closed; lottery can no longer be edited"))
+        assertTrue(errors.contains("Registration has closed; this lottery can no longer be edited."))
     }
 
     @Test

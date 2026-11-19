@@ -214,17 +214,11 @@ class LotteryController(
                 availability = campsiteRepository.getAvailability(targetCampsiteId)
             }
 
-            // Evaluate read-only state based on stored status
-            val status = stored.status(now)
-            if (stored.removed) {
+            // Evaluate read-only state based on stored status (US 02.04.06)
+            val blockedReason = stored.editBlockedReason(now)
+            if (blockedReason != null) {
                 isReadOnly = true
-                readOnlyReason = "This lottery has been removed and cannot be edited."
-            } else if (stored.drawnAt != null || status == LotteryStatus.DRAWN) {
-                isReadOnly = true
-                readOnlyReason = "This lottery has already been drawn and cannot be edited."
-            } else if (status == LotteryStatus.CLOSED) {
-                isReadOnly = true
-                readOnlyReason = "Registration has closed; this lottery can no longer be edited."
+                readOnlyReason = blockedReason
             }
         } catch (e: CancellationException) {
             throw e
@@ -438,12 +432,12 @@ class LotteryController(
         if (validationErrors.isNotEmpty()) {
             val firstError = validationErrors.first()
             error = firstError
-            if (firstError.contains("Registration has closed", ignoreCase = true) ||
-                firstError.contains("already been drawn", ignoreCase = true) ||
-                firstError.contains("removed", ignoreCase = true)
-            ) {
-                isReadOnly = true
-                readOnlyReason = firstError
+            if (mode == FormMode.EDIT && stored != null) {
+                val blockedReason = stored.editBlockedReason(currentTime)
+                if (blockedReason != null) {
+                    isReadOnly = true
+                    readOnlyReason = blockedReason
+                }
             }
             saving = false
             return
@@ -452,8 +446,7 @@ class LotteryController(
         viewModelScope.launch {
             try {
                 if (mode == FormMode.EDIT) {
-                    val provider: () -> Long = if (now != null) { { now } } else { { System.currentTimeMillis() } }
-                    saveEdits(proposedLottery, nowProvider = provider)
+                    saveEdits(proposedLottery, now = currentTime)
                 } else {
                     saveNew(proposedLottery)
                 }
@@ -483,25 +476,27 @@ class LotteryController(
         saved = true
     }
 
-    /** Saves edits to an existing lottery via repository transaction (US 02.04.06). */
+    /**
+     * Saves edits to an existing lottery via repository transaction (US 02.04.06).
+     *
+     * Evaluates edit eligibility against [now] (captured time convention).
+     */
     suspend fun saveEdits(
         lottery: Lottery,
-        nowProvider: () -> Long = { System.currentTimeMillis() },
+        now: Long = System.currentTimeMillis(),
         zone: ZoneId = ZoneId.systemDefault(),
     ) {
-        when (val result = lotteryRepository.updateLottery(lottery, callerId = ownerId, nowProvider = nowProvider, zone = zone)) {
+        when (val result = lotteryRepository.updateLottery(lottery, callerId = ownerId, now = now, zone = zone)) {
             is UpdateLotteryResult.Success -> {
                 saved = true
             }
+            is UpdateLotteryResult.ReadOnly -> {
+                error = result.reason
+                isReadOnly = true
+                readOnlyReason = result.reason
+            }
             is UpdateLotteryResult.Error -> {
                 error = result.message
-                if (result.message.contains("Registration has closed", ignoreCase = true) ||
-                    result.message.contains("already been drawn", ignoreCase = true) ||
-                    result.message.contains("removed", ignoreCase = true)
-                ) {
-                    isReadOnly = true
-                    readOnlyReason = result.message
-                }
             }
         }
     }

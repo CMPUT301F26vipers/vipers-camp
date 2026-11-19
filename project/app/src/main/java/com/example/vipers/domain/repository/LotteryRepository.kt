@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.flow
 /** Result of an atomic lottery update attempt (US 02.04.06). */
 sealed interface UpdateLotteryResult {
     data object Success : UpdateLotteryResult
+    data class ReadOnly(val reason: String) : UpdateLotteryResult
     data class Error(val message: String) : UpdateLotteryResult
 }
 
@@ -64,26 +65,17 @@ interface LotteryRepository {
      *
      * @param lottery Proposed lottery fields to update.
      * @param callerId The device ID of the authenticated user performing the edit.
-     * @param nowProvider Lambda returning the current time in milliseconds, evaluated freshly on each transaction attempt.
+     * @param now Current timestamp in milliseconds used for edit eligibility and date boundaries.
      * @param zone Timezone used to evaluate date boundaries.
-     * @return [UpdateLotteryResult.Success] on success, or [UpdateLotteryResult.Error] with a user-facing error message.
+     * @return [UpdateLotteryResult.Success] on success, [UpdateLotteryResult.ReadOnly] when the lottery
+     *         can no longer be edited, or [UpdateLotteryResult.Error] with a user-facing error message.
      */
     suspend fun updateLottery(
         lottery: Lottery,
         callerId: String,
-        nowProvider: () -> Long = { System.currentTimeMillis() },
+        now: Long = System.currentTimeMillis(),
         zone: ZoneId = ZoneId.systemDefault(),
     ): UpdateLotteryResult
-
-    /**
-     * Overload for [updateLottery] with a fixed timestamp [now], primarily for testing.
-     */
-    suspend fun updateLottery(
-        lottery: Lottery,
-        callerId: String,
-        now: Long,
-        zone: ZoneId = ZoneId.systemDefault(),
-    ): UpdateLotteryResult = updateLottery(lottery, callerId, { now }, zone)
 
     /**
      * Atomically adds an entrant to the lottery waiting list.

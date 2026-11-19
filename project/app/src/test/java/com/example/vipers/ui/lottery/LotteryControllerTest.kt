@@ -734,7 +734,7 @@ class LotteryControllerTest {
 
         assertEquals(FormMode.EDIT, controller.mode)
         assertTrue(controller.isReadOnly)
-        assertEquals("This lottery has already been drawn and cannot be edited.", controller.readOnlyReason)
+        assertEquals("Cannot edit a lottery that has already been drawn", controller.readOnlyReason)
     }
 
     @Test
@@ -758,7 +758,7 @@ class LotteryControllerTest {
 
         assertEquals(FormMode.EDIT, controller.mode)
         assertTrue(controller.isReadOnly)
-        assertEquals("This lottery has been removed and cannot be edited.", controller.readOnlyReason)
+        assertEquals("Cannot edit a removed lottery", controller.readOnlyReason)
     }
 
     @Test
@@ -966,7 +966,7 @@ class LotteryControllerTest {
             override suspend fun updateLottery(
                 lottery: Lottery,
                 callerId: String,
-                nowProvider: () -> Long,
+                now: Long,
                 zone: java.time.ZoneId
             ): UpdateLotteryResult {
                 // Simulate time advancing past registrationEnd during transactional save
@@ -988,7 +988,7 @@ class LotteryControllerTest {
 
         assertFalse("Expected saved to be false, but error was: '${customController.error}' and saved was: ${customController.saved}", customController.saved)
         assertFalse(customController.saving)
-        assertEquals("Registration has closed; lottery can no longer be edited", customController.error)
+        assertEquals("Registration has closed; this lottery can no longer be edited.", customController.error)
     }
 
     @Test
@@ -1013,12 +1013,12 @@ class LotteryControllerTest {
             override suspend fun updateLottery(
                 lottery: Lottery,
                 callerId: String,
-                nowProvider: () -> Long,
+                now: Long,
                 zone: java.time.ZoneId
             ): UpdateLotteryResult {
                 updateCallCount++
                 saveGate.await()
-                return lotteryRepository.updateLottery(lottery, callerId, nowProvider, zone)
+                return lotteryRepository.updateLottery(lottery, callerId, now, zone)
             }
         }
 
@@ -1070,8 +1070,8 @@ class LotteryControllerTest {
         assertFalse(controller.saved)
         assertFalse(controller.saving)
         assertTrue(controller.isReadOnly)
-        assertEquals("Registration has closed; lottery can no longer be edited", controller.error)
-        assertEquals("Registration has closed; lottery can no longer be edited", controller.readOnlyReason)
+        assertEquals("Registration has closed; this lottery can no longer be edited.", controller.error)
+        assertEquals("Registration has closed; this lottery can no longer be edited.", controller.readOnlyReason)
     }
 
     @Test
@@ -1108,5 +1108,42 @@ class LotteryControllerTest {
         // Calling load again on already loaded/EDIT controller is idempotent
         customController.fetchLotteryForEdit(id)
         assertEquals(2, getLotteryCallCount)
+    }
+
+    @Test
+    fun saveEdits_whenRepositoryReturnsReadOnly_setsReadOnlyAndReasonDirectly() = runTest {
+        val original = Lottery(
+            id = "lottery-readonly",
+            ownerId = ownerId,
+            campsiteIds = listOf(campsiteId),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 2_000L,
+            registrationEnd = 3_000L,
+            bookingStart = 4_000L,
+            bookingEnd = 5_000L,
+        )
+        val readOnlyRepo = object : LotteryRepository by lotteryRepository {
+            override suspend fun updateLottery(
+                lottery: Lottery,
+                callerId: String,
+                now: Long,
+                zone: java.time.ZoneId
+            ): UpdateLotteryResult {
+                return UpdateLotteryResult.ReadOnly("Registration has closed; this lottery can no longer be edited.")
+            }
+        }
+        val customController = LotteryController(
+            campsiteRepository = campsiteRepository,
+            lotteryRepository = readOnlyRepo,
+            ownerId = ownerId,
+            campsiteId = campsiteId,
+        )
+
+        customController.saveEdits(original)
+
+        assertFalse(customController.saved)
+        assertTrue(customController.isReadOnly)
+        assertEquals("Registration has closed; this lottery can no longer be edited.", customController.readOnlyReason)
+        assertEquals("Registration has closed; this lottery can no longer be edited.", customController.error)
     }
 }

@@ -66,7 +66,7 @@ class FakeLotteryRepository(
     override suspend fun updateLottery(
         lottery: Lottery,
         callerId: String,
-        nowProvider: () -> Long,
+        now: Long,
         zone: ZoneId,
     ): UpdateLotteryResult = mutex.withLock {
         val stored = lotteries[lottery.id]
@@ -76,12 +76,16 @@ class FakeLotteryRepository(
             return@withLock UpdateLotteryResult.Error("You do not own this lottery")
         }
 
-        val currentTime = nowProvider()
+        val blockedReason = stored.editBlockedReason(now)
+        if (blockedReason != null) {
+            return@withLock UpdateLotteryResult.ReadOnly(blockedReason)
+        }
+
         val currentWaitingCount = stored.waitingUserIds.size
 
         val validationErrors = validateLottery(
             lottery = lottery,
-            now = currentTime,
+            now = now,
             storedLottery = stored,
             currentWaitingCount = currentWaitingCount,
             zone = zone,
