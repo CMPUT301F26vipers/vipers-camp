@@ -1,11 +1,14 @@
 /*
  * ReservationDetailsScreen.kt
- * The entrant's view of their reservation (US 01.05.01): shows the reservation number,
- * campsite name, stay dates, group size, total price, and status.
+ * The entrant's view of their reservation (US 01.05.01, US 01.05.02): shows the reservation
+ * number, campsite name, stay dates, group size, total price, and status, and allows downloading
+ * the reservation details as a CSV file.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,10 +16,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,20 +33,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.service.CsvExporter
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.theme.ButtonHeight
+import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.Primary
 import com.example.vipers.ui.theme.TextMuted
+import kotlinx.coroutines.CancellationException
 
 /**
- * Entrant's view of a confirmed reservation (US 01.05.01).
+ * Entrant's view of a confirmed reservation (US 01.05.01, US 01.05.02).
  *
  * @param reservationId ID of the reservation to load and view.
  * @param onBack Called when the top bar back button is tapped.
@@ -55,7 +68,29 @@ fun ReservationDetailsScreen(
 ) {
     LaunchedEffect(Unit) { controller.loadData() }
 
+    val context = LocalContext.current
     val reservation = controller.reservation
+    val campsite = controller.campsite
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri != null && reservation != null) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    val csv = CsvExporter.toCsv(
+                        reservation = reservation,
+                        campsite = campsite ?: Campsite(name = reservation.campsiteName),
+                    )
+                    output.write(csv.toByteArray(Charsets.UTF_8))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Ignore file write errors and user cancellation
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -94,17 +129,26 @@ fun ReservationDetailsScreen(
                 ReservationContent(
                     reservation = reservation,
                     rules = controller.campsite?.rules,
+                    onDownloadCsv = {
+                        val fileName = if (reservation.reservationNumber.isNotBlank()) {
+                            "reservation_${reservation.reservationNumber}.csv"
+                        } else {
+                            "reservation.csv"
+                        }
+                        launcher.launch(fileName)
+                    },
                 )
             }
         }
     }
 }
 
-/** Shows the reservation confirmation details and optional rules. */
+/** Shows the reservation confirmation details, rules, and CSV download button. */
 @Composable
 private fun ReservationContent(
     reservation: Reservation,
     rules: String?,
+    onDownloadCsv: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -195,6 +239,24 @@ private fun ReservationContent(
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted,
                 modifier = Modifier.testTag("detail_campsite_rules"),
+            )
+        }
+
+        // Download CSV Button (US 01.05.02)
+        Button(
+            onClick = onDownloadCsv,
+            shape = ButtonShape,
+            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ButtonHeight)
+                .testTag("button_download_csv"),
+        ) {
+            Text(
+                text = "Download CSV",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
             )
         }
     }
