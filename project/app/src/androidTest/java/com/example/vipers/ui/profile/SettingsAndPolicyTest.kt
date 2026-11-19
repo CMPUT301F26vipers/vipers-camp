@@ -1,9 +1,9 @@
 /*
  * SettingsAndPolicyTest.kt
  * Intent tests for the Settings screen (mockup E20) and the Policy screen (mockup E21): Settings
- * opens Policy and loads the demo data, and both screens go back.
- * Known issues: the notifications switch (US 01.10.01) and the policy text (US 01.11.01) aren't
- * built yet, so there's nothing to test for them.
+ * opens Policy and loads the demo data, and both screens go back. The notifications switch
+ * (US 01.10.01) is tested in OptOutNotificationsTest.
+ * Known issues: the policy text (US 01.11.01) isn't built yet, so there's nothing to test for it.
  */
 package com.example.vipers.ui.profile
 
@@ -13,6 +13,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.example.vipers.data.fake.FakeProfileRepository
+import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -28,12 +30,18 @@ class SettingsAndPolicyTest {
     private var demoLoaded = false
 
     private fun openSettings() {
+        // a fake profile, so the notifications switch doesn't read Firestore
+        val controller = ProfileController(
+            FakeProfileRepository(listOf(UserProfile(id = "test-device", name = "Sam Patel"))),
+            "test-device",
+        )
         composeRule.setContent {
             VipersTheme {
                 SettingsScreen(
                     onBack = { wentBack = true },
                     onOpenPolicy = { policyOpened = true },
                     onLoadDemoData = { demoLoaded = true },
+                    controller = controller,
                 )
             }
         }

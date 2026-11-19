@@ -373,6 +373,7 @@ class FakeRepositoryTest {
             lotteryRepository = repo,
             notificationRepository = FakeNotificationRepository(),
             campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "camp-1", name = "Pine Ridge"))),
+            profileRepository = FakeProfileRepository(),
             random = Random(42),
         )
 

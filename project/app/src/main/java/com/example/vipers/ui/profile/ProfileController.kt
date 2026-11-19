@@ -1,10 +1,14 @@
 /*
  * ProfileController.kt
- * The controller (a ViewModel) behind Welcome (T-01) and Profile (US 01.07.03).
- * Loads, creates, edits and saves the current user's profile under this device's ID (US 01.09.01).
+ * The controller (a ViewModel) behind Welcome (T-01), Profile (US 01.07.03) and the notifications
+ * switch on Settings (US 01.10.01). Loads, creates, edits and saves the current user's profile
+ * under this device's ID (US 01.09.01).
  * Known issues: Saving doesn't wait for the server (so it works offline).
  * If Firestore rejects the write, the app still opens Home, and Welcome
- * appears again on the next launch.
+ * appears again on the next launch. Saving the Profile form and the Settings switch first reads
+ * the latest saved profile (so they don't undo each other's changes). Offline, that read only
+ * works if the profile is in Firestore's cache on the phone; if it isn't, saving shows
+ * "Couldn't save" instead of saving for later.
  */
 package com.example.vipers.ui.profile
 
@@ -68,6 +72,14 @@ class ProfileController(
     var saveFailed by mutableStateOf(false)
         private set
 
+    /** Whether this user gets notifications, as shown by the Settings switch (US 01.10.01). */
+    var notificationsEnabled by mutableStateOf(true)
+        private set
+
+    /** True if saving the notifications switch failed; the switch is then set back. */
+    var notificationsSaveFailed by mutableStateOf(false)
+        private set
+
     init {
         loadProfile()
     }
@@ -86,6 +98,7 @@ class ProfileController(
                     name = current.name
                     email = current.email
                     phone = current.phone
+                    notificationsEnabled = current.notificationsEnabled
                 } else {
                     loadFailed = true
                 }
@@ -158,8 +171,16 @@ class ProfileController(
             saved = false
 
             try {
-                profileRepository.saveProfile(updated)
-                profile = updated
+                // Settings may have changed the saved profile since this screen loaded it
+                // (US 01.10.01), so the edits go onto the latest copy instead of the old one.
+                val latest = profileRepository.getProfile(deviceId)
+                val toSave = latest?.copy(
+                    name = updated.name,
+                    email = updated.email,
+                    phone = updated.phone,
+                ) ?: updated
+                profileRepository.saveProfile(toSave)
+                profile = toSave
                 // The form may have changed while the repository was saving.
                 saved = name.trim() == updated.name &&
                     email.trim() == updated.email && phone.trim() == updated.phone
@@ -170,6 +191,39 @@ class ProfileController(
             } finally {
                 isSaving = false
             }
+        }
+    }
+
+    /** Turns notifications on or off for this user and saves the choice (US 01.10.01). */
+    fun onNotificationsSwitchChange(enabled: Boolean) {
+        viewModelScope.launch { saveNotificationsEnabled(enabled) }
+    }
+
+    /**
+     * Saves [enabled] as this user's notification setting in their profile (US 01.10.01). The
+     * switch moves straight away. It reads the latest saved profile first, so edits saved from
+     * another screen are kept. If there is no profile or saving fails, the switch goes back and
+     * [notificationsSaveFailed] is set. Unit tests call it directly.
+     */
+    suspend fun saveNotificationsEnabled(enabled: Boolean) {
+        val before = notificationsEnabled
+        notificationsEnabled = enabled
+        notificationsSaveFailed = false
+        try {
+            val latest = profileRepository.getProfile(deviceId)
+            if (latest == null) {
+                notificationsEnabled = before
+                notificationsSaveFailed = true
+                return
+            }
+            val updated = latest.copy(notificationsEnabled = enabled)
+            profileRepository.saveProfile(updated)
+            profile = updated
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            notificationsEnabled = before
+            notificationsSaveFailed = true
         }
     }
 

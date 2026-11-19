@@ -30,5 +30,7 @@ class AppContainer(
     val deviceIdentityManager = DeviceIdentityManager(deviceId, profileRepository)
 
     /** Orchestrates lottery draws and recovery. */
-    val lotteryDrawer = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository)
+    val lotteryDrawer = LotteryDrawer(
+        lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
+    )
 }

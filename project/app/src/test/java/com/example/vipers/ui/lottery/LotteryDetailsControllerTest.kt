@@ -773,6 +773,7 @@ class LotteryDetailsControllerTest {
             lotteryRepository = lotteryRepository,
             notificationRepository = FakeNotificationRepository(),
             campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
         )
         val controller = LotteryDetailsController(
             lotteryRepository = lotteryRepository,

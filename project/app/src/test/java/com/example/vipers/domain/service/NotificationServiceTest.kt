@@ -2,18 +2,22 @@
  * NotificationServiceTest.kt
  * Unit tests for NotificationService.sendDrawResults (US 01.03.01, 01.03.02): the "You won" and
  * "Not selected" notices a draw adds to inboxes, using the fake repositories and a fixed date format.
+ * Also tests optedIn and that the draw skips users who turned notifications off (US 01.10.01).
  * Known issues: none. The inbox and markRead pass-throughs are covered by NotificationsControllerTest.
  */
 package com.example.vipers.domain.service
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
+import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.NotificationRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,10 +36,20 @@ class NotificationServiceTest {
         ),
     )
 
+    // Sam and Jo keep notifications on (the default); Riley turned them off (US 01.10.01)
+    private val profiles = FakeProfileRepository(
+        listOf(
+            UserProfile(id = "sam", name = "Sam Patel"),
+            UserProfile(id = "jo", name = "Jo Chen"),
+            UserProfile(id = "riley", name = "Riley Ng", notificationsEnabled = false),
+        ),
+    )
+
     // a fixed date format, so the tests don't depend on the phone's language or time zone
     private val service = NotificationService(
         notifications,
         campsites,
+        profiles,
         formatDate = { time -> "time $time" },
     )
 
@@ -197,7 +211,7 @@ class NotificationServiceTest {
                 calls.add(notifications)
             }
         }
-        NotificationService(counting, campsites, formatDate = { "time $it" })
+        NotificationService(counting, campsites, FakeProfileRepository(), formatDate = { "t $it" })
             .sendDrawResults(DrawResult(hintonLottery, listOf("sam"), listOf("jo", "alex")))
 
         assertEquals(1, calls.size)
@@ -212,7 +226,7 @@ class NotificationServiceTest {
                 called = true
             }
         }
-        NotificationService(counting, campsites).sendDrawResults(
+        NotificationService(counting, campsites, profiles).sendDrawResults(
             DrawResult(hintonLottery, emptyList(), emptyList()),
         )
 
@@ -267,5 +281,107 @@ class NotificationServiceTest {
         service.sendDrawResults(result)
 
         assertTrue(notifications.getNotificationsFor("jo").single().read)
+    }
+
+    @Test
+    fun optedIn_dropsUsersWhoTurnedNotificationsOff() = runBlocking {
+        assertEquals(listOf("sam", "jo"), service.optedIn(listOf("sam", "riley", "jo")))
+    }
+
+    @Test
+    fun optedIn_keepsUsersWithNoProfileAndRemovesDuplicates() = runBlocking {
+        val kept = service.optedIn(listOf("sam", "no-profile", "sam"))
+
+        assertEquals(listOf("sam", "no-profile"), kept)
+    }
+
+    @Test
+    fun optedIn_nobodyLeft_returnsAnEmptyList() = runBlocking {
+        assertTrue(service.optedIn(listOf("riley")).isEmpty())
+        assertTrue(service.optedIn(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun sendDrawResults_winnerWhoOptedOut_getsNoNoticeButOthersDo() = runBlocking {
+        service.sendDrawResults(DrawResult(hintonLottery, listOf("riley", "sam"), listOf("jo")))
+
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+        assertEquals(NotificationType.WON, notifications.getNotificationsFor("sam").single().type)
+        val joNotice = notifications.getNotificationsFor("jo").single()
+        assertEquals(NotificationType.NOT_SELECTED, joNotice.type)
+    }
+
+    @Test
+    fun sendDrawResults_loserWhoOptedOut_getsNoNotice() = runBlocking {
+        service.sendDrawResults(DrawResult(hintonLottery, listOf("sam"), listOf("riley", "jo")))
+
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+        assertEquals(1, notifications.getNotificationsFor("jo").size)
+    }
+
+    @Test
+    fun sendDrawResults_optedOutUserInBothLists_getsNeitherNotice() = runBlocking {
+        service.sendDrawResults(DrawResult(hintonLottery, listOf("riley"), listOf("riley", "jo")))
+
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+        assertEquals(1, notifications.getNotificationsFor("jo").size)
+    }
+
+    @Test
+    fun sendDrawResults_everyoneOptedOut_savesNothing() = runBlocking {
+        var called = false
+        val counting = object : NotificationRepository by notifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                called = true
+            }
+        }
+        NotificationService(counting, campsites, profiles).sendDrawResults(
+            DrawResult(hintonLottery, listOf("riley"), emptyList()),
+        )
+
+        assertFalse(called)
+    }
+
+    @Test
+    fun sendDrawResults_afterTurningNotificationsBackOn_sendsTheNextDraw() = runBlocking {
+        service.sendDrawResults(DrawResult(hintonLottery, listOf("riley"), emptyList()))
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+
+        profiles.saveProfile(profiles.getProfile("riley")!!.copy(notificationsEnabled = true))
+        val juneLottery = hintonLottery.copy(id = "june")
+        service.sendDrawResults(DrawResult(juneLottery, listOf("riley"), emptyList()))
+
+        val rileyIds = notifications.getNotificationsFor("riley").map { it.id }
+        assertEquals(listOf("draw_june_riley"), rileyIds)
+    }
+
+    @Test
+    fun optedIn_profileThatCantBeRead_keepsThatUserAndChecksTheOthers() = runBlocking {
+        // Jo's profile read fails (e.g. offline); Riley's says notifications are off
+        val flaky = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? {
+                if (id == "jo") throw IllegalStateException("Read failed")
+                return profiles.getProfile(id)
+            }
+        }
+        val service = NotificationService(notifications, campsites, flaky)
+
+        assertEquals(listOf("sam", "jo"), service.optedIn(listOf("sam", "jo", "riley")))
+    }
+
+    @Test
+    fun sendDrawResults_oneProfileReadFails_stillSendsEveryoneElsesNotices() = runBlocking {
+        val flaky = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? {
+                if (id == "sam") throw IllegalStateException("Read failed")
+                return profiles.getProfile(id)
+            }
+        }
+        NotificationService(notifications, campsites, flaky)
+            .sendDrawResults(DrawResult(hintonLottery, listOf("sam"), listOf("jo", "riley")))
+
+        assertEquals(1, notifications.getNotificationsFor("sam").size)
+        assertEquals(1, notifications.getNotificationsFor("jo").size)
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
     }
 }

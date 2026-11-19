@@ -10,6 +10,7 @@ package com.example.vipers.ui.lottery
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
@@ -37,6 +38,7 @@ class LotteryDrawerTest {
     private lateinit var lotteryRepository: FakeLotteryRepository
     private lateinit var notificationRepository: FakeNotificationRepository
     private lateinit var campsiteRepository: FakeCampsiteRepository
+    private val profileRepository = FakeProfileRepository()
     private lateinit var drawer: LotteryDrawer
 
     private val now = 2_000_000_000L
@@ -57,6 +59,7 @@ class LotteryDrawerTest {
             lotteryRepository = lotteryRepository,
             notificationRepository = notificationRepository,
             campsiteRepository = campsiteRepository,
+            profileRepository = profileRepository,
             random = Random(42),
         )
     }
@@ -177,9 +180,18 @@ class LotteryDrawerTest {
             lotteryRepository.seedEntry(LotteryEntry(lotteryId = lotteryC.id, userId = "user-$i", status = EntryStatus.WAITING))
         }
 
-        val drawer1 = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, Random(12345))
-        val drawer2 = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, Random(12345))
-        val drawer3 = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, Random(99999))
+        val drawer1 = LotteryDrawer(
+            lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
+            Random(12345),
+        )
+        val drawer2 = LotteryDrawer(
+            lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
+            Random(12345),
+        )
+        val drawer3 = LotteryDrawer(
+            lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
+            Random(99999),
+        )
 
         drawer1.drawLottery(lotteryA.id, now)
         drawer2.drawLottery(lotteryB.id, now)
@@ -201,7 +213,10 @@ class LotteryDrawerTest {
         }
 
         val drawers = (1..5).map {
-            LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, Random(it.toLong()))
+            LotteryDrawer(
+                lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
+                Random(it.toLong()),
+            )
         }
 
         // Launch concurrent draws
@@ -257,7 +272,9 @@ class LotteryDrawerTest {
             }
         }
 
-        val dynamicDrawer = LotteryDrawer(customRepo, notificationRepository, campsiteRepository, Random(42))
+        val dynamicDrawer = LotteryDrawer(
+            customRepo, notificationRepository, campsiteRepository, profileRepository, Random(42),
+        )
         val result = dynamicDrawer.drawLottery(lottery.id, now)
         assertTrue(result is LotteryDrawResult.Success)
         assertTrue(attempted)
@@ -501,7 +518,9 @@ class LotteryDrawerTest {
                 return notification.id
             }
         }
-        val countingDrawer = LotteryDrawer(lotteryRepository, counting, campsiteRepository, Random(42))
+        val countingDrawer = LotteryDrawer(
+            lotteryRepository, counting, campsiteRepository, profileRepository, Random(42),
+        )
         val lottery = createTestLottery(winnersCount = 2)
 
         assertEquals(LotteryDrawResult.EmptyList, countingDrawer.drawLottery(lottery.id, now))
