@@ -61,14 +61,15 @@ Document ID = **device ID**.
 | rules | string | |
 | cancellationPolicy | string | |
 | imageId | string? | promo photo |
-| lat, lng | number? | set by Find location |
+| lat, lng | number? | set by Find location (US 02.01.02c); both or neither, `null` if not set |
 | ratingSum, ratingCount | number | average = sum / count |
 | removed | bool | |
 
 Owners save changes with `updateCampsite(campsite)` (US 02.01.03). It writes only `name`, `address`,
-`region`, `description`, `maxOccupancy`, `tags`, `pricePerNightCents`, `rules` and
-`cancellationPolicy`, never `ownerId`, `ratingSum`, `ratingCount`, `imageId`, `lat`, `lng` or
-`removed`. It throws `NoSuchElementException` if the campsite ID doesn't exist.
+`region`, `description`, `maxOccupancy`, `tags`, `pricePerNightCents`, `rules`,
+`cancellationPolicy`, `lat` and `lng` (US 02.01.02c; `null` removes the map location), never
+`ownerId`, `ratingSum`, `ratingCount`, `imageId` or `removed`. It throws `NoSuchElementException` if
+the campsite ID doesn't exist.
 
 ### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
 Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.

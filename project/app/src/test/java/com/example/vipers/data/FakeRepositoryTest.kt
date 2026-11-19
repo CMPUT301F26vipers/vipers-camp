@@ -89,6 +89,8 @@ class FakeRepositoryTest {
                 pricePerNightCents = 7000,
                 rules = "No fires",
                 cancellationPolicy = "No refunds",
+                lat = 52.873,
+                lng = -118.081,
                 removed = true,
             )
         )
@@ -103,6 +105,8 @@ class FakeRepositoryTest {
             pricePerNightCents = 7000,
             rules = "No fires",
             cancellationPolicy = "No refunds",
+            lat = 52.873,
+            lng = -118.081,
         )
         assertEquals(expected, repo.getCampsite("hinton"))
     }

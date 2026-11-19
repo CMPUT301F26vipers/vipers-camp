@@ -25,8 +25,9 @@ interface CampsiteRepository {
 
     /**
      * Saves the details an owner can edit (name, address, region, description, maxOccupancy, tags,
-     * pricePerNightCents, rules and cancellationPolicy) to the campsite with [campsite]'s ID
-     * (US 02.01.03). Every other stored field keeps its saved value, whatever [campsite] holds.
+     * pricePerNightCents, rules, cancellationPolicy, and the map location lat and lng) to the
+     * campsite with [campsite]'s ID (US 02.01.03, 02.01.02c). Every other stored field keeps its
+     * saved value, whatever [campsite] holds.
      *
      * @throws NoSuchElementException if there is no campsite with that ID.
      */

@@ -98,10 +98,11 @@ fun Campsite.toMap(): Map<String, Any?> = mapOf(
 )
 
 /**
- * The fields an owner can edit, which are all that updateCampsite writes (US 02.01.03). Leaving out
- * ownerId, ratingSum, ratingCount, imageId, lat, lng and removed keeps their saved values.
+ * The fields an owner can edit, which are all that updateCampsite writes (US 02.01.03), including
+ * the map location (US 02.01.02c; null clears it). Leaving out ownerId, ratingSum, ratingCount,
+ * imageId and removed keeps their saved values.
  */
-fun Campsite.toEditableFields(): Map<String, Any> = mapOf(
+fun Campsite.toEditableFields(): Map<String, Any?> = mapOf(
     "name" to name,
     "address" to address,
     "region" to region.name,
@@ -111,6 +112,8 @@ fun Campsite.toEditableFields(): Map<String, Any> = mapOf(
     "pricePerNightCents" to pricePerNightCents,
     "rules" to rules,
     "cancellationPolicy" to cancellationPolicy,
+    "lat" to lat,
+    "lng" to lng,
 )
 
 /** Builds a campsite from its Firestore document. Missing fields get the model's defaults. */

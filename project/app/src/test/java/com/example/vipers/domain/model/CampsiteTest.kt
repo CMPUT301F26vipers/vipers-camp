@@ -233,4 +233,44 @@ class CampsiteTest {
         assertTrue(campsite.matchesGuests(0))
         assertTrue(campsite.matchesGuests(-1))
     }
+
+    // the Hinton campsite from scenario 2, with the map location Find location gives for it
+    private val mappedHinton = Campsite(
+        name = "Hinton Ridge Campground",
+        address = "Hinton, AB",
+        maxOccupancy = 8,
+        lat = 53.405,
+        lng = -117.585,
+    )
+
+    @Test
+    fun coordinatesText_showsThreeDecimals() {
+        assertEquals("53.405, -117.585", mappedHinton.coordinatesText())
+    }
+
+    @Test
+    fun coordinatesText_noMapLocation_isNull() {
+        assertEquals(null, mappedHinton.copy(lat = null, lng = null).coordinatesText())
+        assertEquals(null, mappedHinton.copy(lng = null).coordinatesText())
+    }
+
+    @Test
+    fun validate_mapLocationIsOptional() {
+        assertTrue(mappedHinton.copy(lat = null, lng = null).validate().isEmpty())
+        assertTrue(mappedHinton.validate().isEmpty())
+    }
+
+    @Test
+    fun validate_onlyOneCoordinateIsAnError() {
+        assertEquals(setOf("mapLocation"), mappedHinton.copy(lng = null).validate().keys)
+        assertEquals(setOf("mapLocation"), mappedHinton.copy(lat = null).validate().keys)
+    }
+
+    @Test
+    fun validate_coordinatesOutOfRangeAreAnError() {
+        assertEquals(setOf("mapLocation"), mappedHinton.copy(lat = 90.5).validate().keys)
+        assertEquals(setOf("mapLocation"), mappedHinton.copy(lng = -180.5).validate().keys)
+        // the edges are real coordinates
+        assertTrue(mappedHinton.copy(lat = -90.0, lng = 180.0).validate().isEmpty())
+    }
 }

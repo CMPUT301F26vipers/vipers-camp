@@ -3,14 +3,17 @@
  * The Add Campsite screen (mockup O02), opened from the "+" on My Campsites (US 02.01.01,
  * 02.01.02a), and the Edit Campsite screen (mockup O05), opened from Edit on My Campsite
  * (US 02.01.03). CampsiteController checks and saves what the owner types, including the nightly
- * price (T-09) and the optional rules and cancellation policy (T-11).
- * Known issues: photo (02.01.02b) and Find location (02.01.02c) are added by those stories.
+ * price (T-09), the optional rules and cancellation policy (T-11), and the optional map location:
+ * Find location looks up the address and the owner picks a place in the dialog (mockup O03,
+ * US 02.01.02c).
+ * Known issues: the photo (02.01.02b) is added by that story.
  */
 package com.example.vipers.ui.campsites
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,10 +62,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
+import com.example.vipers.domain.model.Place
 import com.example.vipers.domain.model.Region
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.theme.Border
 import com.example.vipers.ui.theme.ButtonHeight
 import com.example.vipers.ui.theme.ButtonShape
+import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.InputShape
 import com.example.vipers.ui.theme.Primary
 
@@ -144,14 +150,7 @@ fun CampsiteFormScreen(
                 error = controller.errors["name"],
                 tag = "field_name",
             )
-            FormField(
-                label = "Location",
-                value = controller.address,
-                onValueChange = controller::onAddressChange,
-                placeholder = "Address or place",
-                error = controller.errors["address"],
-                tag = "field_address",
-            )
+            LocationField(controller)
             // Region, Max guests and Price / night share a row, as in mockups O02 and O05
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RegionDropdown(
@@ -244,6 +243,14 @@ fun CampsiteFormScreen(
             }
             Text(label, fontWeight = FontWeight.SemiBold)
         }
+    }
+
+    if (controller.places.isNotEmpty()) {
+        ChoosePlaceDialog(
+            places = controller.places,
+            onUse = controller::choosePlace,
+            onCancel = controller::dismissPlaces,
+        )
     }
 
     if (showDiscardDialog) {
@@ -386,6 +393,148 @@ private fun TagsField(controller: CampsiteController) {
             }
         }
     }
+}
+
+/**
+ * The Location field with a Find location button next to it (mockups O02, O05, US 02.01.02c).
+ * Under it: the map location once a place is chosen, with Remove, or why Find location found none.
+ */
+@Composable
+private fun LocationField(controller: CampsiteController) {
+    val addressError = controller.errors["address"]
+    Column {
+        FieldLabel("Location")
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = controller.address,
+                onValueChange = controller::onAddressChange,
+                placeholder = { Text("Address or place") },
+                isError = addressError != null,
+                supportingText = addressError?.let { { Text(it) } },
+                singleLine = true,
+                shape = InputShape,
+                modifier = Modifier.weight(1f).testTag("field_address"),
+            )
+            OutlinedButton(
+                onClick = controller::findLocation,
+                enabled = !controller.isFindingPlaces,
+                shape = InputShape,
+                border = BorderStroke(1.dp, Primary),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+                modifier = Modifier.padding(top = 4.dp).testTag("button_find_location"),
+            ) {
+                Text(if (controller.isFindingPlaces) "Finding…" else "Find location")
+            }
+        }
+        val findError = controller.findLocationError ?: controller.errors["mapLocation"]
+        val coordinates = controller.lat?.let { lat ->
+            controller.lng?.let { lng -> Place.coordinatesText(lat, lng) }
+        }
+        if (findError != null) {
+            Text(
+                findError,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("find_location_error"),
+            )
+        } else if (coordinates != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painterResource(R.drawable.ic_campsite),
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.padding(end = 6.dp),
+                )
+                val where = controller.placeName?.let { "$it · " } ?: ""
+                Text(
+                    "Map location: $where$coordinates",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f).testTag("map_location"),
+                )
+                TextButton(
+                    onClick = controller::removeMapLocation,
+                    modifier = Modifier.testTag("button_remove_location"),
+                ) {
+                    Text("Remove")
+                }
+            }
+            if (controller.addressChangedSinceFind) {
+                Text(
+                    "You changed the address after finding this location. Find location again " +
+                        "if the place changed.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("address_changed_hint"),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The "Choose a place" dialog (mockup O03): the places Find location found, each with the area it's
+ * in and its coordinates so the owner can check them. Tap one, then Use This Place.
+ */
+@Composable
+private fun ChoosePlaceDialog(places: List<Place>, onUse: (Place) -> Unit, onCancel: () -> Unit) {
+    // a new search starts with nothing chosen
+    var chosen by remember(places) { mutableStateOf<Place?>(null) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Choose a place") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                places.forEachIndexed { index, place ->
+                    val selected = place == chosen
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            // white cards with a grey edge, like O03; the chosen one turns green
+                            .background(
+                                if (selected) GreenFill else MaterialTheme.colorScheme.surface,
+                                InputShape,
+                            )
+                            .border(
+                                if (selected) 2.dp else 1.dp,
+                                if (selected) Primary else Border,
+                                InputShape,
+                            )
+                            .clickable { chosen = place }
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .testTag("place_$index"),
+                    ) {
+                        Text(place.name, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            listOf(place.area, place.coordinatesText())
+                                .filter { it.isNotBlank() }
+                                .joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { chosen?.let(onUse) },
+                enabled = chosen != null,
+                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                modifier = Modifier.testTag("button_use_place"),
+            ) {
+                Text("Use This Place")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onCancel,
+                border = BorderStroke(1.dp, Primary),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 /** Where the photo picker goes; photos are added in US 02.01.02b. */
