@@ -42,7 +42,7 @@ Document ID = **device ID**.
 | email | string | optional, `""` if not given |
 | phone | string | optional, `""` if not given |
 | imageId | string? | profile photo, `null` if none |
-| notificationsEnabled | bool | default `true` |
+| notificationsEnabled | bool | default `true`; the Settings switch (US 01.10.01) |
 | isAdmin | bool | set by hand in the Firebase console |
 | createdAt | number | ms |
 
@@ -172,6 +172,14 @@ the message "You won a spot at <campsite names>. Reserve your nights before <boo
 <campsite names> this time." Someone in both lists only gets the win. `NotificationService.sendDrawResults`
 builds them all and saves them in one `addAll`. `batchId` stays `null` for draws; it only groups owner
 broadcasts.
+
+Users who turned notifications off on Settings (`notificationsEnabled = false`) get none
+(US 01.10.01). Before saving a notification for some users, call
+`NotificationService.optedIn(userIds)`: it returns the ones who still want notifications. A user
+with no profile, or whose profile can't be read, is kept. The draw already does this; owner
+broadcasts (02.10.01), messages (02.12.01, 01.14.01), rejections (02.08.01) and phone notifications
+(T-14) must too. A reservation's own "Reservation confirmed" notice is still written inside
+`createReservation`, since it confirms what the user just did.
 
 The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
 that user's notifications, newest first, straight away and on every change, until the returned

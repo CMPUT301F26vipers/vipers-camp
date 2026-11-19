@@ -1,10 +1,10 @@
 /*
  * NotificationService.kt
  * The app's notification logic, between the screens and NotificationRepository. It passes the
- * inbox and marking read through to the repository (T-13), and builds and saves a draw's "You won"
- * (US 01.03.01) and "Not selected" (US 01.03.02) notices.
- * Known issues: inbox items are written even for users who turned notifications off; showing them
- * on the phone, and skipping those users, is left to the device-notification work.
+ * inbox and marking read through to the repository (T-13), builds and saves a draw's "You won"
+ * (US 01.03.01) and "Not selected" (US 01.03.02) notices, and skips users who turned
+ * notifications off in Settings (US 01.10.01).
+ * Known issues: showing notifications on the phone is left to T-14.
  */
 package com.example.vipers.domain.service
 
@@ -14,18 +14,22 @@ import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.Subscription
+import kotlinx.coroutines.CancellationException
 import java.text.DateFormat
 import java.util.Date
 
 /**
  * Reads a user's inbox and marks notifications read (T-13), and sends a draw's results
  * (US 01.03.01, 01.03.02), using [notificationRepository]. [campsiteRepository] looks up campsite
- * names, and [formatDate] turns a time into text for a message; tests pass a fixed one.
+ * names, [profileRepository] tells who turned notifications off (US 01.10.01), and [formatDate]
+ * turns a time into text for a message; tests pass a fixed one.
  */
 class NotificationService(
     private val notificationRepository: NotificationRepository,
     private val campsiteRepository: CampsiteRepository,
+    private val profileRepository: ProfileRepository,
     private val formatDate: (Long) -> String = ::dateAndTime,
 ) {
 
@@ -40,19 +44,42 @@ class NotificationService(
     suspend fun markRead(id: String) = notificationRepository.markRead(id)
 
     /**
+     * The users in [userIds] who still want notifications, in the same order and without
+     * duplicates (US 01.10.01). A user is dropped only when their profile says notifications are
+     * off. A user with no profile, or whose profile can't be read, is kept, so one failed read
+     * doesn't stop everyone else's notifications. Every place that sends a notification to a user
+     * calls this first, so the Settings switch works everywhere.
+     */
+    suspend fun optedIn(userIds: List<String>): List<String> =
+        userIds.distinct().filter { userId -> wantsNotifications(userId) }
+
+    // False only when the user's saved profile has notifications turned off.
+    private suspend fun wantsNotifications(userId: String): Boolean =
+        try {
+            profileRepository.getProfile(userId)?.notificationsEnabled ?: true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            true
+        }
+
+    /**
      * Adds a draw's results to the inboxes of everyone in [result] (US 01.03.01, 01.03.02): a "You
      * won" notice to each winner, naming the lottery's campsites and when booking ends, which opens
      * Reserve for the lottery; and a "Not selected" notice to each loser, naming the campsites.
-     * A user in both lists only gets the win. Each notice has the ID "draw_<lotteryId>_<userId>",
+     * A user in both lists only gets the win, and users who turned notifications off get neither
+     * ([optedIn], US 01.10.01). Each notice has the ID "draw_<lotteryId>_<userId>",
      * so sending the same draw again replaces it instead of adding a second one. All of them are
      * saved in one [NotificationRepository.addAll] call, dated when the draw ran, or [now]
      * (milliseconds since 1970) if the lottery has no draw time.
      */
     suspend fun sendDrawResults(result: DrawResult, now: Long = System.currentTimeMillis()) {
         val lottery = result.lottery
-        val winnerIds = result.winnerIds.distinct()
+        val allWinners = result.winnerIds.distinct()
         // a winner never gets a "Not selected" notice, even if a list has them in both
-        val loserIds = result.loserIds.distinct() - winnerIds.toSet()
+        val allLosers = result.loserIds.distinct() - allWinners.toSet()
+        val winnerIds = optedIn(allWinners)
+        val loserIds = optedIn(allLosers)
         if (winnerIds.isEmpty() && loserIds.isEmpty()) return
         // Notification has no campsite name field, so the names go in the message
         val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }

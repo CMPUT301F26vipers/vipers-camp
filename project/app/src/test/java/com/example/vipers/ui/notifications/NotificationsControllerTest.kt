@@ -9,6 +9,7 @@ package com.example.vipers.ui.notifications
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.NotificationType
@@ -43,7 +44,10 @@ class NotificationsControllerTest {
     )
 
     private fun controllerFor(repo: NotificationRepository, userId: String = "sam") =
-        NotificationsController(NotificationService(repo, FakeCampsiteRepository()), userId)
+        NotificationsController(
+            NotificationService(repo, FakeCampsiteRepository(), FakeProfileRepository()),
+            userId,
+        )
 
     /** A repository whose inbox listener is told the load failed, like Firestore denying the read. */
     private fun failingToLoad(before: List<Notification>? = null) =
