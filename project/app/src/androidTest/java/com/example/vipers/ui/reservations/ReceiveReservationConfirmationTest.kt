@@ -129,6 +129,9 @@ class ReceiveReservationConfirmationTest {
         composeRule.onNodeWithTag("reserve_guests_increase").performClick()
         composeRule.onNodeWithTag("reserve_guests_count").assertTextEquals("3")
 
+        // Accept campsite rules (US 02.11.01)
+        composeRule.onNodeWithTag("checkbox_accept_rules").performScrollTo().performClick()
+
         // Reserve nights
         composeRule.onNodeWithTag("button_reserve").performScrollTo().performClick()
 
