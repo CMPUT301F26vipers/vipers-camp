@@ -24,6 +24,7 @@ import androidx.test.uiautomator.Until
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
@@ -71,6 +72,7 @@ class LotteryIntentTest {
             lotteryRepository = lotteryRepository,
             reservationRepository = FakeReservationRepository(),
             notificationRepository = FakeNotificationRepository(),
+            imageRepository = FakeImageRepository(),
         )
 
         // Seed a campsite and availability

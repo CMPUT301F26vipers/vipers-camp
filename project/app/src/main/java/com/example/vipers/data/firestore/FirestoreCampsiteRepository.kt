@@ -22,12 +22,20 @@ class FirestoreCampsiteRepository(
     private val availability = db.collection("availability")
 
     override suspend fun addCampsite(campsite: Campsite): String {
-        val doc = collection.document() // Firestore makes a new random ID
+        // keeps a given ID (from newCampsiteId), like the fake; otherwise Firestore makes a new one
+        val doc = if (campsite.id.isNotEmpty()) {
+            collection.document(campsite.id)
+        } else {
+            collection.document()
+        }
         // Not awaited: offline, set() only finishes once the phone reconnects, so Publish would
         // hang. Firestore keeps the write on the phone and sends it when it's back online.
         doc.set(campsite.copy(id = doc.id).toMap())
         return doc.id
     }
+
+    // Firestore makes the random ID on the phone, without saving or going online.
+    override fun newCampsiteId(): String = collection.document().id
 
     override suspend fun getCampsite(id: String): Campsite? {
         val snapshot = collection.document(id).get().await()
@@ -99,8 +107,8 @@ fun Campsite.toMap(): Map<String, Any?> = mapOf(
 
 /**
  * The fields an owner can edit, which are all that updateCampsite writes (US 02.01.03), including
- * the map location (US 02.01.02c; null clears it). Leaving out ownerId, ratingSum, ratingCount,
- * imageId and removed keeps their saved values.
+ * the map location (US 02.01.02c) and the photo's imageId (US 02.01.02b); null clears them. Leaving
+ * out ownerId, ratingSum, ratingCount and removed keeps their saved values.
  */
 fun Campsite.toEditableFields(): Map<String, Any?> = mapOf(
     "name" to name,
@@ -114,6 +122,7 @@ fun Campsite.toEditableFields(): Map<String, Any?> = mapOf(
     "cancellationPolicy" to cancellationPolicy,
     "lat" to lat,
     "lng" to lng,
+    "imageId" to imageId,
 )
 
 /** Builds a campsite from its Firestore document. Missing fields get the model's defaults. */
