@@ -2,8 +2,9 @@
  * ReserveController.kt
  * The controller (a ViewModel) behind the Reserve screen (mockup E11, US 01.04.01). It loads the
  * won lottery, the campsite and its calendar, works out which of the lottery's nights are still
- * free, lets the winner pick nights in a row, select their group size, reserve the nights (T-03),
- * and adds up the total. The winner can also decline the win (US 01.04.03).
+ * free, lets the winner pick nights in a row, select their group size, confirm campsite rules
+ * acceptance (US 02.11.01), reserve the nights (T-03), and adds up the total. The winner can also
+ * decline the win (US 01.04.03).
  * This is the "Load the Reserve screen", "Reserve" and "Decline a win" parts of the
  * ReservationController CRC card; it is its own class because ReservationController already runs
  * the owner's reservation list (02.07.01).
@@ -95,6 +96,14 @@ class ReserveController(
 
     /** Number of guests in the group (US 01.04.01, T-03). Defaults to entry groupSize. */
     var groupSize by mutableStateOf(1)
+        private set
+
+    /** True when the entrant has confirmed reading and accepting campsite rules (US 02.11.01). */
+    var rulesAccepted by mutableStateOf(false)
+        private set
+
+    /** The time the entrant accepted the rules (US 02.11.01). */
+    var rulesAcceptedAt by mutableStateOf<Long?>(null)
         private set
 
     /** True while the screen is loading. */
@@ -283,6 +292,15 @@ class ReserveController(
         }
     }
 
+    /**
+     * Updates whether the entrant accepted the rules, recording the timestamp when accepted
+     * (US 02.11.01).
+     */
+    fun onRulesAcceptedChange(accepted: Boolean, now: Long = System.currentTimeMillis()) {
+        rulesAccepted = accepted
+        rulesAcceptedAt = if (accepted) now else null
+    }
+
     /** Clears the current reservation error message. */
     fun clearReserveError() {
         reserveError = null
@@ -326,6 +344,10 @@ class ReserveController(
             reserveError = "Group size cannot exceed the maximum occupancy of ${site.maxOccupancy}."
             return ReserveResult.CapacityExceeded
         }
+        if (!rulesAccepted) {
+            reserveError = "You must accept the rules and policies to reserve."
+            return ReserveResult.Error(reserveError!!)
+        }
 
         isReserving = true
         reserveError = null
@@ -336,6 +358,7 @@ class ReserveController(
                 userId = userId,
                 nights = selectedNights,
                 groupSize = groupSize,
+                rulesAcceptedAt = rulesAcceptedAt ?: now,
                 now = now,
             )
             when (result) {

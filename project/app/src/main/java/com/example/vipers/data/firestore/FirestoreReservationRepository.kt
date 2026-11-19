@@ -2,8 +2,8 @@
  * FirestoreReservationRepository.kt
  * The real ReservationRepository: saves and loads reservations in the Firestore "reservations"
  * collection (Repository pattern).
- * Supports atomic reservation transactions with conflict checks (T-03) and saves confirmation
- * notifications (US 01.05.01).
+ * Supports atomic reservation transactions with conflict checks (T-03), saves confirmation
+ * notifications (US 01.05.01), and records rules acceptance time (US 02.11.01).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  */
 package com.example.vipers.data.firestore
@@ -63,6 +63,7 @@ class FirestoreReservationRepository(
         userId: String,
         nights: List<String>,
         groupSize: Int,
+        rulesAcceptedAt: Long,
         now: Long,
     ): ReserveResult {
         if (nights.isEmpty()) return ReserveResult.Error("No nights selected")
@@ -166,7 +167,7 @@ class FirestoreReservationRepository(
                     checkOut = checkOut,
                     groupSize = groupSize,
                     totalPriceCents = totalPriceCents,
-                    rulesAcceptedAt = now,
+                    rulesAcceptedAt = rulesAcceptedAt,
                     status = ReservationStatus.CONFIRMED,
                     statusChangedAt = now,
                 )
