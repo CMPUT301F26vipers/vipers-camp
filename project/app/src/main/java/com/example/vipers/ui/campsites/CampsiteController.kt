@@ -112,6 +112,14 @@ class CampsiteController(
     var findLocationError by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * True if the owner changed the address after setting the map location, so the location may
+     * no longer match it. The form asks them to check it; the location is kept until they find it
+     * again or remove it (US 02.01.02c).
+     */
+    var addressChangedSinceFind by mutableStateOf(false)
+        private set
+
     /** Error message for each field that's wrong, keyed by field name ("name", "region"...). */
     var errors by mutableStateOf(emptyMap<String, String>())
         private set
@@ -133,6 +141,7 @@ class CampsiteController(
     fun onNameChange(text: String) { name = text; clearError("name") }
     /** Updates the address as the owner types and clears its errors. */
     fun onAddressChange(text: String) {
+        if (text != address && lat != null) addressChangedSinceFind = true
         address = text
         clearError("address")
         findLocationError = null
@@ -210,6 +219,7 @@ class CampsiteController(
         lng = place.lng
         placeName = place.name
         places = emptyList()
+        addressChangedSinceFind = false
         clearError("mapLocation")
     }
 
@@ -223,6 +233,7 @@ class CampsiteController(
         lat = null
         lng = null
         placeName = null
+        addressChangedSinceFind = false
         clearError("mapLocation")
     }
 

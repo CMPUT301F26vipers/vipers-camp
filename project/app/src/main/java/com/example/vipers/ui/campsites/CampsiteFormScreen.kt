@@ -458,6 +458,15 @@ private fun LocationField(controller: CampsiteController) {
                     Text("Remove")
                 }
             }
+            if (controller.addressChangedSinceFind) {
+                Text(
+                    "You changed the address after finding this location. Find location again " +
+                        "if the place changed.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("address_changed_hint"),
+                )
+            }
         }
     }
 }

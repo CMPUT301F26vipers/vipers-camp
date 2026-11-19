@@ -255,4 +255,21 @@ class SetMapLocationTest {
         composeRule.onNodeWithText("Hinton Ridge Campground").assertIsDisplayed()
         composeRule.onNodeWithTag("owner_map_location").assertDoesNotExist()
     }
+
+    @Test
+    fun changingTheAddressAfterFindingShowsAHint() {
+        openForm()
+        findLocation()
+        composeRule.onNodeWithTag("place_0").performClick()
+        composeRule.onNodeWithTag("button_use_place").performClick()
+        composeRule.onNodeWithTag("address_changed_hint", useUnmergedTree = true)
+            .assertDoesNotExist()
+
+        type("field_address", " Alberta")
+
+        composeRule.onNodeWithTag("address_changed_hint", useUnmergedTree = true)
+            .assertIsDisplayed()
+        // the old location is kept until the owner finds it again or removes it
+        composeRule.onNodeWithTag("map_location", useUnmergedTree = true).assertIsDisplayed()
+    }
 }

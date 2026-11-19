@@ -188,7 +188,6 @@ fun OwnerCampsiteScreen(
  */
 @Composable
 private fun PhotoAndMap(campsite: Campsite) {
-    val coordinates = campsite.coordinatesText()
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(
             Modifier.weight(1f).height(96.dp).background(GreenFill, RoundedCornerShape(12.dp)),
@@ -196,7 +195,7 @@ private fun PhotoAndMap(campsite: Campsite) {
         ) {
             Icon(painterResource(R.drawable.ic_image), contentDescription = null, tint = Primary)
         }
-        if (coordinates != null) {
+        if (campsite.hasLocation()) {
             Column(
                 Modifier
                     .weight(1f)
@@ -211,7 +210,11 @@ private fun PhotoAndMap(campsite: Campsite) {
                     contentDescription = null,
                     tint = Primary,
                 )
-                Text(coordinates, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Text(
+                    campsite.coordinatesText().orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
             }
         }
     }

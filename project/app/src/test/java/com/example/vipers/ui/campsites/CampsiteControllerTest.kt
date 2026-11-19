@@ -826,4 +826,75 @@ class CampsiteControllerTest {
 
         assertFalse(campsites.getCampsite("hinton")!!.hasLocation())
     }
+
+    @Test
+    fun onAddressChange_afterChoosingAPlace_keepsTheLocationAndAsksToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+
+        form.onAddressChange("Edson, AB")
+
+        assertTrue(form.addressChangedSinceFind)
+        assertEquals(53.405, form.lat!!, 0.0)
+    }
+
+    @Test
+    fun onAddressChange_withNoMapLocation_doesNotAskToCheckIt() {
+        val form = formWith(FakePlaceFinder())
+
+        form.onAddressChange("Hinton, AB")
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun onAddressChange_sameText_doesNotAskToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+
+        form.onAddressChange("Hinton, AB")
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun choosePlaceAgain_afterChangingTheAddress_stopsAskingToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown, golfCourse)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+        form.onAddressChange("Hinton Golf Course")
+        form.fetchPlaces()
+
+        form.choosePlace(golfCourse)
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun removeMapLocation_afterChangingTheAddress_stopsAskingToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+        form.onAddressChange("Edson, AB")
+
+        form.removeMapLocation()
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun editingTheAddressOfASavedCampsite_asksToCheckItsLocation() = runBlocking {
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        assertFalse(form.addressChangedSinceFind)
+
+        form.onAddressChange("Hinton, Alberta")
+
+        assertTrue(form.addressChangedSinceFind)
+    }
 }
