@@ -28,6 +28,7 @@ import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.campsites.OwnerCampsiteScreen
 import com.example.vipers.ui.campsites.AvailabilityScreen
 import com.example.vipers.ui.home.HomeScreen
+import com.example.vipers.ui.messages.MessagesScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SentScreen
 import com.example.vipers.ui.profile.PolicyScreen
@@ -174,6 +175,19 @@ fun AppNavigation(
                 OwnerReservationDetailsScreen(
                     reservationId = backStackEntry.arguments?.getString("reservationId") ?: "",
                     onBack = { navController.popBackStack() },
+                    onMessage = { reservationId ->
+                        val route = Routes.MESSAGES.replace("{reservationId}", reservationId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            composable(
+                route = Routes.MESSAGES,
+                arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                MessagesScreen(
+                    reservationId = backStackEntry.arguments?.getString("reservationId") ?: "",
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Routes.OWNER_SENT) {
@@ -274,8 +288,11 @@ fun AppNavigation(
                         )
                         navController.navigate(route)
                     },
-                    // no message thread screen yet
-                    onOpenThread = {},
+                    // the reservation's conversation (US 02.12.01)
+                    onOpenThread = { reservationId ->
+                        val route = Routes.MESSAGES.replace("{reservationId}", reservationId)
+                        navController.navigate(route)
+                    },
                 )
             }
             composable(Routes.PROFILE) {
