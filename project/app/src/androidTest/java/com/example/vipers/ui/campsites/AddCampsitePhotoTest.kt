@@ -1,9 +1,9 @@
 /*
  * AddCampsitePhotoTest.kt
  * Intent tests for US 02.01.02b: adding an optional promo photo on the campsite form (mockups O02,
- * O05) and seeing it on My Campsite (O04), Campsite Details (E05) and the Home results (E02), one
- * test per acceptance criterion. Uses fake repositories and a fake photo reader, so it doesn't
- * touch Firestore or need the phone's photo picker.
+ * O05) and seeing it as a thumbnail on the Home results (E02) and My Campsites (O01), and whole on
+ * My Campsite (O04) and Campsite Details (E05), one test per acceptance criterion. Uses fake
+ * repositories and a fake photo reader, so it doesn't touch Firestore or need the photo picker.
  * Known issues: the system photo picker can't be driven from a test, so tests hand the controller
  * a picked photo directly, as the picker would.
  */
@@ -12,6 +12,7 @@ package com.example.vipers.ui.campsites
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -252,6 +253,15 @@ class AddCampsitePhotoTest {
         composeRule.onNodeWithTag("button_remove_photo").assertIsDisplayed()
     }
 
+    // The sample photo is square, so shown whole (not cropped to a strip) it's as tall as it is
+    // wide, up to FullPhoto's 360dp limit.
+    private fun assertShowsTheWholeSquarePhoto() {
+        val photo = composeRule.onNodeWithContentDescription("Campsite photo").getBoundsInRoot()
+        val width = (photo.right - photo.left).value
+        val height = (photo.bottom - photo.top).value
+        assertEquals(minOf(width, 360f), height, 2f)
+    }
+
     @Test
     fun savedPhoto_showsOnHomeCampsiteDetailsAndMyCampsite() {
         openApp()
@@ -267,15 +277,36 @@ class AddCampsitePhotoTest {
         waitForPhoto("Campsite photo")
         composeRule.onNodeWithTag("details_photo").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Campsite photo").assertIsDisplayed()
+        assertShowsTheWholeSquarePhoto()
 
-        // My Campsite (O04)
+        // My Campsites list (O01)
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        waitForPhoto("Photo of Hinton Ridge Campground")
+        composeRule.onNodeWithContentDescription(
+            "Photo of Hinton Ridge Campground", useUnmergedTree = true,
+        ).assertIsDisplayed()
+
+        // My Campsite (O04)
         composeRule.onNodeWithText("Hinton Ridge Campground").performClick()
         composeRule.onNodeWithText("My Campsite").assertIsDisplayed()
         waitForPhoto("Campsite photo")
         composeRule.onNodeWithTag("owner_photo").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Campsite photo").assertIsDisplayed()
+        assertShowsTheWholeSquarePhoto()
+    }
+
+    @Test
+    fun myCampsite_withPhotoAndMapLocation_showsTheWholePhotoAndTheMapBox() {
+        runBlocking { campsites.updateCampsite(hinton.copy(lat = 53.405, lng = -117.585)) }
+        openApp()
+
+        composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        composeRule.onNodeWithText("Hinton Ridge Campground").performClick()
+        waitForPhoto("Campsite photo")
+
+        assertShowsTheWholeSquarePhoto()
+        composeRule.onNodeWithTag("owner_map_location").performScrollTo().assertIsDisplayed()
     }
 
     @Test

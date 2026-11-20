@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,7 +38,7 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
-import com.example.vipers.ui.common.SavedPhoto
+import com.example.vipers.ui.common.FullPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
@@ -97,12 +96,12 @@ fun CampsiteDetailsScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // the promo photo, or a placeholder if there's none (US 02.01.02b)
-                SavedPhoto(
+                // the whole promo photo, or a placeholder if there's none (US 02.01.02b)
+                FullPhoto(
                     campsite.imageId,
                     contentDescription = "Campsite photo",
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(140.dp).testTag("details_photo"),
+                    modifier = Modifier.fillMaxWidth().testTag("details_photo"),
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
