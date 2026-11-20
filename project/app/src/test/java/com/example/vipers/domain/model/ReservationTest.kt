@@ -1,11 +1,12 @@
 /*
  * ReservationTest.kt
- * Unit tests for the Active / Past rule on reservations, and for the completed-stay rule the
- * owner's Past tab uses (US 02.07.02).
+ * Unit tests for the Active / Past rule on reservations, for the completed-stay rule the owner's
+ * Past tab uses (US 02.07.02), and for which ones can be cancelled (US 01.07.01).
  * Known issues: none.
  */
 package com.example.vipers.domain.model
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -79,5 +80,37 @@ class ReservationTest {
                 day = day.plusDays(1)
             }
         }
+    }
+
+    @Test
+    fun canCancel_beforeCheckIn() {
+        assertTrue(mayEightToTen.canCancel(LocalDate.parse("2027-05-01")))
+    }
+
+    @Test
+    fun canCancel_onCheckInDay() {
+        assertTrue(mayEightToTen.canCancel(LocalDate.parse("2027-05-08")))
+    }
+
+    @Test
+    fun cannotCancel_afterCheckInHasPassed() {
+        assertFalse(mayEightToTen.canCancel(today))
+    }
+
+    @Test
+    fun cannotCancel_whenAlreadyCancelledOrRejected() {
+        val early = LocalDate.parse("2027-05-01")
+        assertFalse(mayEightToTen.copy(status = ReservationStatus.CANCELLED).canCancel(early))
+        assertFalse(mayEightToTen.copy(status = ReservationStatus.REJECTED).canCancel(early))
+    }
+
+    @Test
+    fun cannotCancel_whenCheckInCantBeRead() {
+        assertFalse(mayEightToTen.copy(checkIn = "").canCancel(today))
+    }
+
+    @Test
+    fun nights_runFromCheckInToTheNightBeforeCheckOut() {
+        assertEquals(listOf("2027-05-08", "2027-05-09"), mayEightToTen.nights())
     }
 }

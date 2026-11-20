@@ -1,11 +1,13 @@
 /*
  * ReservationDetailsScreen.kt
  * The entrant's view of their reservation (US 01.05.01): shows the reservation number,
- * campsite name, stay dates, group size, total price, and status.
- * Known issues: none.
+ * campsite name, stay dates, group size, total price, and status. Before check-in the entrant
+ * can cancel it after confirming in a dialog (US 01.07.01, mockups E15 and E16).
+ * Known issues: the "Cancelled on …" banner from mockup E15b comes with US 01.07.02.
  */
 package com.example.vipers.ui.reservations
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,18 +15,27 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -33,8 +44,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.theme.ButtonHeight
+import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
+import com.example.vipers.ui.theme.Error
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.Primary
 import com.example.vipers.ui.theme.TextMuted
@@ -56,6 +71,18 @@ fun ReservationDetailsScreen(
     LaunchedEffect(Unit) { controller.loadData() }
 
     val reservation = controller.reservation
+    var showCancelDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showCancelDialog) {
+        CancelReservationDialog(
+            policy = controller.campsite?.takeIf { it.hasCancellationPolicy }?.cancellationPolicy,
+            onKeep = { showCancelDialog = false },
+            onConfirm = {
+                showCancelDialog = false
+                controller.cancelReservation()
+            },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -94,18 +121,30 @@ fun ReservationDetailsScreen(
                 ReservationContent(
                     reservation = reservation,
                     rules = controller.campsite?.rules,
+                    canCancel = controller.canCancel(),
+                    cancelling = controller.cancelling,
+                    cancelError = controller.cancelError,
+                    onCancelClick = { showCancelDialog = true },
                 )
             }
         }
     }
 }
 
-/** Shows the reservation confirmation details and optional rules. */
+/**
+ * Shows the reservation details and optional rules, and the Cancel Reservation button while
+ * [canCancel] is true (US 01.07.01).
+ */
 @Composable
 private fun ReservationContent(
     reservation: Reservation,
     rules: String?,
+    canCancel: Boolean,
+    cancelling: Boolean,
+    cancelError: String?,
+    onCancelClick: () -> Unit,
 ) {
+    val confirmed = reservation.status == ReservationStatus.CONFIRMED
     Column(
         modifier = Modifier
             .verticalScroll(rememberScrollState())
@@ -126,10 +165,15 @@ private fun ReservationContent(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = "Confirmed Reservation",
+                    text = when (reservation.status) {
+                        ReservationStatus.CONFIRMED -> "Confirmed Reservation"
+                        ReservationStatus.CANCELLED -> "Cancelled Reservation"
+                        ReservationStatus.REJECTED -> "Rejected Reservation"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Primary,
+                    color = if (confirmed) Primary else Error,
+                    modifier = Modifier.testTag("detail_header"),
                 )
                 Text(
                     text = reservation.reservationNumber,
@@ -197,7 +241,78 @@ private fun ReservationContent(
                 modifier = Modifier.testTag("detail_campsite_rules"),
             )
         }
+
+        if (canCancel) {
+            OutlinedButton(
+                onClick = onCancelClick,
+                enabled = !cancelling,
+                shape = ButtonShape,
+                border = BorderStroke(1.5.dp, Error),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Error),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(ButtonHeight)
+                    .testTag("button_cancel_reservation"),
+            ) {
+                Text("Cancel Reservation", fontWeight = FontWeight.SemiBold)
+            }
+        }
+        if (cancelError != null) {
+            Text(
+                text = cancelError,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Error,
+                modifier = Modifier.testTag("text_cancel_error"),
+            )
+        }
     }
+}
+
+/**
+ * Asks the entrant to confirm cancelling (mockup E16, US 01.07.01), showing the campsite's
+ * cancellation [policy] when the owner wrote one.
+ */
+@Composable
+private fun CancelReservationDialog(
+    policy: String?,
+    onKeep: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onKeep,
+        title = { Text("Cancel reservation?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("The nights will be released to other winners.", color = TextMuted)
+                if (policy != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(GreenFill, RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                            .testTag("dialog_cancellation_policy"),
+                    ) {
+                        Text("Cancellation policy", fontWeight = FontWeight.SemiBold)
+                        Text(policy)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = Error),
+                modifier = Modifier.testTag("cancel_confirm"),
+            ) {
+                Text("Cancel")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onKeep, modifier = Modifier.testTag("cancel_keep")) {
+                Text("Keep it")
+            }
+        },
+    )
 }
 
 /** A single label-value line in the reservation details. */
