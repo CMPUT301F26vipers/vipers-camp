@@ -244,6 +244,19 @@ fun AppNavigation(
                     onViewWaitingList = {
                         navController.navigate(Routes.WAITING_LIST.replace("{lotteryId}", lotteryId))
                     },
+                    onEditLottery = {
+                        navController.navigate(Routes.EDIT_LOTTERY.replace("{lotteryId}", lotteryId))
+                    },
+                )
+            }
+            composable(
+                route = Routes.EDIT_LOTTERY,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
+                LotteryFormScreen(
+                    lotteryId = lotteryId,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

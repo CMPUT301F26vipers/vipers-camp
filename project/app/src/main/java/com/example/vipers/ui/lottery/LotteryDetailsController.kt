@@ -89,11 +89,10 @@ class LotteryDetailsController(
     val isOwner: Boolean
         get() = currentUserId.isNotBlank() && lottery?.ownerId == currentUserId
 
-    init {
-        loadData()
-    }
-
-    /** Loads lottery details and resolves waitlist entry user display names in the background. */
+    /**
+     * Loads lottery details and resolves waitlist entry user display names in the background.
+     * Triggered by [LotteryDetailsScreen]'s lifecycle observer on ON_RESUME.
+     */
     fun loadData() {
         viewModelScope.launch { fetchData() }
     }

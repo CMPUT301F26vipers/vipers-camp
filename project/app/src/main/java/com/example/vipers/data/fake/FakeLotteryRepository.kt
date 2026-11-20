@@ -9,9 +9,12 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.validateLottery
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.UpdateLotteryResult
+import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -58,6 +61,51 @@ class FakeLotteryRepository(
 
     override suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery> = mutex.withLock {
         lotteries.values.filter { campsiteId in it.campsiteIds && !it.removed }
+    }
+
+    override suspend fun updateLottery(
+        lottery: Lottery,
+        callerId: String,
+        now: Long,
+        zone: ZoneId,
+    ): UpdateLotteryResult = mutex.withLock {
+        val stored = lotteries[lottery.id]
+            ?: return@withLock UpdateLotteryResult.Error("Lottery not found")
+
+        if (callerId.isBlank() || stored.ownerId != callerId) {
+            return@withLock UpdateLotteryResult.Error("You do not own this lottery")
+        }
+
+        val blockedReason = stored.editBlockedReason(now)
+        if (blockedReason != null) {
+            return@withLock UpdateLotteryResult.ReadOnly(blockedReason)
+        }
+
+        val currentWaitingCount = stored.waitingUserIds.size
+
+        val validationErrors = validateLottery(
+            lottery = lottery,
+            now = now,
+            storedLottery = stored,
+            currentWaitingCount = currentWaitingCount,
+            zone = zone,
+        )
+        if (validationErrors.isNotEmpty()) {
+            return@withLock UpdateLotteryResult.Error(validationErrors.first())
+        }
+
+        val updated = stored.copy(
+            nightsOffered = lottery.nightsOffered,
+            nightsDescription = lottery.nightsDescription,
+            registrationStart = lottery.registrationStart,
+            registrationEnd = lottery.registrationEnd,
+            bookingStart = lottery.bookingStart,
+            bookingEnd = lottery.bookingEnd,
+            winnersCount = lottery.winnersCount,
+            waitlistCapacity = lottery.waitlistCapacity,
+        )
+        lotteries[lottery.id] = updated
+        UpdateLotteryResult.Success
     }
 
     override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult = mutex.withLock {

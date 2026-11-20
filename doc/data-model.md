@@ -98,9 +98,19 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | drawnAt | number? | ms, `null` until the draw runs |
 | removed | bool | |
 | waitingUserIds | string[] | entrant device IDs currently on the waiting list |
+| entriesVersion | number | incremented on waiting-list join/leave |
+| committedDrawId | string? | ID of committed draw manifest |
+| manifestChunkCount | number | number of manifest chunks |
+| participantCount | number | total participants in draw |
+| winnerCount | number | total winners in draw |
 
-Operations rewriting an entire lottery document must preserve `waitingUserIds`, including Edit
-Lottery and US 02.04.06 (#18), otherwise the waiting-list count may be reset.
+Owners save changes with `updateLottery(lottery, callerId)` (US 02.04.06). In one transaction, it
+verifies ownership (`callerId` matches `stored.ownerId`), validates edit eligibility (not drawn,
+removed, or closed) and model rules against the current `waitingUserIds` count, and writes only
+`nightsOffered`, `nightsDescription`, `registrationStart`, `registrationEnd`, `bookingStart`,
+`bookingEnd`, `winnersCount`, and `waitlistCapacity`. It never overwrites `ownerId`, `campsiteIds`,
+`drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`, `manifestChunkCount`,
+`participantCount`, or `winnerCount`, preventing concurrent entrants from being reset or lost.
 
 ### `lotteryEntries`: `LotteryEntry` (`LotteryRepository`)
 Document ID = **`lotteryId_userId`**, so a user can only have one entry per lottery.

@@ -9,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -17,6 +19,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
@@ -80,10 +83,17 @@ class LotteryIntentTest {
         runBlocking { campsiteRepository.addCampsite(camp) }
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val today = Calendar.getInstance()
-        val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, 1) }
+        // Advance to next month (setting day 1 first to avoid month-length rollover)
+        val nextMonthCal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, 1)
+        }
+        val offeredNightCal = Calendar.getInstance().apply {
+            time = nextMonthCal.time
+            set(Calendar.DAY_OF_MONTH, 20)
+        }
 
-        val openNights = listOf(dateFormat.format(today.time), dateFormat.format(tomorrow.time))
+        val openNights = listOf(dateFormat.format(offeredNightCal.time))
 
         runBlocking {
             campsiteRepository.saveAvailability(
@@ -113,6 +123,25 @@ class LotteryIntentTest {
         ok.click()
         uiDevice.waitForIdle()
         composeRule.waitForIdle()
+    }
+
+    private fun selectDate(day: String, advanceMonth: Boolean = true) {
+        composeRule.waitForIdle()
+        uiDevice.waitForIdle()
+        uiDevice.wait(Until.hasObject(By.text("OK")), 5_000)
+
+        if (advanceMonth) {
+            val nextBtn = uiDevice.findObject(By.desc("Next month"))
+                ?: uiDevice.findObject(By.res("android:id/next"))
+            nextBtn?.click()
+            uiDevice.waitForIdle()
+        }
+
+        val dayNode = uiDevice.findObject(By.text(day))
+        dayNode?.click()
+        uiDevice.waitForIdle()
+
+        clickNativeOk()
     }
 
     private fun selectDateTime(day: String) {
@@ -168,7 +197,7 @@ class LotteryIntentTest {
 
         // 5. Select range dates using date pickers
         composeRule.onNodeWithTag("button_range_start").performScrollTo().performClick()
-        clickNativeOk()
+        selectDate("20", advanceMonth = true)
 
         composeRule.onNodeWithTag("button_range_end").performScrollTo().performClick()
         clickNativeOk()
@@ -210,8 +239,16 @@ class LotteryIntentTest {
         assertEquals(1, lotteries.size)
         val lottery = lotteries.first()
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val todayStr = dateFormat.format(Calendar.getInstance().time)
-        assertEquals(listOf(todayStr), lottery.nightsOffered)
+        val targetMonthCal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, 1)
+        }
+        val expectedOfferedNight = Calendar.getInstance().apply {
+            time = targetMonthCal.time
+            set(Calendar.DAY_OF_MONTH, 20)
+        }
+        val expectedNightStr = dateFormat.format(expectedOfferedNight.time)
+        assertEquals(listOf(expectedNightStr), lottery.nightsOffered)
         assertEquals("May 2027 weekends", lottery.nightsDescription)
         assertTrue(lottery.registrationStart > System.currentTimeMillis())
         assertTrue(lottery.registrationEnd > lottery.registrationStart)
@@ -714,5 +751,276 @@ class LotteryIntentTest {
         composeRule.onNodeWithText("Couldn't leave the waiting list. Please try again.").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Leave Waiting List").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("On Waiting List").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun editLottery_navigatesFromDetailsAndPrefillsSavedValues() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-edit-1",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "June weekend getaway",
+            registrationStart = now + 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+            winnersCount = 3,
+            waitlistCapacity = 25,
+            waitingUserIds = listOf("entrant-1", "entrant-2")
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        startApp()
+
+        // 1. Navigate to Campsites tab -> Banff Spot
+        composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Banff Spot").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Banff Spot").performClick()
+
+        // 2. Open Lottery Details from owner's campsite screen
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery: June weekend getaway").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery: June weekend getaway").performClick()
+
+        // 3. Verify on Lottery Details and click Edit Lottery
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").performClick()
+
+        // 4. Verify on Edit Lottery screen with pre-filled values
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").assertIsDisplayed()
+        composeRule.onNodeWithText("Save changes").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().assertTextContains("June weekend getaway")
+        composeRule.onNodeWithTag("tag_winners_count").performScrollTo().assertTextContains("3")
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().assertTextContains("25")
+    }
+
+    @Test
+    fun editLottery_saveEditsUpdatesLotteryAndRefreshesDetails() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-edit-2",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Original description",
+            registrationStart = now + 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+            winnersCount = 2,
+            waitlistCapacity = 10,
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        startApp()
+
+        composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Banff Spot").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Banff Spot").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery: Original description").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery: Original description").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Change nights description and winners count
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().performTextReplacement("Updated description")
+        composeRule.onNodeWithTag("tag_winners_count").performScrollTo().performTextReplacement("5")
+        composeRule.onNodeWithText("Save changes").performScrollTo().performClick()
+
+        // Wait for return to Lottery Details
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery Details").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery Details").assertIsDisplayed()
+
+        // Verify updated lottery details are displayed on return
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Description: Updated description").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Description: Updated description").performScrollTo().assertIsDisplayed()
+
+        // Verify fake repository has the updated data
+        val updated = runBlocking { lotteryRepository.getLottery(lotteryId) }
+        assertEquals("Updated description", updated?.nightsDescription)
+        assertEquals(5, updated?.winnersCount)
+    }
+
+    @Test
+    fun editLottery_whenClosedOrDrawn_displaysReadOnlyExplanationAndDisablesSave() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-edit-closed",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Closed lottery",
+            registrationStart = now - 50_000,
+            registrationEnd = now - 10_000,
+            bookingStart = now + 50_000,
+            bookingEnd = now + 100_000,
+            winnersCount = 2,
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        startApp()
+
+        composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Banff Spot").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Banff Spot").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery: Closed lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery: Closed lottery").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Verify read-only explanation banner is visible
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Registration has closed; this lottery can no longer be edited.").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Registration has closed; this lottery can no longer be edited.").assertIsDisplayed()
+
+        // Verify Save changes button is disabled
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().assertIsNotEnabled()
+
+        // Verify form fields are disabled
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("tag_winners_count").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun editLottery_nonOwnerAccess_showsPermissionError() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-other-owner",
+            ownerId = "someone-else",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Other owner lottery",
+            registrationStart = now + 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+        )
+        runBlocking { lotteryRepository.addLottery(lottery) }
+
+        // Start directly with LotteryFormScreen in edit mode for this lottery
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(
+                    lotteryId = "lottery-other-owner",
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("You do not own this lottery or it was not found.").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("You do not own this lottery or it was not found.").assertIsDisplayed()
+        composeRule.onNodeWithText("Save changes").assertDoesNotExist()
+    }
+
+    @Test
+    fun editLottery_entrantViewingDetails_seesUpdatedValuesAfterOwnerEdits() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-entrant-refresh",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Early Summer Promo",
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+            winnersCount = 2,
+            waitlistCapacity = 15,
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        // Entrant opens details controller
+        val entrantController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = FakeProfileRepository(),
+            lotteryId = lotteryId,
+            currentUserId = "entrant-user",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = lotteryId,
+                    onBack = {},
+                    controller = entrantController
+                )
+            }
+        }
+
+        // Entrant views initial lottery details
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Description: Early Summer Promo").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Description: Early Summer Promo").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Waiting List Entrants: 0 / 15").performScrollTo().assertIsDisplayed()
+
+        // Owner saves edits to the lottery in repository
+        val updated = lottery.copy(
+            id = lotteryId,
+            nightsDescription = "Updated Summer Special",
+            waitlistCapacity = 20,
+            winnersCount = 4
+        )
+        runBlocking { lotteryRepository.updateLottery(updated, callerId = ownerId) }
+
+        // Entrant refreshes details (e.g. reopening or onResume triggered)
+        entrantController.loadData()
+
+        // Verify updated values are displayed to the entrant
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Description: Updated Summer Special").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Description: Updated Summer Special").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Waiting List Entrants: 0 / 20").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Description: Early Summer Promo").assertDoesNotExist()
+
+        // Verify persisted repository values
+        val persisted = runBlocking { lotteryRepository.getLottery(lotteryId) }
+        assertEquals("Updated Summer Special", persisted?.nightsDescription)
+        assertEquals(20, persisted?.waitlistCapacity)
+        assertEquals(4, persisted?.winnersCount)
     }
 }

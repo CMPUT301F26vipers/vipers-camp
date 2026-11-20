@@ -25,6 +25,7 @@ import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.ReserveResult
+import com.example.vipers.domain.repository.UpdateLotteryResult
 import com.example.vipers.ui.lottery.LotteryDrawer
 import java.util.Random
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -439,6 +441,310 @@ class FakeRepositoryTest {
 
         // the owner's live Waiting List (02.09.01) shows the decline (01.04.03) without reopening
         assertEquals(listOf(EntryStatus.DECLINED), repo.observeEntries("lottery-1").first().map { it.status })
+    }
+
+    @Test
+    fun updateLottery_successfulUpdate_updatesEditableFieldsAndPreservesUneditedFields() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1", "camp-2"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Original description",
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            winnersCount = 2,
+            waitlistCapacity = 10,
+            drawnAt = null,
+            removed = false,
+            waitingUserIds = listOf("entrant-1", "entrant-2"),
+            entriesVersion = 5L,
+            committedDrawId = null,
+            manifestChunkCount = 0,
+            participantCount = 0,
+            winnerCount = 0,
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        // Proposed updates editable fields, and maliciously attempts to modify uneditable fields
+        val proposed = original.copy(
+            ownerId = "intruder",
+            campsiteIds = listOf("other-camp"),
+            nightsOffered = listOf("2027-06-01", "2027-06-02"),
+            nightsDescription = "Updated description",
+            registrationEnd = 2_500L,
+            bookingStart = 3_500L,
+            bookingEnd = 4_500L,
+            winnersCount = 4,
+            waitlistCapacity = 15,
+            drawnAt = 9999L,
+            removed = true,
+            waitingUserIds = emptyList(),
+            entriesVersion = 99L,
+        )
+
+        val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
+        assertEquals(UpdateLotteryResult.Success, result)
+
+        val updated = repo.getLottery("lottery-1")
+        assertNotNull(updated)
+        // Verified updated fields
+        assertEquals(listOf("2027-06-01", "2027-06-02"), updated!!.nightsOffered)
+        assertEquals("Updated description", updated.nightsDescription)
+        assertEquals(2_500L, updated.registrationEnd)
+        assertEquals(3_500L, updated.bookingStart)
+        assertEquals(4_500L, updated.bookingEnd)
+        assertEquals(4, updated.winnersCount)
+        assertEquals(15, updated.waitlistCapacity)
+
+        // Verified preserved fields (tamper attempts ignored)
+        assertEquals("owner-1", updated.ownerId)
+        assertEquals(listOf("camp-1", "camp-2"), updated.campsiteIds)
+        assertEquals(listOf("entrant-1", "entrant-2"), updated.waitingUserIds)
+        assertEquals(5L, updated.entriesVersion)
+        assertNull(updated.drawnAt)
+        assertFalse(updated.removed)
+    }
+
+    @Test
+    fun updateLottery_joinBetweenFormLoadAndSave_capacityBelowLatestCountRejected() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            winnersCount = 2,
+            waitlistCapacity = 10,
+            waitingUserIds = listOf("user-1"),
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        // Entrants join the waiting list between form loading and submission
+        repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"), now = now)
+        repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-3"), now = now)
+        assertEquals(3, repo.getLottery("lottery-1")?.waitingUserIds?.size)
+
+        // Owner attempts to reduce capacity to 2 (below the new count of 3)
+        val proposed = original.copy(waitlistCapacity = 2)
+        val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
+
+        assertTrue(result is UpdateLotteryResult.Error)
+        assertEquals("Waitlist limit cannot be less than current entrant count (3)", (result as UpdateLotteryResult.Error).message)
+
+        // Stored lottery is unchanged
+        val stored = repo.getLottery("lottery-1")
+        assertEquals(10, stored?.waitlistCapacity)
+        assertEquals(3, stored?.waitingUserIds?.size)
+    }
+
+    @Test
+    fun updateLottery_joinBetweenFormLoadAndSave_sufficientCapacityPreservesNewEntrants() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            winnersCount = 2,
+            waitlistCapacity = 5,
+            waitingUserIds = listOf("user-1"),
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        // Concurrent entrant joins before save
+        repo.joinWaitingList(LotteryEntry(lotteryId = "lottery-1", userId = "user-2"), now = now)
+
+        // Owner updates capacity to 8 with form snapshot that had only user-1
+        val proposed = original.copy(waitlistCapacity = 8, winnersCount = 3)
+        val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
+
+        assertEquals(UpdateLotteryResult.Success, result)
+        val stored = repo.getLottery("lottery-1")
+        assertEquals(8, stored?.waitlistCapacity)
+        assertEquals(3, stored?.winnersCount)
+        // New entrant user-2 is completely preserved!
+        assertEquals(listOf("user-1", "user-2"), stored?.waitingUserIds)
+    }
+
+    @Test
+    fun updateLottery_closedLottery_rejected() = runBlocking {
+        val now = 2_500L // After registrationEnd (2000L)
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        val proposed = original.copy(registrationEnd = 3_000L)
+        val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
+
+        assertTrue(result is UpdateLotteryResult.ReadOnly)
+        assertEquals("Registration has closed; this lottery can no longer be edited.", (result as UpdateLotteryResult.ReadOnly).reason)
+    }
+
+    @Test
+    fun updateLottery_drawnLottery_rejected() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            drawnAt = 2_005L,
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        val proposed = original.copy(winnersCount = 10)
+        val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
+
+        assertTrue(result is UpdateLotteryResult.ReadOnly)
+        assertEquals("Cannot edit a lottery that has already been drawn", (result as UpdateLotteryResult.ReadOnly).reason)
+    }
+
+    @Test
+    fun updateLottery_removedLottery_rejected() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            removed = true,
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        val proposed = original.copy(winnersCount = 10)
+        val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
+
+        assertTrue(result is UpdateLotteryResult.ReadOnly)
+        assertEquals("Cannot edit a removed lottery", (result as UpdateLotteryResult.ReadOnly).reason)
+    }
+
+    @Test
+    fun updateLottery_missingLottery_rejected() = runBlocking {
+        val repo = FakeLotteryRepository()
+        val lottery = Lottery(
+            id = "non-existent",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+        )
+        val result = repo.updateLottery(lottery, callerId = "owner-1", now = 1_500L)
+
+        assertTrue(result is UpdateLotteryResult.Error)
+        assertEquals("Lottery not found", (result as UpdateLotteryResult.Error).message)
+    }
+
+    @Test
+    fun updateLottery_nonOwnerCaller_rejected() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        // Intruder calls updateLottery with their own callerId
+        val proposed = original.copy(winnersCount = 10)
+        val result = repo.updateLottery(proposed, callerId = "intruder-device", now = now)
+
+        assertTrue(result is UpdateLotteryResult.Error)
+        assertEquals("You do not own this lottery", (result as UpdateLotteryResult.Error).message)
+
+        // Stored lottery unchanged
+        assertEquals(1, repo.getLottery("lottery-1")?.winnersCount)
+    }
+
+    @Test
+    fun updateLottery_validationFailureLeavesStoredLotteryUnchanged() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            winnersCount = 2,
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+
+        // Invalid: zero winners count
+        val proposed = original.copy(winnersCount = 0)
+        val result = repo.updateLottery(proposed, callerId = "owner-1", now = now)
+
+        assertTrue(result is UpdateLotteryResult.Error)
+        assertEquals("At least one winner is required", (result as UpdateLotteryResult.Error).message)
+
+        val stored = repo.getLottery("lottery-1")
+        assertEquals(2, stored?.winnersCount)
+    }
+
+    @Test
+    fun updateLottery_preservesObserveEntriesLiveStream() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            waitlistCapacity = 10,
+        )
+        val repo = FakeLotteryRepository(listOf(original))
+        val entry1 = LotteryEntry(lotteryId = "lottery-1", userId = "user-1")
+        repo.joinWaitingList(entry1, now = now)
+
+        val entriesFlow = repo.observeEntries("lottery-1")
+        assertEquals(listOf("user-1"), entriesFlow.first().map { it.userId })
+
+        // Update lottery details
+        val updateRes = repo.updateLottery(original.copy(winnersCount = 5), callerId = "owner-1", now = now)
+        assertEquals(UpdateLotteryResult.Success, updateRes)
+
+        // Entries stream remains undisturbed and accurate
+        assertEquals(listOf("user-1"), entriesFlow.first().map { it.userId })
     }
 
     /** Keeps every inbox it is sent, oldest call first (T-13). */

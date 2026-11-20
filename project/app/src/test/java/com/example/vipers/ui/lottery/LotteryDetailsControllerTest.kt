@@ -564,6 +564,7 @@ class LotteryDetailsControllerTest {
             currentUserId = "user-entrant",
             campsiteRepository = campsiteRepository,
         )
+        controller.loadData()
         // userEntry is null, so performJoin calls getEntry and encounters the exception
         controller.joinWaitingList(groupSize = 1)
 
@@ -800,6 +801,7 @@ class LotteryDetailsControllerTest {
             currentUserId = "user-1",
             campsiteRepository = campsiteRepository,
         )
+        controller.fetchData()
 
         assertTrue(controller.isJoined)
         assertTrue(controller.canLeave)
@@ -830,6 +832,7 @@ class LotteryDetailsControllerTest {
             currentUserId = "unjoined-user",
             campsiteRepository = campsiteRepository,
         )
+        controller.fetchData()
 
         assertFalse(controller.isJoined)
         val result = controller.performLeave()
@@ -869,6 +872,7 @@ class LotteryDetailsControllerTest {
             currentUserId = "user-1",
             campsiteRepository = campsiteRepository,
         )
+        controller.fetchData()
 
         assertFalse(controller.canLeave)
         val result = controller.performLeave()
@@ -892,6 +896,7 @@ class LotteryDetailsControllerTest {
             currentUserId = "user-1",
             campsiteRepository = campsiteRepository,
         )
+        controller.fetchData()
 
         assertTrue(controller.isJoined)
         val result = controller.performLeave()
@@ -925,6 +930,7 @@ class LotteryDetailsControllerTest {
             currentUserId = "user-1",
             campsiteRepository = campsiteRepository,
         )
+        controller.fetchData()
 
         assertTrue(controller.isJoined)
         val result = controller.performLeave()
@@ -936,6 +942,21 @@ class LotteryDetailsControllerTest {
     }
 
     @Test
+    fun init_doesNotTriggerLoadDataAutomatically() = runTest {
+        setupData()
+        val controller = LotteryDetailsController(lotteryRepository, profileRepository, lotteryId)
+
+        // Does not load upon initialization (lifecycle ON_RESUME in LotteryDetailsScreen triggers loadData)
+        assertNull(controller.lottery)
+        assertTrue(controller.waitingEntries.isEmpty())
+
+        controller.loadData()
+
+        assertNotNull(controller.lottery)
+        assertEquals(2, controller.waitingEntries.size)
+    }
+
+    @Test
     fun canLeave_evaluatesCorrectly() = runTest {
         setupData()
         val joinedController = LotteryDetailsController(
@@ -944,6 +965,7 @@ class LotteryDetailsControllerTest {
             lotteryId = lotteryId,
             currentUserId = "user-1",
         )
+        joinedController.fetchData()
         assertTrue(joinedController.canLeave)
 
         val ownerController = LotteryDetailsController(
@@ -952,6 +974,7 @@ class LotteryDetailsControllerTest {
             lotteryId = lotteryId,
             currentUserId = "owner-1",
         )
+        ownerController.fetchData()
         assertFalse(ownerController.canLeave)
 
         val nonJoinedController = LotteryDetailsController(
@@ -960,6 +983,7 @@ class LotteryDetailsControllerTest {
             lotteryId = lotteryId,
             currentUserId = "random-user",
         )
+        nonJoinedController.fetchData()
         assertFalse(nonJoinedController.canLeave)
     }
 }
