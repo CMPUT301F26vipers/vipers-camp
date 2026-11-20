@@ -22,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
@@ -143,10 +144,15 @@ class MessageEntrantTest {
     private fun topOf(text: String): Float =
         composeRule.onNodeWithText(text).fetchSemanticsNode().boundsInRoot.top
 
-    /** Types [text] in the message box and taps send. */
+    /**
+     * Types [text] in the message box, taps send and closes the keyboard. On a small phone
+     * without a hardware keyboard (like the CI emulator), the test screen slides up under the
+     * open keyboard and hides the top of the conversation.
+     */
     private fun send(text: String) {
         composeRule.onNodeWithTag("message_field").performTextInput(text)
         composeRule.onNodeWithTag("button_send").performClick()
+        Espresso.closeSoftKeyboard()
         composeRule.waitForIdle()
     }
 
