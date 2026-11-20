@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -89,6 +90,8 @@ fun PolicyScreen(onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
+                // there's no bottom bar here, so keep the last paragraph above the system bar
+                .navigationBarsPadding()
                 .padding(16.dp)
                 .testTag("policy_text"),
             verticalArrangement = Arrangement.spacedBy(8.dp),
