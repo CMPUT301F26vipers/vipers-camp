@@ -244,6 +244,11 @@ or deleted, so the admin message log (03.12.01) can always show them.
 - `getAllThreads()` is for the admin message log: every conversation, each oldest first, the one
   with the newest message first (`Message.threads`).
 
+Each new message adds a `NEW_MESSAGE` notification to the other side's inbox
+(`NotificationService.sendNewMessage`), unless they turned notifications off. Its ID is
+`message_<messageId>`, it has the reservation's `campsiteId` and `reservationId` (so a tap opens
+the conversation), the title "New message" and the message `<campsite name>: <text>`.
+
 ### `ratings`: `Rating`
 Document ID = **`campsiteId_userId`**, so rating again replaces the old rating. Not used by a
 repository yet (added by the rating story).

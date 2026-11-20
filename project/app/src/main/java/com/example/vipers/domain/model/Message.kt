@@ -25,6 +25,24 @@ data class Message(
     /** True if the user with this [userId] sent the message, so the screen shows it as "You". */
     fun isFrom(userId: String): Boolean = senderId == userId
 
+    /**
+     * The NEW_MESSAGE inbox notice that tells [recipientId] about this message, sent about
+     * [reservation] (US 02.12.01). Call it on the saved message: the ID is "message_<id>", so
+     * the notice is only saved once. Tapping it opens the conversation ([Notification.target]),
+     * and its text starts with the campsite name, like the other inbox items.
+     */
+    fun notice(reservation: Reservation, recipientId: String): Notification = Notification(
+        id = "message_$id",
+        recipientId = recipientId,
+        senderId = senderId,
+        campsiteId = reservation.campsiteId,
+        reservationId = reservationId,
+        type = NotificationType.NEW_MESSAGE,
+        title = "New message",
+        message = "${reservation.campsiteName}: $text",
+        createdAt = createdAt,
+    )
+
     companion object {
 
         /**
