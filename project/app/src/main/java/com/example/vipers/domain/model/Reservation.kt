@@ -48,6 +48,14 @@ data class Reservation(
     fun isActive(today: LocalDate): Boolean =
         status == ReservationStatus.CONFIRMED && !LocalDate.parse(checkOut).isBefore(today)
 
+    /**
+     * True if it is CONFIRMED and checked out before [today]: a completed stay, shown on the
+     * owner's Past tab (US 02.07.02). On check-out day itself it is still active. Cancelled and
+     * rejected reservations are never completed; they go in the Cancelled tab (US 02.07.03).
+     */
+    fun isCompleted(today: LocalDate): Boolean =
+        status == ReservationStatus.CONFIRMED && LocalDate.parse(checkOut).isBefore(today)
+
     /** The total price as text for the UI, e.g. "$100" or "$65.50" (T-03, US 01.05.01). */
     val totalPriceText: String
         get() = "$${Campsite.dollarsText(totalPriceCents)}"
