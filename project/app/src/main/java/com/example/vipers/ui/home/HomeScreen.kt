@@ -5,8 +5,7 @@
  * result shows a summary card (US 01.01.04), and tapping a card opens its Campsite Details
  * (US 01.01.05); CampsiteSearchController does the searching and filtering. The number of results
  * and a loading indicator are shown (US 01.01.03).
- * Known issues: Scan QR (01.12.01) is added by that story. The picture on each card is a
- * placeholder until campsites have promo images (02.01.02b), and preferred tags / "% match" on
+ * Known issues: Scan QR (01.12.01) is added by that story, and preferred tags / "% match" on
  * the mockup are the WOW factor (W-01).
  */
 package com.example.vipers.ui.home
@@ -63,6 +62,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Region
+import com.example.vipers.ui.common.SavedPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
@@ -318,13 +318,14 @@ private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean, onCli
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // placeholder until campsites have promo images
-            Box(
-                Modifier.size(48.dp).background(GreenFill, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(painterResource(R.drawable.ic_campsite), contentDescription = null, tint = Primary)
-            }
+            // the promo photo, or the campsite icon if there's none (US 02.01.02b)
+            SavedPhoto(
+                campsite.imageId,
+                contentDescription = "Photo of ${campsite.name}",
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(48.dp),
+                placeholderIcon = R.drawable.ic_campsite,
+            )
             Column(Modifier.weight(1f)) {
                 Text(
                     campsite.name,
