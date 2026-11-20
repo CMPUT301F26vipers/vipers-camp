@@ -122,7 +122,6 @@ fun SendNotificationScreen(
     }
 }
 
-/** The grey card from O12: who gets the message, and how many entrants that is. */
 @Composable
 private fun RecipientsCard(controller: SendNotificationController) {
     Card(
