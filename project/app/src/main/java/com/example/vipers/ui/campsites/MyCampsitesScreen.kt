@@ -1,7 +1,8 @@
 /*
  * MyCampsitesScreen.kt
  *
- * The Campsites tab (mockup O01). Displays the list of campsites owned by the current user.
+ * The Campsites tab (mockup O01). Displays the list of campsites owned by the current user, each
+ * with a small copy of its promo photo (US 02.01.02b).
  *
  * Known issues: Lottery status is currently hardcoded as TBD.
  */
@@ -10,7 +11,6 @@ package com.example.vipers.ui.campsites
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -42,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.ui.common.Placeholder
+import com.example.vipers.ui.common.SavedPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Border
 import com.example.vipers.ui.theme.Shapes
@@ -128,14 +129,13 @@ fun CampsiteItem(campsite: Campsite, onClick: () -> Unit) {
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Image Placeholder
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(8.dp)
-                    )
+            // the campsite's promo photo, or a placeholder if it has none (US 02.01.02b)
+            SavedPhoto(
+                campsite.imageId,
+                contentDescription = "Photo of ${campsite.name}",
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.size(56.dp),
+                placeholderIcon = R.drawable.ic_campsite,
             )
 
             Spacer(modifier = Modifier.width(16.dp))

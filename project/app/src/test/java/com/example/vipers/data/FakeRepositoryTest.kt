@@ -92,6 +92,7 @@ class FakeRepositoryTest {
                 cancellationPolicy = "No refunds",
                 lat = 52.873,
                 lng = -118.081,
+                imageId = "photo-2",
                 removed = true,
             )
         )
@@ -108,8 +109,41 @@ class FakeRepositoryTest {
             cancellationPolicy = "No refunds",
             lat = 52.873,
             lng = -118.081,
+            imageId = "photo-2",
         )
         assertEquals(expected, repo.getCampsite("hinton"))
+    }
+
+    @Test
+    fun updateCampsite_noPhoto_removesTheSavedPhoto() = runBlocking {
+        // null imageId is how the form saves a removed photo (US 02.01.02b)
+        val repo = FakeCampsiteRepository(listOf(Campsite(id = "hinton", imageId = "photo-1")))
+
+        repo.updateCampsite(Campsite(id = "hinton", imageId = null))
+
+        assertNull(repo.getCampsite("hinton")?.imageId)
+    }
+
+    @Test
+    fun newCampsiteId_givesADifferentIdEachTimeAndSavesNothing() = runBlocking {
+        val repo = FakeCampsiteRepository()
+
+        val first = repo.newCampsiteId()
+        val second = repo.newCampsiteId()
+
+        assertTrue(first != second)
+        assertTrue(repo.getAllCampsites().isEmpty())
+    }
+
+    @Test
+    fun addCampsite_withAnId_keepsIt() = runBlocking {
+        val repo = FakeCampsiteRepository()
+        val id = repo.newCampsiteId()
+
+        val savedId = repo.addCampsite(Campsite(id = id, name = "Hinton Ridge Campground"))
+
+        assertEquals(id, savedId)
+        assertEquals("Hinton Ridge Campground", repo.getCampsite(id)?.name)
     }
 
     @Test

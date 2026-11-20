@@ -8,6 +8,7 @@ package com.example.vipers
 
 import com.example.vipers.data.device.DeviceIdentityManager
 import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
@@ -25,6 +26,7 @@ class AppContainer(
     val lotteryRepository: LotteryRepository,
     val reservationRepository: ReservationRepository,
     val notificationRepository: NotificationRepository,
+    val imageRepository: ImageRepository,
 ) {
     /** Who the current user is. */
     val deviceIdentityManager = DeviceIdentityManager(deviceId, profileRepository)

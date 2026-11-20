@@ -2,10 +2,9 @@
  * OwnerCampsiteScreen.kt
  * The owner's view of one of their campsites (mockup O04, US 02.01.04): all its saved details,
  * buttons to manage it, and its lotteries with a Create Lottery button (US 02.04.01).
- * OwnerCampsiteController loads the data.
- * Known issues: the photo is a placeholder until 02.01.02b. The map box shows the map location's
- * coordinates (US 02.01.02c), and is hidden when there is none, until T-04 draws a map there.
- * The QR Code button stays off until 02.02.01.
+ * OwnerCampsiteController loads the data; the whole promo photo shows at the top (US 02.01.02b).
+ * Known issues: the map box shows the map location's coordinates (US 02.01.02c), and is hidden
+ * when there is none, until T-04 draws a map there. The QR Code button stays off until 02.02.01.
  */
 package com.example.vipers.ui.campsites
 
@@ -52,6 +51,8 @@ import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryStatus
+import com.example.vipers.ui.common.FullPhoto
+import com.example.vipers.ui.common.SavedPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.ButtonHeight
 import com.example.vipers.ui.theme.ButtonShape
@@ -182,41 +183,57 @@ fun OwnerCampsiteScreen(
 }
 
 /**
- * The photo and map boxes at the top. The photo is a placeholder until 02.01.02b. The map box shows
- * [campsite]'s map coordinates (US 02.01.02c) until T-04 puts a map there, and isn't shown at all
- * when the campsite has no map location.
+ * The photo and map boxes at the top. A campsite with a promo photo shows the whole photo across
+ * the screen, with the map box under it (US 02.01.02b); without one, the placeholder and the map
+ * box sit side by side as in mockup O04. The map box shows [campsite]'s map coordinates
+ * (US 02.01.02c) until T-04 puts a map there, and isn't shown at all when it has no map location.
  */
 @Composable
 private fun PhotoAndMap(campsite: Campsite) {
+    if (campsite.imageId != null) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            FullPhoto(
+                campsite.imageId,
+                contentDescription = "Campsite photo",
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().testTag("owner_photo"),
+                placeholderHeight = 96.dp,
+            )
+            if (campsite.hasLocation()) MapBox(campsite, Modifier.fillMaxWidth().height(72.dp))
+        }
+        return
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(
-            Modifier.weight(1f).height(96.dp).background(GreenFill, RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(painterResource(R.drawable.ic_image), contentDescription = null, tint = Primary)
-        }
-        if (campsite.hasLocation()) {
-            Column(
-                Modifier
-                    .weight(1f)
-                    .height(96.dp)
-                    .background(GreenFill, RoundedCornerShape(12.dp))
-                    .testTag("owner_map_location"),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    painterResource(R.drawable.ic_campsite),
-                    contentDescription = null,
-                    tint = Primary,
-                )
-                Text(
-                    campsite.coordinatesText().orEmpty(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-            }
-        }
+        SavedPhoto(
+            null,
+            contentDescription = "Campsite photo",
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.weight(1f).height(96.dp).testTag("owner_photo"),
+        )
+        if (campsite.hasLocation()) MapBox(campsite, Modifier.weight(1f).height(96.dp))
+    }
+}
+
+// The map location's coordinates on green, until T-04 draws a map here.
+@Composable
+private fun MapBox(campsite: Campsite, modifier: Modifier) {
+    Column(
+        modifier
+            .background(GreenFill, RoundedCornerShape(12.dp))
+            .testTag("owner_map_location"),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            painterResource(R.drawable.ic_campsite),
+            contentDescription = null,
+            tint = Primary,
+        )
+        Text(
+            campsite.coordinatesText().orEmpty(),
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
     }
 }
 

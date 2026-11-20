@@ -15,19 +15,26 @@ import com.example.vipers.domain.model.Campsite
 interface CampsiteRepository {
 
     /**
-     * Saves a new [campsite] and returns the ID it was given. Offline, the campsite is saved on
-     * the phone first and uploaded once it reconnects.
+     * Saves a new [campsite] and returns its ID: [campsite]'s own ID if it has one (e.g. from
+     * [newCampsiteId]), or a new one. Offline, the campsite is saved on the phone first and
+     * uploaded once it reconnects.
      */
     suspend fun addCampsite(campsite: Campsite): String
+
+    /**
+     * Makes a new, unused campsite ID without saving anything, so a photo can be saved for a
+     * campsite before the campsite itself (US 02.01.02b).
+     */
+    fun newCampsiteId(): String
 
     /** Loads the campsite with this [id], or returns null if there is none. */
     suspend fun getCampsite(id: String): Campsite?
 
     /**
      * Saves the details an owner can edit (name, address, region, description, maxOccupancy, tags,
-     * pricePerNightCents, rules, cancellationPolicy, and the map location lat and lng) to the
-     * campsite with [campsite]'s ID (US 02.01.03, 02.01.02c). Every other stored field keeps its
-     * saved value, whatever [campsite] holds.
+     * pricePerNightCents, rules, cancellationPolicy, the map location lat and lng, and the photo's
+     * imageId) to the campsite with [campsite]'s ID (US 02.01.03, 02.01.02c, 02.01.02b). Every
+     * other stored field keeps its saved value, whatever [campsite] holds.
      *
      * @throws NoSuchElementException if there is no campsite with that ID.
      */
