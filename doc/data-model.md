@@ -133,6 +133,8 @@ winner; that is the replacement draw (T-12). Transactions need a connection, so 
 | rejectionReason | string? | only when `REJECTED` |
 
 **Active** = `CONFIRMED` and check-out is today or later. Everything else is **Past**.
+**Completed** = `CONFIRMED` and check-out is before today (`isCompleted`); the owner's Past tab
+lists only completed stays, while cancelled and rejected reservations go in the owner's Cancelled tab.
 
 ### `notifications`: `Notification` (`NotificationRepository`)
 
