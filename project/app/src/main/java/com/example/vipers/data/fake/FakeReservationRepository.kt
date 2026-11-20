@@ -184,6 +184,7 @@ class FakeReservationRepository(
         status: ReservationStatus,
         reason: String?,
         now: Long,
+        sendNotice: Boolean,
     ): Boolean = mutex.withLock {
         require(status != ReservationStatus.CONFIRMED) { "Can only cancel or reject" }
         val reservation = reservations[id]
@@ -205,7 +206,7 @@ class FakeReservationRepository(
             )
         }
 
-        notificationRepository?.saveNotification(changed.statusNotice(now))
+        if (sendNotice) notificationRepository?.saveNotification(changed.statusNotice(now))
         true
     }
 }

@@ -920,6 +920,20 @@ class FakeRepositoryTest {
     }
 
     @Test
+    fun changeStatus_withoutNotice_stillReleasesTheNights() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        val changed = reservationRepo.changeStatus(
+            "res-1", ReservationStatus.REJECTED, "Fire warning", 3000, sendNotice = false,
+        )
+
+        assertTrue(changed)
+        assertEquals(ReservationStatus.REJECTED, reservationRepo.getReservation("res-1")!!.status)
+        assertEquals(listOf("2027-06-03"), pineLake.getAvailability("site-1").heldNights)
+        assertTrue(pineLakeInbox.getNotificationsFor("user-1").isEmpty())
+    }
+
+    @Test
     fun changeStatus_secondTime_changesNothing() = runBlocking {
         val reservationRepo = pineLakeReservations()
         reservationRepo.changeStatus("res-1", ReservationStatus.CANCELLED, now = 3000)

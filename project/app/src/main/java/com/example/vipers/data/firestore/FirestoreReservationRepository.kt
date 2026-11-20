@@ -200,6 +200,7 @@ class FirestoreReservationRepository(
         status: ReservationStatus,
         reason: String?,
         now: Long,
+        sendNotice: Boolean,
     ): Boolean {
         require(status != ReservationStatus.CONFIRMED) { "Can only cancel or reject" }
         val reservationDoc = collection.document(id)
@@ -233,8 +234,10 @@ class FirestoreReservationRepository(
                 tx.update(availabilityDoc, "heldNights", heldNights - reservation.nights().toSet())
             }
 
-            val notice = changed.statusNotice(now)
-            tx.set(notifications.document(notice.id), notice.toMap(), SetOptions.merge())
+            if (sendNotice) {
+                val notice = changed.statusNotice(now)
+                tx.set(notifications.document(notice.id), notice.toMap(), SetOptions.merge())
+            }
             true
         }.await()
     }

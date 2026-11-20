@@ -150,7 +150,9 @@ The entrant can cancel only while `Reservation.canCancel(today)` is true: `CONFI
 is today or later. The lottery entry stays `RESERVED` after a cancel or reject: the win was used,
 so the entrant can't reserve from it again and no replacement winner is drawn. The cancel notice
 is sent even if the entrant turned notifications off, the same as the confirmation, because it
-confirms something they just did.
+confirms something they just did. A rejection should respect the opt-out: check the entrant with
+`NotificationService.optedIn` first and pass `sendNotice = false` if they turned notifications
+off. Everything else in the transaction still happens.
 
 ### `notifications`: `Notification` (`NotificationRepository`)
 

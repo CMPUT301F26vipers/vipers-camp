@@ -64,9 +64,11 @@ interface ReservationRepository {
      * or REJECTED (by the owner, US 02.08.01), all in one transaction:
      * sets [status] and statusChangedAt to [now], saves [reason] as the rejectionReason (only for
      * REJECTED), takes the reservation's nights out of the campsite's heldNights, and writes the
-     * RESERVATION_CANCELLED or RESERVATION_REJECTED notification to the entrant.
-     * The lottery entry stays RESERVED.
+     * RESERVATION_CANCELLED or RESERVATION_REJECTED notification to the entrant, unless
+     * [sendNotice] is false. The lottery entry stays RESERVED.
      *
+     * @param sendNotice False to skip the notification, e.g. a rejection for an entrant who
+     * turned notifications off (check with NotificationService.optedIn first).
      * @return true if the status changed; false if the reservation doesn't exist or isn't
      * CONFIRMED any more (e.g. it was already cancelled on another device).
      * @throws IllegalArgumentException if [status] is CONFIRMED.
@@ -76,5 +78,6 @@ interface ReservationRepository {
         status: ReservationStatus,
         reason: String? = null,
         now: Long = System.currentTimeMillis(),
+        sendNotice: Boolean = true,
     ): Boolean
 }
