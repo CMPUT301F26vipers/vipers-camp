@@ -107,4 +107,30 @@ class NotificationTest {
             assertEquals(label, Notification(type = type).displayCategory)
         }
     }
+
+    @Test
+    fun ownerMessageText_emptyText_isRejected() {
+        assertNull(Notification.ownerMessageText(""))
+    }
+
+    @Test
+    fun ownerMessageText_onlySpacesAndNewlines_isRejected() {
+        assertNull(Notification.ownerMessageText("  \n\t \n "))
+    }
+
+    @Test
+    fun ownerMessageText_normalText_isKept() {
+        assertEquals(
+            "The cookhouse reopens next week.",
+            Notification.ownerMessageText("The cookhouse reopens next week."),
+        )
+    }
+
+    @Test
+    fun ownerMessageText_surroundingWhitespace_isTrimmed() {
+        assertEquals(
+            "Bring bear spray.\nThe trail is open.",
+            Notification.ownerMessageText("\n  Bring bear spray.\nThe trail is open.  \n"),
+        )
+    }
 }
