@@ -79,6 +79,7 @@ class NotificationsInboxTest {
                 FakeNotificationRepository(notifications),
                 FakeCampsiteRepository(),
                 FakeProfileRepository(),
+                FakeLotteryRepository(),
             ),
             userId = "test-device",
         )

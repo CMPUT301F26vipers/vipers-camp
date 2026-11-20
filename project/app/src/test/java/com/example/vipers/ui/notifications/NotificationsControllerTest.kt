@@ -8,6 +8,7 @@
 package com.example.vipers.ui.notifications
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Notification
@@ -45,7 +46,7 @@ class NotificationsControllerTest {
 
     private fun controllerFor(repo: NotificationRepository, userId: String = "sam") =
         NotificationsController(
-            NotificationService(repo, FakeCampsiteRepository(), FakeProfileRepository()),
+            NotificationService(repo, FakeCampsiteRepository(), FakeProfileRepository(), FakeLotteryRepository()),
             userId,
         )
 

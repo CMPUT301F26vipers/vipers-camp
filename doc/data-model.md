@@ -214,12 +214,33 @@ the message "You won a spot at <campsite names>. Reserve your nights before <boo
 builds them all and saves them in one `addAll`. `batchId` stays `null` for draws; it only groups owner
 broadcasts.
 
+An owner broadcast (US 02.10.01) goes to everyone on a lottery's waiting list as the owner sees it on
+the Waiting List screen: `NotificationService.waitingListRecipients(lotteryId)` returns the user of
+every `lotteryEntries` entry except `REMOVED` ones, before or after the draw, without duplicates.
+(`Lottery.waitingUserIds` isn't used, because the draw empties it.) The owner sends it with
+`NotificationService.sendOwnerBroadcast(senderId, lotteryId, message, batchId, now)`. It drops users
+who turned notifications off and, unlike `optedIn`, users with no profile (a profile that can't be read
+is still kept), then saves one `OWNER_BROADCAST` per recipient in one `addAll`. Each has the ID
+`broadcast_<batchId>_<userId>`, the title "Message from owner", the trimmed text as `message`, the
+owner's device ID as `senderId`, `lotteryId` set and `campsiteId` set only when the lottery covers one
+campsite, and `read` and `shownOnDevice` false. Every notification from one send shares one `batchId`
+and one `createdAt`, so the owner's Sent list (US 02.10.02) and the admin log (US 03.08.01) can group by
+`batchId` to show one row per send, with the number of notifications in it as the recipient count.
+
+`Notification.ownerMessageText(text)` is the empty-message check: it returns the text without the
+whitespace around it, or `null` if nothing is left, and then nothing is sent. `sendOwnerBroadcast`
+returns an `OwnerBroadcastResult`: `Sent(batchId, recipientCount)`, or `NobodyToNotify` (empty list or
+everyone opted out), `EmptyMessage`, `LotteryNotFound` (missing or removed) or `NotOwner` (the sender
+isn't the lottery's `ownerId`), which save nothing. A failed save (e.g. offline) throws; the Send
+Notification screen keeps its `batchId` until a send works, so sending again writes the same IDs and
+nobody gets a second copy.
+
 Users who turned notifications off on Settings (`notificationsEnabled = false`) get none
 (US 01.10.01). Before saving a notification for some users, call
 `NotificationService.optedIn(userIds)`: it returns the ones who still want notifications. A user
-with no profile, or whose profile can't be read, is kept. The draw already does this; owner
-broadcasts (02.10.01), messages (02.12.01, 01.14.01), rejections (02.08.01) and phone notifications
-(T-14) must too. A reservation's own "Reservation confirmed" notice is still written inside
+with no profile, or whose profile can't be read, is kept. The draw already does this, and owner
+broadcasts (02.10.01) skip opted-out users as described above; messages (02.12.01, 01.14.01),
+rejections (02.08.01) and phone notifications (T-14) must too. A reservation's own "Reservation confirmed" notice is still written inside
 `createReservation`, since it confirms what the user just did.
 
 The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
