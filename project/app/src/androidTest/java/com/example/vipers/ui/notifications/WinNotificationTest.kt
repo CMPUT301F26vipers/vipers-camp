@@ -98,7 +98,7 @@ class WinNotificationTest {
     /** Shows this device's Notifications screen, reading the fake inbox the draw wrote to. */
     private fun openNotifications() {
         val controller = NotificationsController(
-            NotificationService(notifications, campsites, FakeProfileRepository()),
+            NotificationService(notifications, campsites, FakeProfileRepository(), lotteries),
             userId = "test-device",
         )
         composeRule.setContent {

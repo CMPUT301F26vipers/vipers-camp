@@ -8,10 +8,13 @@
 package com.example.vipers.domain.service
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
@@ -50,6 +53,7 @@ class NotificationServiceTest {
         notifications,
         campsites,
         profiles,
+        FakeLotteryRepository(),
         formatDate = { time -> "time $time" },
     )
 
@@ -211,7 +215,7 @@ class NotificationServiceTest {
                 calls.add(notifications)
             }
         }
-        NotificationService(counting, campsites, FakeProfileRepository(), formatDate = { "t $it" })
+        NotificationService(counting, campsites, FakeProfileRepository(), FakeLotteryRepository(), formatDate = { "t $it" })
             .sendDrawResults(DrawResult(hintonLottery, listOf("sam"), listOf("jo", "alex")))
 
         assertEquals(1, calls.size)
@@ -226,7 +230,7 @@ class NotificationServiceTest {
                 called = true
             }
         }
-        NotificationService(counting, campsites, profiles).sendDrawResults(
+        NotificationService(counting, campsites, profiles, FakeLotteryRepository()).sendDrawResults(
             DrawResult(hintonLottery, emptyList(), emptyList()),
         )
 
@@ -335,7 +339,7 @@ class NotificationServiceTest {
                 called = true
             }
         }
-        NotificationService(counting, campsites, profiles).sendDrawResults(
+        NotificationService(counting, campsites, profiles, FakeLotteryRepository()).sendDrawResults(
             DrawResult(hintonLottery, listOf("riley"), emptyList()),
         )
 
@@ -364,7 +368,7 @@ class NotificationServiceTest {
                 return profiles.getProfile(id)
             }
         }
-        val service = NotificationService(notifications, campsites, flaky)
+        val service = NotificationService(notifications, campsites, flaky, FakeLotteryRepository())
 
         assertEquals(listOf("sam", "jo"), service.optedIn(listOf("sam", "jo", "riley")))
     }
@@ -377,11 +381,251 @@ class NotificationServiceTest {
                 return profiles.getProfile(id)
             }
         }
-        NotificationService(notifications, campsites, flaky)
+        NotificationService(notifications, campsites, flaky, FakeLotteryRepository())
             .sendDrawResults(DrawResult(hintonLottery, listOf("sam"), listOf("jo", "riley")))
 
         assertEquals(1, notifications.getNotificationsFor("sam").size)
         assertEquals(1, notifications.getNotificationsFor("jo").size)
         assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+    }
+
+    private val ownersLottery = Lottery(
+        id = "june",
+        ownerId = "owner-priya",
+        campsiteIds = listOf("hinton"),
+    )
+    private val twoCampsiteLottery = Lottery(
+        id = "summer",
+        ownerId = "owner-priya",
+        campsiteIds = listOf("hinton", "banff"),
+    )
+    private val entrantProfiles = FakeProfileRepository(
+        listOf(
+            UserProfile(id = "sam", name = "Sam Patel"),
+            UserProfile(id = "jo", name = "Jo Chen"),
+            UserProfile(id = "kim", name = "Kim Lee"),
+            UserProfile(id = "riley", name = "Riley Ng", notificationsEnabled = false),
+        ),
+    )
+
+    private fun entry(
+        userId: String,
+        joinedAt: Long,
+        status: EntryStatus = EntryStatus.WAITING,
+        lotteryId: String = "june",
+        id: String = LotteryEntry.idFor(lotteryId, userId),
+    ) = LotteryEntry(id = id, lotteryId = lotteryId, userId = userId, joinedAt = joinedAt, status = status)
+
+    private fun broadcastService(
+        vararg entries: LotteryEntry,
+        repo: NotificationRepository = notifications,
+        lotteries: List<Lottery> = listOf(ownersLottery, twoCampsiteLottery),
+    ) = NotificationService(repo, campsites, entrantProfiles, FakeLotteryRepository(lotteries, entries.toList()))
+
+    private fun countingAddAll(calls: MutableList<List<Notification>>) =
+        object : NotificationRepository by notifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                calls.add(notifications)
+            }
+        }
+
+    @Test
+    fun sendOwnerBroadcast_everyEntrant_getsOneOwnerBroadcastWithTheRightFields() = runBlocking {
+        val result = broadcastService(entry("sam", 1), entry("jo", 2))
+            .sendOwnerBroadcast("owner-priya", "june", "  The cookhouse reopens next week.\n", "b1", now = 900L)
+
+        assertEquals(OwnerBroadcastResult.Sent("b1", 2), result)
+        for (userId in listOf("sam", "jo")) {
+            assertEquals(
+                Notification(
+                    id = "broadcast_b1_$userId",
+                    recipientId = userId,
+                    senderId = "owner-priya",
+                    campsiteId = "hinton",
+                    lotteryId = "june",
+                    type = NotificationType.OWNER_BROADCAST,
+                    title = "Message from owner",
+                    message = "The cookhouse reopens next week.",
+                    read = false,
+                    shownOnDevice = false,
+                    batchId = "b1",
+                    createdAt = 900L,
+                ),
+                notifications.getNotificationsFor(userId).single(),
+            )
+        }
+    }
+
+    @Test
+    fun sendOwnerBroadcast_savesEveryoneInOneAddAllWithOneBatchAndTime() = runBlocking {
+        val calls = mutableListOf<List<Notification>>()
+        broadcastService(entry("sam", 1), entry("jo", 2), entry("kim", 3), repo = countingAddAll(calls))
+            .sendOwnerBroadcast("owner-priya", "june", "Fire ban this weekend.", now = 900L)
+
+        assertEquals(1, calls.size)
+        assertEquals(setOf("sam", "jo", "kim"), calls[0].map { it.recipientId }.toSet())
+        assertEquals(1, calls[0].map { it.batchId }.distinct().size)
+        assertTrue(calls[0].all { it.batchId!!.isNotBlank() && it.id == "broadcast_${it.batchId}_${it.recipientId}" })
+        assertTrue(calls[0].all { it.createdAt == 900L })
+    }
+
+    @Test
+    fun sendOwnerBroadcast_afterTheDraw_reachesEveryResultOnTheList() = runBlocking {
+        val result = broadcastService(
+            entry("sam", 1, EntryStatus.WON),
+            entry("jo", 2, EntryStatus.LOST),
+            entry("kim", 3, EntryStatus.DECLINED),
+        ).sendOwnerBroadcast("owner-priya", "june", "Thanks for entering.", "b1")
+
+        assertEquals(OwnerBroadcastResult.Sent("b1", 3), result)
+        for (userId in listOf("sam", "jo", "kim")) {
+            assertEquals(1, notifications.getNotificationsFor(userId).size)
+        }
+    }
+
+    @Test
+    fun sendOwnerBroadcast_optedOutEntrant_getsNothing() = runBlocking {
+        val result = broadcastService(entry("sam", 1), entry("riley", 2))
+            .sendOwnerBroadcast("owner-priya", "june", "Gate code changed.", "b1")
+
+        assertEquals(OwnerBroadcastResult.Sent("b1", 1), result)
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+        assertEquals(1, notifications.getNotificationsFor("sam").size)
+    }
+
+    @Test
+    fun sendOwnerBroadcast_entrantWithNoProfile_getsNothing() = runBlocking {
+        val result = broadcastService(entry("sam", 1), entry("deleted-user", 2))
+            .sendOwnerBroadcast("owner-priya", "june", "Gate code changed.", "b1")
+
+        assertEquals(OwnerBroadcastResult.Sent("b1", 1), result)
+        assertTrue(notifications.getNotificationsFor("deleted-user").isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_emptyOrWhitespaceMessage_savesNothing() = runBlocking {
+        val calls = mutableListOf<List<Notification>>()
+        val service = broadcastService(entry("sam", 1), repo = countingAddAll(calls))
+
+        assertEquals(OwnerBroadcastResult.EmptyMessage, service.sendOwnerBroadcast("owner-priya", "june", ""))
+        assertEquals(OwnerBroadcastResult.EmptyMessage, service.sendOwnerBroadcast("owner-priya", "june", " \n\t "))
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_senderIsNotTheOwner_savesNothing() = runBlocking {
+        val calls = mutableListOf<List<Notification>>()
+        val result = broadcastService(entry("sam", 1), repo = countingAddAll(calls))
+            .sendOwnerBroadcast("sam", "june", "Hello everyone.")
+
+        assertEquals(OwnerBroadcastResult.NotOwner, result)
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_missingLottery_savesNothing() = runBlocking {
+        val calls = mutableListOf<List<Notification>>()
+        val result = broadcastService(entry("sam", 1), repo = countingAddAll(calls))
+            .sendOwnerBroadcast("owner-priya", "no-such-lottery", "Hello everyone.")
+
+        assertEquals(OwnerBroadcastResult.LotteryNotFound, result)
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_removedLottery_savesNothing() = runBlocking {
+        val calls = mutableListOf<List<Notification>>()
+        val result = broadcastService(
+            entry("sam", 1),
+            repo = countingAddAll(calls),
+            lotteries = listOf(ownersLottery.copy(removed = true)),
+        ).sendOwnerBroadcast("owner-priya", "june", "Hello everyone.")
+
+        assertEquals(OwnerBroadcastResult.LotteryNotFound, result)
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_lotteryWithSeveralCampsites_leavesCampsiteIdNull() = runBlocking {
+        broadcastService(entry("sam", 1, lotteryId = "summer"))
+            .sendOwnerBroadcast("owner-priya", "summer", "Hello everyone.", "b1")
+
+        val notice = notifications.getNotificationsFor("sam").single()
+        assertNull(notice.campsiteId)
+        assertEquals("summer", notice.lotteryId)
+    }
+
+    @Test
+    fun sendOwnerBroadcast_removedEntry_getsNothing() = runBlocking {
+        val result = broadcastService(entry("sam", 1), entry("kim", 2, EntryStatus.REMOVED))
+            .sendOwnerBroadcast("owner-priya", "june", "Hello everyone.", "b1")
+
+        assertEquals(OwnerBroadcastResult.Sent("b1", 1), result)
+        assertTrue(notifications.getNotificationsFor("kim").isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_entrantListedTwice_getsItOnce() = runBlocking {
+        val result = broadcastService(entry("sam", 1), entry("sam", 2, id = "legacy-sam"), entry("jo", 3))
+            .sendOwnerBroadcast("owner-priya", "june", "Hello everyone.", "b1")
+
+        assertEquals(OwnerBroadcastResult.Sent("b1", 2), result)
+        assertEquals(1, notifications.getNotificationsFor("sam").size)
+    }
+
+    @Test
+    fun sendOwnerBroadcast_emptyWaitingList_reportsNobodyToNotify() = runBlocking {
+        val calls = mutableListOf<List<Notification>>()
+        val result = broadcastService(repo = countingAddAll(calls))
+            .sendOwnerBroadcast("owner-priya", "june", "Hello everyone.")
+
+        assertEquals(OwnerBroadcastResult.NobodyToNotify, result)
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_everyoneOptedOut_reportsNobodyToNotify() = runBlocking {
+        val calls = mutableListOf<List<Notification>>()
+        val result = broadcastService(entry("riley", 1), entry("kim", 2, EntryStatus.REMOVED), repo = countingAddAll(calls))
+            .sendOwnerBroadcast("owner-priya", "june", "Hello everyone.")
+
+        assertEquals(OwnerBroadcastResult.NobodyToNotify, result)
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun sendOwnerBroadcast_sentAgainWithTheSameBatch_keepsOneReadNoticeEach() = runBlocking {
+        val service = broadcastService(entry("sam", 1), entry("jo", 2))
+        service.sendOwnerBroadcast("owner-priya", "june", "Hello everyone.", "b1")
+        service.markRead("broadcast_b1_sam")
+
+        service.sendOwnerBroadcast("owner-priya", "june", "Hello everyone.", "b1")
+
+        assertEquals(listOf("broadcast_b1_sam"), notifications.getNotificationsFor("sam").map { it.id })
+        assertTrue(notifications.getNotificationsFor("sam").single().read)
+        assertEquals(1, notifications.getNotificationsFor("jo").size)
+    }
+
+    @Test
+    fun sendOwnerBroadcast_twoSends_getTwoDifferentBatches() = runBlocking {
+        val service = broadcastService(entry("sam", 1))
+        val first = service.sendOwnerBroadcast("owner-priya", "june", "First.") as OwnerBroadcastResult.Sent
+        val second = service.sendOwnerBroadcast("owner-priya", "june", "Second.") as OwnerBroadcastResult.Sent
+
+        assertTrue(first.batchId != second.batchId)
+        assertEquals(2, notifications.getNotificationsFor("sam").map { it.batchId }.distinct().size)
+    }
+
+    @Test
+    fun waitingListRecipients_skipsRemovedAndDuplicatesButKeepsOptedOut() = runBlocking {
+        val recipients = broadcastService(
+            entry("jo", 2, EntryStatus.LOST),
+            entry("sam", 1),
+            entry("kim", 3, EntryStatus.REMOVED),
+            entry("riley", 4),
+            entry("sam", 5, id = "legacy-sam"),
+        ).waitingListRecipients("june")
+
+        assertEquals(listOf("sam", "jo", "riley"), recipients)
     }
 }

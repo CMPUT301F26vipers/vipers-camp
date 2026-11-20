@@ -56,7 +56,9 @@ class LotteryDrawer(
     private val profileRepository: ProfileRepository,
     private val random: Random = Random(),
     private val notificationService: NotificationService =
-        NotificationService(notificationRepository, campsiteRepository, profileRepository),
+        NotificationService(
+            notificationRepository, campsiteRepository, profileRepository, lotteryRepository,
+        ),
 ) {
 
     /**

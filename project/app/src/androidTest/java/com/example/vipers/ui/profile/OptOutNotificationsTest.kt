@@ -209,7 +209,7 @@ class OptOutNotificationsTest {
         val profiles = FakeProfileRepository(listOf(sam.copy(notificationsEnabled = false)))
         runTheDraw(profiles)
         val controller = NotificationsController(
-            NotificationService(notifications, campsites, profiles),
+            NotificationService(notifications, campsites, profiles, lotteries),
             userId = "test-device",
         )
         composeRule.setContent {
