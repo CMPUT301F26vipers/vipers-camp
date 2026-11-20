@@ -1,7 +1,8 @@
 /*
  * CampsitePhotoControllerTest.kt
  * Unit tests for the promo photo on the campsite form in CampsiteController (US 02.01.02b):
- * picking, removing, and saving the photo with a new or edited campsite. Uses the fake campsite
+ * picking, removing, and saving the photo with a new or edited campsite, and not publishing while
+ * a picked photo is still being got ready. Uses the fake campsite
  * and image repositories and a fake photo reader.
  * Known issues: none.
  */
@@ -14,7 +15,12 @@ import com.example.vipers.data.fake.FakePlaceFinder
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.Region
+import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.PhotoReader
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -239,5 +245,85 @@ class CampsitePhotoControllerTest {
         assertFalse(form.published)
         assertEquals("photo-1", campsites.getCampsite("hinton")?.imageId)
         assertTrue(images.deletedIds.isEmpty())
+    }
+
+    @Test
+    fun canPublish_whileThePhotoIsBeingRead_isFalseAndPublishSavesNothing() = runBlocking {
+        val photoReady = CompletableDeferred<ByteArray>()
+        val slowReader = object : PhotoReader {
+            override suspend fun readJpeg(uri: String, maxBytes: Int) = photoReady.await()
+        }
+        val slowForm = CampsiteController(
+            campsites,
+            ownerId = "my-phone",
+            placeFinder = FakePlaceFinder(),
+            imageRepository = images,
+            photoReader = slowReader,
+        )
+        slowForm.onNameChange("Lakeside Sites")
+        slowForm.onAddressChange("Hinton, AB")
+        slowForm.onRegionChange(Region.HINTON)
+        slowForm.onMaxGuestsChange("6")
+        slowForm.onPriceChange("65")
+        val reading = launch { slowForm.fetchPhoto("content://photos/42") }
+        yield() // fetchPhoto is now waiting for the photo
+
+        assertTrue(slowForm.isReadingPhoto)
+        assertFalse(slowForm.canPublish)
+        slowForm.publish() // tapped too early: does nothing
+
+        assertFalse(slowForm.isSaving)
+        assertTrue(slowForm.errors.isEmpty())
+        assertEquals(1, campsites.getAllCampsites().size)
+        photoReady.complete(photo)
+        reading.join()
+        assertTrue(slowForm.canPublish)
+    }
+
+    @Test
+    fun save_campsiteCantBeSaved_deletesTheJustSavedPhotoAgain() = runBlocking {
+        val failing = object : CampsiteRepository by campsites {
+            override suspend fun addCampsite(campsite: Campsite): String =
+                throw Exception("offline")
+        }
+        val failingForm = CampsiteController(
+            failing,
+            ownerId = "my-phone",
+            placeFinder = FakePlaceFinder(),
+            imageRepository = images,
+            photoReader = reader,
+        )
+        failingForm.onNameChange("Lakeside Sites")
+        failingForm.fetchPhoto("content://photos/42")
+
+        failingForm.save(failingForm.toCampsite(), now)
+
+        assertTrue(failingForm.saveFailed)
+        assertEquals(1, images.deletedIds.size)
+        // only the photo that was there before is left, so a retry doesn't leave an extra one
+        assertEquals(listOf("photo-1"), images.getAllImages().map { it.id })
+    }
+
+    @Test
+    fun saveEdits_updateFails_deletesTheNewPhotoAndKeepsTheOldOne() = runBlocking {
+        val failing = object : CampsiteRepository by campsites {
+            override suspend fun updateCampsite(campsite: Campsite) = throw Exception("offline")
+        }
+        val failingForm = CampsiteController(
+            failing,
+            ownerId = "my-phone",
+            placeFinder = FakePlaceFinder(),
+            imageRepository = images,
+            photoReader = reader,
+        )
+        failingForm.loadForEdit("hinton")
+        failingForm.fetchPhoto("content://photos/43")
+
+        failingForm.saveEdits(failingForm.toCampsite(), now)
+
+        assertTrue(failingForm.saveFailed)
+        assertEquals("photo-1", campsites.getCampsite("hinton")?.imageId)
+        assertEquals(listOf("photo-1"), images.getAllImages().map { it.id })
+        assertFalse(images.deletedIds.contains("photo-1"))
     }
 }

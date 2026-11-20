@@ -7,8 +7,9 @@
  * location, which Find location looks up from the address (US 02.01.02c), and its optional promo
  * photo (US 02.01.02b). The photo is saved first, as an ImageAsset, so a photo that can't be saved
  * stops the save and the owner keeps what they typed.
- * Known issues: a replaced or removed photo is deleted after the campsite is saved; if that delete
- * fails, the old image stays in the admin image browser until an admin removes it.
+ * Known issues: a replaced or removed photo is deleted after the campsite is saved, and a new photo
+ * is deleted again if the campsite then can't be saved; if one of those deletes fails, the image
+ * stays in the admin image browser until an admin removes it.
  */
 package com.example.vipers.ui.campsites
 
@@ -147,6 +148,13 @@ class CampsiteController(
     /** Why the picked photo can't be used or saved, or null (US 02.01.02b). */
     var photoError by mutableStateOf<String?>(null)
         private set
+
+    /**
+     * True if Publish / Save can be tapped: not while saving, and not while a picked photo is still
+     * being got ready, or the campsite would be saved without it (US 02.01.02b).
+     */
+    val canPublish: Boolean
+        get() = !isSaving && !isReadingPhoto
 
     /** True if the form has a photo: a newly picked one or the saved one. */
     val hasPhoto: Boolean
@@ -325,7 +333,7 @@ class CampsiteController(
      * If something is wrong, [errors] says what and nothing is saved.
      */
     fun publish() {
-        if (isSaving) return
+        if (!canPublish) return
         val campsite = toCampsite()
         val formErrors = campsite.validate().toMutableMap()
         // The model can't tell a missing region or a non-number apart from a valid default,
@@ -359,7 +367,7 @@ class CampsiteController(
             val id = campsiteRepository.newCampsiteId()
             val photoId = savePhoto(id, campsite.name, now) ?: return@runSave
             val withPhoto = campsite.copy(id = id, imageId = photoId.ifEmpty { null })
-            campsiteRepository.addCampsite(withPhoto)
+            withPhotoCleanup(photoId) { campsiteRepository.addCampsite(withPhoto) }
             published = true
         }
     }
@@ -381,10 +389,10 @@ class CampsiteController(
                 val photoId = savePhoto(loaded.id, campsite.name, now) ?: return@runSave
                 val keptId = if (newPhoto != null) photoId else campsite.imageId
                 val edited = loaded.withFormValues(campsite.copy(imageId = keptId))
-                campsiteRepository.updateCampsite(edited)
+                withPhotoCleanup(photoId) { campsiteRepository.updateCampsite(edited) }
                 published = true
                 val oldId = saved.imageId
-                if (oldId != null && oldId != keptId) deleteOldPhoto(oldId)
+                if (oldId != null && oldId != keptId) deletePhotoQuietly(oldId)
             }
         }
     }
@@ -415,9 +423,22 @@ class CampsiteController(
         }
     }
 
-    // The campsite is already saved with its new photo, so a failed delete only leaves an unused
-    // image behind; the owner isn't told.
-    private suspend fun deleteOldPhoto(id: String) {
+    // Runs write, the campsite save that follows saving a new photo (photoId; "" if none). If write
+    // fails, deletes that photo again, so a retry doesn't leave an image nothing points to.
+    private suspend fun withPhotoCleanup(photoId: String, write: suspend () -> Unit) {
+        try {
+            write()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (photoId.isNotEmpty()) deletePhotoQuietly(photoId)
+            throw e
+        }
+    }
+
+    // Deletes a photo nothing points to any more. A failed delete only leaves an unused image
+    // behind, so the owner isn't told.
+    private suspend fun deletePhotoQuietly(id: String) {
         try {
             imageRepository.deleteImage(id)
         } catch (e: CancellationException) {

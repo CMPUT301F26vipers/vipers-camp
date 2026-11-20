@@ -235,7 +235,7 @@ fun CampsiteFormScreen(
         }
         Button(
             onClick = controller::publish,
-            enabled = !controller.isSaving,
+            enabled = controller.canPublish,
             shape = ButtonShape,
             modifier = Modifier
                 .fillMaxWidth()

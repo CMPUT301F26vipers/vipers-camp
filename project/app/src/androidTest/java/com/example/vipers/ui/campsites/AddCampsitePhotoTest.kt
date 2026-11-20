@@ -11,6 +11,8 @@ package com.example.vipers.ui.campsites
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -36,9 +38,11 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.PhotoReader
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -230,6 +234,35 @@ class AddCampsitePhotoTest {
         composeRule.onNodeWithTag("photo_preview").performScrollTo().assertIsDisplayed()
         assertFalse(publishedCalled)
         assertEquals(1, runBlocking { campsites.getAllCampsites() }.size)
+    }
+
+    @Test
+    fun publish_isOffWhileThePhotoIsGettingReady() {
+        val photoReady = CompletableDeferred<ByteArray>()
+        val controller = CampsiteController(
+            campsites,
+            ownerId = "test-device",
+            placeFinder = FakePlaceFinder(),
+            imageRepository = images,
+            photoReader = object : PhotoReader {
+                override suspend fun readJpeg(uri: String, maxBytes: Int) = photoReady.await()
+            },
+        )
+        composeRule.setContent {
+            VipersTheme {
+                CampsiteFormScreen(onBack = {}, onPublished = {}, controller = controller)
+            }
+        }
+        fillValidForm()
+
+        composeRule.runOnIdle { controller.choosePhoto("content://media/photo/42") }
+
+        composeRule.onNodeWithText("Getting the photo ready", substring = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("button_publish").assertIsNotEnabled()
+        photoReady.complete(FakePhotoReader.SAMPLE_JPEG)
+        composeRule.onNodeWithTag("photo_preview").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_publish").assertIsEnabled()
     }
 
     @Test
