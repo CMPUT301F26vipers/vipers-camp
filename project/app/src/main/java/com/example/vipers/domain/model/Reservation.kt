@@ -111,4 +111,24 @@ data class Reservation(
     /** The total price as text for the UI, e.g. "$100" or "$65.50" (T-03, US 01.05.01). */
     val totalPriceText: String
         get() = "$${Campsite.dollarsText(totalPriceCents)}"
+
+    /**
+     * True if the user with this [userId] can read and send messages about this reservation: its
+     * entrant or the owner of its campsite (US 02.12.01, 01.14.01). Anyone else, including
+     * another owner, can't.
+     */
+    fun canMessage(userId: String): Boolean =
+        userId.isNotBlank() && (userId == this.userId || userId == ownerId)
+
+    /**
+     * The other person in this reservation's conversation (US 02.12.01): the entrant for the
+     * owner, and the owner for the entrant. Null if [userId] can't message about it
+     * ([canMessage]), or if the owner booked their own campsite, so there is nobody else.
+     */
+    fun otherSide(userId: String): String? = when {
+        !canMessage(userId) -> null
+        this.userId == ownerId -> null
+        userId == ownerId -> this.userId
+        else -> ownerId
+    }
 }

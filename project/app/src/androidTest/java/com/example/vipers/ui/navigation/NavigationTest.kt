@@ -29,6 +29,7 @@ import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -62,6 +63,7 @@ class NavigationTest {
             campsiteRepository = FakeCampsiteRepository(),
             lotteryRepository = FakeLotteryRepository(),
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(),
             imageRepository = FakeImageRepository(),
         )
@@ -190,6 +192,7 @@ class NavigationTest {
             campsiteRepository = FakeCampsiteRepository(listOf(Campsite(id = "camp-123", name = "Lakeside Camp"))),
             lotteryRepository = FakeLotteryRepository(),
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(),
             imageRepository = FakeImageRepository(),
         )
@@ -297,6 +300,7 @@ class NavigationTest {
                 campsiteRepository = campsiteRepo,
                 lotteryRepository = lotteryRepo,
                 reservationRepository = FakeReservationRepository(),
+                messageRepository = FakeMessageRepository(),
                 notificationRepository = FakeNotificationRepository(),
                 imageRepository = FakeImageRepository(),
             )

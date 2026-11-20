@@ -10,6 +10,7 @@ import com.example.vipers.data.device.DeviceIdentityManager
 import com.example.vipers.data.firestore.FirestoreCampsiteRepository
 import com.example.vipers.data.firestore.FirestoreImageRepository
 import com.example.vipers.data.firestore.FirestoreLotteryRepository
+import com.example.vipers.data.firestore.FirestoreMessageRepository
 import com.example.vipers.data.firestore.FirestoreNotificationRepository
 import com.example.vipers.data.firestore.FirestoreProfileRepository
 import com.example.vipers.data.firestore.FirestoreReservationRepository
@@ -28,6 +29,7 @@ class CampApp : Application() {
             campsiteRepository = FirestoreCampsiteRepository(),
             lotteryRepository = FirestoreLotteryRepository(),
             reservationRepository = FirestoreReservationRepository(),
+            messageRepository = FirestoreMessageRepository(),
             notificationRepository = FirestoreNotificationRepository(),
             imageRepository = FirestoreImageRepository(),
         )
