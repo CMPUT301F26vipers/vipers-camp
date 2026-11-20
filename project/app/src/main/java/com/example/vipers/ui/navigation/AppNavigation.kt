@@ -29,6 +29,7 @@ import com.example.vipers.ui.campsites.OwnerCampsiteScreen
 import com.example.vipers.ui.campsites.AvailabilityScreen
 import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
+import com.example.vipers.ui.notifications.SendNotificationScreen
 import com.example.vipers.ui.notifications.SentScreen
 import com.example.vipers.ui.profile.PolicyScreen
 import com.example.vipers.ui.profile.ProfileScreen
@@ -251,7 +252,24 @@ fun AppNavigation(
                 arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
-                WaitingListScreen(lotteryId = lotteryId, onBack = { navController.popBackStack() })
+                WaitingListScreen(
+                    lotteryId = lotteryId,
+                    onBack = { navController.popBackStack() },
+                    onSendNotification = {
+                        navController.navigate(Routes.SEND_NOTIFICATION.replace("{lotteryId}", lotteryId))
+                    },
+                )
+            }
+            composable(
+                route = Routes.SEND_NOTIFICATION,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
+                SendNotificationScreen(
+                    lotteryId = lotteryId,
+                    onBack = { navController.popBackStack() },
+                    onSent = { navController.popBackStack() },
+                )
             }
             composable(Routes.NOTIFICATIONS) {
                 NotificationsScreen(
