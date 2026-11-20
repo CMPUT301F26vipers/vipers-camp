@@ -144,6 +144,7 @@ NotificationsScreen --> CampsiteDetailsScreen
 NotificationsScreen --> MessagesScreen : NEW_MESSAGE
 ProfileScreen --> SettingsScreen
 ProfileScreen --> PolicyScreen
+SettingsScreen --> PolicyScreen : Policy and Guidelines
 MyCampsitesScreen --> CampsiteFormScreen : +
 MyCampsitesScreen --> OwnerCampsiteScreen
 MyCampsitesScreen --> OwnerReservationsScreen
