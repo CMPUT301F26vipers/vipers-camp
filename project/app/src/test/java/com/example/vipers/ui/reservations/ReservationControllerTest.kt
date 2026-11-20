@@ -1,6 +1,6 @@
 /*
  * ReservationControllerTest.kt
- * Unit tests for ReservationController (US 02.07.01), using the fake repositories.
+ * Unit tests for ReservationController (US 01.06.01, 02.07.01), using the fake repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -37,13 +37,26 @@ class ReservationControllerTest {
     private fun controllerWith(vararg reservations: Reservation) = ReservationController(
         reservationRepository = FakeReservationRepository(reservations.toList()),
         profileRepository = profiles,
-        ownerId = "owner-1",
+        userId = "owner-1",
     )
 
     /** Loads on [today] and returns the IDs of the rows, in order. */
     private fun ReservationController.loadedIds(): List<String> {
         runBlocking { fetchOwnerActive(today) }
         return activeRows.map { it.reservationId }
+    }
+
+    /** The controller as Sam's device sees it, for My Reservations (US 01.06.01). */
+    private fun entrantControllerWith(vararg reservations: Reservation) = ReservationController(
+        reservationRepository = FakeReservationRepository(reservations.toList()),
+        profileRepository = profiles,
+        userId = "sam",
+    )
+
+    /** Loads Sam's reservations on [today] and returns their IDs, in order. */
+    private fun ReservationController.myIds(): List<String> {
+        runBlocking { fetchMyReservations(today) }
+        return myActive.map { it.id }
     }
 
     @Test
@@ -155,5 +168,109 @@ class ReservationControllerTest {
 
         assertEquals(listOf("good"), controller.loadedIds())
         assertFalse(controller.loadFailed)
+    }
+
+    @Test
+    fun fetchMyReservations_withValidReservation_keepsItAndFinishesLoading() = runBlocking {
+        val controller = entrantControllerWith(reservation("r1"))
+        controller.fetchMyReservations(today)
+
+        assertEquals(listOf(reservation("r1")), controller.myActive)
+        assertFalse(controller.isLoading)
+        assertFalse(controller.loadFailed)
+    }
+
+    @Test
+    fun fetchMyReservations_withCheckoutYesterdayAndToday_keepsOnlyToday() {
+        val controller = entrantControllerWith(
+            reservation("yesterday").copy(checkIn = "2027-05-07", checkOut = "2027-05-09"),
+            reservation("today").copy(checkIn = "2027-05-08", checkOut = "2027-05-10"),
+        )
+
+        assertEquals(listOf("today"), controller.myIds())
+    }
+
+    @Test
+    fun fetchMyReservations_withCancelledAndRejected_excludesThem() {
+        val controller = entrantControllerWith(
+            reservation("confirmed"),
+            reservation("cancelled").copy(status = ReservationStatus.CANCELLED),
+            reservation("rejected").copy(status = ReservationStatus.REJECTED),
+        )
+
+        assertEquals(listOf("confirmed"), controller.myIds())
+    }
+
+    @Test
+    fun fetchMyReservations_withAnotherEntrantsReservation_excludesIt() {
+        val controller = entrantControllerWith(
+            reservation("mine"),
+            reservation("theirs").copy(userId = "alex"),
+        )
+
+        assertEquals(listOf("mine"), controller.myIds())
+    }
+
+    @Test
+    fun fetchMyReservations_withUnsortedReservations_sortsByCheckInSoonestFirst() {
+        val controller = entrantControllerWith(
+            reservation("june").copy(checkIn = "2027-06-01", checkOut = "2027-06-03"),
+            reservation("may").copy(checkIn = "2027-05-15", checkOut = "2027-05-17"),
+            reservation("july").copy(checkIn = "2027-07-01", checkOut = "2027-07-03"),
+        )
+
+        assertEquals(listOf("may", "june", "july"), controller.myIds())
+    }
+
+    @Test
+    fun fetchMyReservations_withNoReservations_leavesTheListEmpty() {
+        val controller = entrantControllerWith()
+
+        assertTrue(controller.myIds().isEmpty())
+        assertFalse(controller.loadFailed)
+    }
+
+    @Test
+    fun fetchMyReservations_whenTheRepositoryFails_setsLoadFailed() = runBlocking {
+        val failing = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservationsForUser(userId: String): List<Reservation> =
+                throw Exception("offline")
+        }
+        val controller = ReservationController(failing, profiles, "sam")
+        controller.fetchMyReservations(today)
+
+        assertTrue(controller.loadFailed)
+        assertFalse(controller.isLoading)
+        assertTrue(controller.myActive.isEmpty())
+    }
+
+    @Test
+    fun fetchMyReservations_withUnreadableDates_skipsThoseAndShowsTheRest() {
+        val controller = entrantControllerWith(
+            reservation("good"),
+            reservation("badCheckOut").copy(checkOut = "soon"),
+            reservation("badCheckIn").copy(checkIn = ""),
+        )
+
+        assertEquals(listOf("good"), controller.myIds())
+        assertFalse(controller.loadFailed)
+    }
+
+    @Test
+    fun fetchMyReservations_afterAFailedLoad_clearsLoadFailedWhenItWorks() = runBlocking {
+        var offline = true
+        val flaky = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservationsForUser(userId: String): List<Reservation> =
+                if (offline) throw Exception("offline") else listOf(reservation("r1"))
+        }
+        val controller = ReservationController(flaky, profiles, "sam")
+        controller.fetchMyReservations(today)
+        assertTrue(controller.loadFailed)
+
+        offline = false
+        controller.fetchMyReservations(today)
+
+        assertFalse(controller.loadFailed)
+        assertEquals(listOf("r1"), controller.myActive.map { it.id })
     }
 }
