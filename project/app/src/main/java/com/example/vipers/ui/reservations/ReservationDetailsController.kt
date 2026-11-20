@@ -129,6 +129,9 @@ class ReservationDetailsController(
                     statusChangedAt = now,
                 )
             } else {
+                // it changed somewhere else (e.g. the owner rejected it), so show what it is now
+                reservation = reservationRepository.getReservation(current.id)
+                    ?.takeIf { it.userId == userId }
                 cancelError = CANT_CANCEL
             }
             cancelled

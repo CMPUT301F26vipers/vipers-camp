@@ -159,7 +159,7 @@ class ReservationDetailsControllerTest {
     }
 
     @Test
-    fun performCancel_whenCancelledOnAnotherDevice_saysItCantBeCancelled() = runBlocking {
+    fun performCancel_whenRejectedWhileOpen_showsTheNewStatus() = runBlocking {
         val repo = FakeReservationRepository(listOf(reservation))
         val controller = ReservationDetailsController(
             reservationRepository = repo,
@@ -167,10 +167,12 @@ class ReservationDetailsControllerTest {
             reservationId = "res-101",
         )
         controller.fetchData()
-        repo.changeStatus("res-101", ReservationStatus.CANCELLED, now = 4000)
+        repo.changeStatus("res-101", ReservationStatus.REJECTED, "Site flooded", now = 4000)
 
         assertFalse(controller.performCancel(now = 5000, today = beforeCheckIn))
         assertEquals("This reservation can no longer be cancelled.", controller.cancelError)
+        assertEquals(ReservationStatus.REJECTED, controller.reservation?.status)
+        assertFalse(controller.canCancel(beforeCheckIn))
     }
 
     @Test
@@ -183,6 +185,7 @@ class ReservationDetailsControllerTest {
                 status: ReservationStatus,
                 reason: String?,
                 now: Long,
+                sendNotice: Boolean,
             ): Boolean = throw Exception("connection timed out")
         }
         val controller = ReservationDetailsController(
