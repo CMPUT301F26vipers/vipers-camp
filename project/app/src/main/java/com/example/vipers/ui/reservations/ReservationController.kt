@@ -74,6 +74,8 @@ class ReservationController(
             // the load was stopped on purpose (the controller is gone), so it didn't fail
             throw e
         } catch (e: Exception) {
+            // clear the old list so a failed reload doesn't leave stale reservations behind
+            myActive = emptyList()
             loadFailed = true
         } finally {
             isLoading = false
@@ -109,6 +111,7 @@ class ReservationController(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            activeRows = emptyList()
             loadFailed = true
         } finally {
             isLoading = false

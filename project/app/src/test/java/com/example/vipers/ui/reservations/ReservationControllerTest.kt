@@ -12,9 +12,11 @@ import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.ReservationRepository
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -272,5 +274,72 @@ class ReservationControllerTest {
 
         assertFalse(controller.loadFailed)
         assertEquals(listOf("r1"), controller.myActive.map { it.id })
+    }
+
+    @Test
+    fun fetchMyReservations_whenAReloadFails_clearsTheOldList() = runBlocking {
+        var offline = false
+        val flaky = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservationsForUser(userId: String): List<Reservation> =
+                if (offline) throw Exception("offline") else listOf(reservation("r1"))
+        }
+        val controller = ReservationController(flaky, profiles, "sam")
+        controller.fetchMyReservations(today)
+        assertEquals(listOf("r1"), controller.myActive.map { it.id })
+
+        offline = true
+        controller.fetchMyReservations(today)
+
+        assertTrue(controller.loadFailed)
+        assertTrue(controller.myActive.isEmpty())
+    }
+
+    @Test
+    fun fetchMyReservations_whenCancelled_rethrowsWithoutSettingLoadFailed() {
+        // the controller being closed while it loads cancels the load
+        val cancelled = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservationsForUser(userId: String): List<Reservation> =
+                throw CancellationException("screen closed")
+        }
+        val controller = ReservationController(cancelled, profiles, "sam")
+
+        assertThrows(CancellationException::class.java) {
+            runBlocking { controller.fetchMyReservations(today) }
+        }
+        assertFalse(controller.loadFailed)
+        assertFalse(controller.isLoading)
+    }
+
+    @Test
+    fun fetchOwnerActive_whenAReloadFails_clearsTheOldRows() = runBlocking {
+        var offline = false
+        val flaky = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservationsForOwner(ownerId: String): List<Reservation> =
+                if (offline) throw Exception("offline") else listOf(reservation("r1"))
+        }
+        val controller = ReservationController(flaky, profiles, "owner-1")
+        controller.fetchOwnerActive(today)
+        assertEquals(listOf("r1"), controller.activeRows.map { it.reservationId })
+
+        offline = true
+        controller.fetchOwnerActive(today)
+
+        assertTrue(controller.loadFailed)
+        assertTrue(controller.activeRows.isEmpty())
+    }
+
+    @Test
+    fun fetchOwnerActive_whenCancelled_rethrowsWithoutSettingLoadFailed() {
+        val cancelled = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservationsForOwner(ownerId: String): List<Reservation> =
+                throw CancellationException("screen closed")
+        }
+        val controller = ReservationController(cancelled, profiles, "owner-1")
+
+        assertThrows(CancellationException::class.java) {
+            runBlocking { controller.fetchOwnerActive(today) }
+        }
+        assertFalse(controller.loadFailed)
+        assertFalse(controller.isLoading)
     }
 }
