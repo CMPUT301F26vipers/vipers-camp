@@ -75,7 +75,7 @@ fun OwnerReservationsScreen(
     var selectedTab by rememberSaveable { mutableStateOf(ReservationTab.ACTIVE) }
 
     // here rather than in the Active tab, so switching tabs doesn't load the list again
-    LaunchedEffect(Unit) { controller.loadOwnerActive() }
+    LaunchedEffect(Unit) { controller.loadOwnerReservations() }
 
     Column(
         modifier = Modifier
