@@ -120,7 +120,18 @@ fun AppNavigation(
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable(Routes.RESERVATIONS) { MyReservationsScreen() }
+            composable(Routes.RESERVATIONS) {
+                MyReservationsScreen(
+                    // the entrant's reservation details (E15, US 01.06.01)
+                    onOpenReservation = { reservationId ->
+                        val route = Routes.RESERVATION_DETAILS.replace(
+                            "{reservationId}",
+                            reservationId,
+                        )
+                        navController.navigate(route)
+                    },
+                )
+            }
             composable(
                 route = Routes.RESERVATION_DETAILS,
                 arguments = listOf(navArgument("reservationId") { type = NavType.StringType })

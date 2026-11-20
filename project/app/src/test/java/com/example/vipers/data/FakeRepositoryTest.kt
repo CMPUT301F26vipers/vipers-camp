@@ -19,6 +19,7 @@ import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Region
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.InboxListener
@@ -889,5 +890,111 @@ class FakeRepositoryTest {
         assertEquals("site-1", notice.campsiteId)
         assertEquals("lot-1", notice.lotteryId)
         assertEquals(NotificationTarget.OpenReservation(reservation.id), notice.target)
+    }
+
+    // one confirmed stay at Pine Lake for June 1 and 2; June 3 is held by someone else
+    private val pineLake =
+        FakeCampsiteRepository(listOf(Campsite(id = "site-1", name = "Pine Lake")))
+    private val pineLakeInbox = FakeNotificationRepository()
+
+    private suspend fun pineLakeReservations(): FakeReservationRepository {
+        pineLake.saveAvailability(
+            AvailabilityCalendar(
+                campsiteId = "site-1",
+                openNights = listOf("2027-06-01", "2027-06-02", "2027-06-03"),
+                heldNights = listOf("2027-06-01", "2027-06-02", "2027-06-03"),
+            )
+        )
+        val stay = Reservation(
+            id = "res-1",
+            userId = "user-1",
+            ownerId = "owner-1",
+            campsiteId = "site-1",
+            campsiteName = "Pine Lake",
+            checkIn = "2027-06-01",
+            checkOut = "2027-06-03",
+        )
+        return FakeReservationRepository(
+            pineLake,
+            FakeLotteryRepository(),
+            pineLakeInbox,
+            listOf(stay),
+        )
+    }
+
+    @Test
+    fun changeStatus_cancel_releasesOnlyItsNightsAndNotifiesTheEntrant() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        assertTrue(reservationRepo.changeStatus("res-1", ReservationStatus.CANCELLED, now = 3000))
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals(ReservationStatus.CANCELLED, saved.status)
+        assertEquals(3000L, saved.statusChangedAt)
+        assertNull(saved.rejectionReason)
+        // June 3 belongs to someone else's stay, so it stays held
+        assertEquals(listOf("2027-06-03"), pineLake.getAvailability("site-1").heldNights)
+
+        val notice = pineLakeInbox.getNotificationsFor("user-1").single()
+        assertEquals("cancelled_res-1", notice.id)
+        assertEquals(NotificationType.RESERVATION_CANCELLED, notice.type)
+        assertEquals("Pine Lake: 2027-06-01 to 2027-06-03", notice.message)
+        assertEquals(NotificationTarget.OpenReservation("res-1"), notice.target)
+    }
+
+    @Test
+    fun changeStatus_reject_savesTheReasonInTheReservationAndNotice() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        reservationRepo.changeStatus("res-1", ReservationStatus.REJECTED, "Fire warning", 3000)
+
+        assertEquals("Fire warning", reservationRepo.getReservation("res-1")!!.rejectionReason)
+        val notice = pineLakeInbox.getNotificationsFor("user-1").single()
+        assertEquals(NotificationType.RESERVATION_REJECTED, notice.type)
+        assertEquals("owner-1", notice.senderId)
+        assertEquals(
+            "Pine Lake: 2027-06-01 to 2027-06-03. Reason: Fire warning",
+            notice.message,
+        )
+    }
+
+    @Test
+    fun changeStatus_withoutNotice_stillReleasesTheNights() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        val changed = reservationRepo.changeStatus(
+            "res-1", ReservationStatus.REJECTED, "Fire warning", 3000, sendNotice = false,
+        )
+
+        assertTrue(changed)
+        assertEquals(ReservationStatus.REJECTED, reservationRepo.getReservation("res-1")!!.status)
+        assertEquals(listOf("2027-06-03"), pineLake.getAvailability("site-1").heldNights)
+        assertTrue(pineLakeInbox.getNotificationsFor("user-1").isEmpty())
+    }
+
+    @Test
+    fun changeStatus_secondTime_changesNothing() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        reservationRepo.changeStatus("res-1", ReservationStatus.CANCELLED, now = 3000)
+
+        val again = reservationRepo.changeStatus("res-1", ReservationStatus.REJECTED, "Late", 4000)
+
+        assertFalse(again)
+        assertEquals(ReservationStatus.CANCELLED, reservationRepo.getReservation("res-1")!!.status)
+        assertEquals(1, pineLakeInbox.getNotificationsFor("user-1").size)
+    }
+
+    @Test
+    fun changeStatus_missingReservation_returnsFalse() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        assertFalse(reservationRepo.changeStatus("nope", ReservationStatus.CANCELLED))
+    }
+
+    @Test
+    fun changeStatus_toConfirmed_throws() {
+        val reservationRepo = FakeReservationRepository()
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { reservationRepo.changeStatus("res-1", ReservationStatus.CONFIRMED) }
+        }
     }
 }

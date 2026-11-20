@@ -81,7 +81,7 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | Field | Type | Notes |
 |---|---|---|
 | openNights | string[] | dates the owner opened |
-| heldNights | string[] | dates held by CONFIRMED reservations |
+| heldNights | string[] | dates held by CONFIRMED reservations; a cancel or reject removes them |
 
 ### `lotteries`: `Lottery` (`LotteryRepository`)
 
@@ -137,6 +137,32 @@ winner; that is the replacement draw (T-12). Transactions need a connection, so 
 | rejectionReason | string? | only when `REJECTED` |
 
 **Active** = `CONFIRMED` and check-out is today or later. Everything else is **Past**.
+
+My Reservations (US 01.06.01) and the owner's Reservations screen (US 02.07.01) both list the
+Active ones sorted by check-in, soonest first: the entrant's come from
+`getReservationsForUser(userId)` and the owner's from `getReservationsForOwner(ownerId)`. A
+reservation whose dates can't be read is left out of both lists instead of breaking them.
+
+**Cancelling and rejecting** (US 01.07.01, 02.08.01) both use
+`changeStatus(id, status, reason, now)`, so there is one transaction for both. It only changes a
+`CONFIRMED` reservation (otherwise it returns `false` and writes nothing), and in the same
+transaction it:
+- sets `status` to `CANCELLED` or `REJECTED` and `statusChangedAt` to `now`; `rejectionReason` is
+  saved only for `REJECTED`,
+- removes the reservation's nights (check-in up to the night before check-out) from the
+  campsite's `heldNights`, so other winners can book them again,
+- writes the entrant's notice (`Reservation.statusNotice`): ID `cancelled_<reservationId>` or
+  `rejected_<reservationId>`, type `RESERVATION_CANCELLED` or `RESERVATION_REJECTED`, message
+  `<campsite name>: <check-in> to <check-out>` (plus `. Reason: <reason>` for a rejection with a
+  reason). A cancel is from `"system"`, a rejection from the owner.
+
+The entrant can cancel only while `Reservation.canCancel(today)` is true: `CONFIRMED` and check-in
+is today or later. The lottery entry stays `RESERVED` after a cancel or reject: the win was used,
+so the entrant can't reserve from it again and no replacement winner is drawn. The cancel notice
+is sent even if the entrant turned notifications off, the same as the confirmation, because it
+confirms something they just did. A rejection should respect the opt-out: check the entrant with
+`NotificationService.optedIn` first and pass `sendNotice = false` if they turned notifications
+off. Everything else in the transaction still happens.
 
 ### `notifications`: `Notification` (`NotificationRepository`)
 
