@@ -21,6 +21,7 @@ import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakePlaceFinder
+import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
@@ -48,6 +49,8 @@ class AddCampsiteTest {
     private fun openForm() {
         val controller = CampsiteController(
             repo, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         composeRule.setContent {
             VipersTheme {

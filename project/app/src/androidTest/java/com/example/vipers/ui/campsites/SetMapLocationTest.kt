@@ -20,9 +20,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import com.example.vipers.data.fake.FakeCampsiteRepository
-import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakePlaceFinder
+import com.example.vipers.data.fake.FakePhotoReader
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Place
 import com.example.vipers.domain.model.Region
@@ -67,7 +68,13 @@ class SetMapLocationTest {
         campsites: FakeCampsiteRepository = repo,
         campsiteId: String? = null,
     ) {
-        val controller = CampsiteController(campsites, ownerId = "my-phone", placeFinder = finder)
+        val controller = CampsiteController(
+            campsites,
+            ownerId = "my-phone",
+            placeFinder = finder,
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         composeRule.setContent {
             VipersTheme {
                 CampsiteFormScreen(
