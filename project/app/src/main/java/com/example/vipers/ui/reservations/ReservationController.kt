@@ -3,7 +3,7 @@
  * The controller (a ViewModel) behind the owner's Reservations screen. It loads the reservations at
  * the owner's campsites once, splits them into the Active list (US 02.07.01) and the Past list of
  * completed stays (US 02.07.02), and looks up each entrant's current name.
- * Known issues: none. The Cancelled list (US 02.07.03) is not built yet.
+ * Known issues: the Cancelled list (US 02.07.03) is not built yet.
  */
 package com.example.vipers.ui.reservations
 
