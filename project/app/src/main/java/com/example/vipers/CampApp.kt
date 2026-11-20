@@ -8,6 +8,7 @@ package com.example.vipers
 import android.app.Application
 import com.example.vipers.data.device.DeviceIdentityManager
 import com.example.vipers.data.firestore.FirestoreCampsiteRepository
+import com.example.vipers.data.firestore.FirestoreImageRepository
 import com.example.vipers.data.firestore.FirestoreLotteryRepository
 import com.example.vipers.data.firestore.FirestoreNotificationRepository
 import com.example.vipers.data.firestore.FirestoreProfileRepository
@@ -28,6 +29,7 @@ class CampApp : Application() {
             lotteryRepository = FirestoreLotteryRepository(),
             reservationRepository = FirestoreReservationRepository(),
             notificationRepository = FirestoreNotificationRepository(),
+            imageRepository = FirestoreImageRepository(),
         )
     }
 }

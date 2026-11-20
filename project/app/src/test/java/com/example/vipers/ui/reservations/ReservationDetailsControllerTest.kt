@@ -2,7 +2,7 @@
  * ReservationDetailsControllerTest.kt
  * Unit tests for ReservationDetailsController (US 01.05.01), using fake repositories.
  * Checks loading the entrant's reservation details, handling missing or unauthorized records,
- * and repository failure error states.
+ * repository failure error states, and cancelling before check-in (US 01.07.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -11,12 +11,15 @@ import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.repository.ReservationRepository
+import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReservationDetailsControllerTest {
@@ -113,5 +116,99 @@ class ReservationDetailsControllerTest {
         assertFalse(controller.loading)
         assertNull(controller.reservation)
         assertEquals("Couldn't load the reservation", controller.error)
+    }
+
+    private val beforeCheckIn = LocalDate.of(2027, 5, 20)
+
+    @Test
+    fun performCancel_beforeCheckIn_cancelsAndUpdatesTheScreen() = runBlocking {
+        val repo = FakeReservationRepository(listOf(reservation))
+        val controller = ReservationDetailsController(
+            reservationRepository = repo,
+            userId = "sam",
+            reservationId = "res-101",
+        )
+        controller.fetchData()
+        assertTrue(controller.canCancel(beforeCheckIn))
+
+        assertTrue(controller.performCancel(now = 5000, today = beforeCheckIn))
+
+        assertEquals(ReservationStatus.CANCELLED, controller.reservation?.status)
+        assertEquals(ReservationStatus.CANCELLED, repo.getReservation("res-101")?.status)
+        assertEquals(5000L, repo.getReservation("res-101")?.statusChangedAt)
+        assertFalse(controller.canCancel(beforeCheckIn))
+        assertFalse(controller.cancelling)
+        assertNull(controller.cancelError)
+    }
+
+    @Test
+    fun performCancel_afterCheckIn_doesNotCancel() = runBlocking {
+        val repo = FakeReservationRepository(listOf(reservation))
+        val controller = ReservationDetailsController(
+            reservationRepository = repo,
+            userId = "sam",
+            reservationId = "res-101",
+        )
+        controller.fetchData()
+        val afterCheckIn = LocalDate.of(2027, 6, 2)
+
+        assertFalse(controller.canCancel(afterCheckIn))
+        assertFalse(controller.performCancel(now = 5000, today = afterCheckIn))
+        assertEquals(ReservationStatus.CONFIRMED, repo.getReservation("res-101")?.status)
+        assertEquals("This reservation can no longer be cancelled.", controller.cancelError)
+    }
+
+    @Test
+    fun performCancel_whenRejectedWhileOpen_showsTheNewStatus() = runBlocking {
+        val repo = FakeReservationRepository(listOf(reservation))
+        val controller = ReservationDetailsController(
+            reservationRepository = repo,
+            userId = "sam",
+            reservationId = "res-101",
+        )
+        controller.fetchData()
+        repo.changeStatus("res-101", ReservationStatus.REJECTED, "Site flooded", now = 4000)
+
+        assertFalse(controller.performCancel(now = 5000, today = beforeCheckIn))
+        assertEquals("This reservation can no longer be cancelled.", controller.cancelError)
+        assertEquals(ReservationStatus.REJECTED, controller.reservation?.status)
+        assertFalse(controller.canCancel(beforeCheckIn))
+    }
+
+    @Test
+    fun performCancel_whenSaveFails_showsFixedMessageAndKeepsTheReservation() = runBlocking {
+        val failingRepo = object : ReservationRepository by FakeReservationRepository(
+            listOf(reservation),
+        ) {
+            override suspend fun changeStatus(
+                id: String,
+                status: ReservationStatus,
+                reason: String?,
+                now: Long,
+                sendNotice: Boolean,
+            ): Boolean = throw Exception("connection timed out")
+        }
+        val controller = ReservationDetailsController(
+            reservationRepository = failingRepo,
+            userId = "sam",
+            reservationId = "res-101",
+        )
+        controller.fetchData()
+
+        assertFalse(controller.performCancel(now = 5000, today = beforeCheckIn))
+        assertEquals(ReservationStatus.CONFIRMED, controller.reservation?.status)
+        assertEquals(
+            "Couldn't cancel. Check your connection and try again.",
+            controller.cancelError,
+        )
+        assertFalse(controller.cancelling)
+    }
+
+    @Test
+    fun performCancel_beforeLoading_doesNothing() = runBlocking {
+        val controller = controllerFor("res-101", "sam", reservation)
+
+        assertFalse(controller.performCancel(now = 5000, today = beforeCheckIn))
+        assertNull(controller.cancelError)
     }
 }

@@ -131,6 +131,7 @@ AvailabilityScreen ..> AvailabilityController
 LotteryFormScreen ..> LotteryController
 LotteryDetailsScreen ..> LotteryDetailsController
 WaitingListScreen ..> WaitingListController
+MyReservationsScreen ..> ReservationController
 OwnerReservationsScreen ..> ReservationController
 OwnerReservationDetailsScreen ..> OwnerReservationDetailsController
 BrowseCampsitesScreen ..> AdminController
@@ -144,6 +145,7 @@ NotificationsScreen --> CampsiteDetailsScreen
 NotificationsScreen --> MessagesScreen : NEW_MESSAGE
 ProfileScreen --> SettingsScreen
 ProfileScreen --> PolicyScreen
+SettingsScreen --> PolicyScreen : Policy and Guidelines
 MyCampsitesScreen --> CampsiteFormScreen : +
 MyCampsitesScreen --> OwnerCampsiteScreen
 MyCampsitesScreen --> OwnerReservationsScreen
@@ -179,7 +181,7 @@ note bottom of ReservationConfirmationDialog
 end note
 
 note bottom of MyReservationsScreen
-  Placeholder: the Active and Past lists
-  come with US 01.06.01 and 01.06.02.
+  E14: the Active tab is built (US 01.06.01);
+  the Past tab comes with US 01.06.02.
 end note
 @enduml

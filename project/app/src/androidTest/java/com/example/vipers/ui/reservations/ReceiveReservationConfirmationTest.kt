@@ -24,6 +24,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
@@ -229,6 +230,7 @@ class ReceiveReservationConfirmationTest {
             lotteryRepository = FakeLotteryRepository(listOf(lottery)),
             reservationRepository = FakeReservationRepository(listOf(reservation)),
             notificationRepository = FakeNotificationRepository(listOf(notice)),
+            imageRepository = FakeImageRepository(),
         )
 
         composeRule.setContent {

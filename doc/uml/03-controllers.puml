@@ -174,7 +174,12 @@ package "controllers (ViewModels)" {
   }
 
   class ReservationController <<ViewModel>> {
+    userId: String
+    myActive: List<Reservation>
     activeRows: List<ReservationRow>
+    isLoading: Boolean
+    loadFailed: Boolean
+    suspend fetchMyReservations(today: LocalDate)
     suspend fetchOwnerActive(today: LocalDate)
   }
 
@@ -183,7 +188,12 @@ package "controllers (ViewModels)" {
     reservationId: String
     reservation: Reservation?
     campsite: Campsite?
+    cancelling: Boolean
+    cancelError: String?
     suspend fetchData()
+    canCancel(today): Boolean
+    cancelReservation()
+    suspend performCancel(now, today): Boolean
   }
 
   class OwnerReservationDetailsController <<ViewModel>> {

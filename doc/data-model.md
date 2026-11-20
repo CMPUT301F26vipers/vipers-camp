@@ -60,15 +60,20 @@ Document ID = **device ID**.
 | pricePerNightCents | number | cents |
 | rules | string | |
 | cancellationPolicy | string | |
-| imageId | string? | promo photo |
-| lat, lng | number? | set by Find location |
+| imageId | string? | promo photo: the ID of its `images` document (US 02.01.02b), `null` if none |
+| lat, lng | number? | set by Find location (US 02.01.02c); both or neither, `null` if not set |
 | ratingSum, ratingCount | number | average = sum / count |
 | removed | bool | |
 
 Owners save changes with `updateCampsite(campsite)` (US 02.01.03). It writes only `name`, `address`,
-`region`, `description`, `maxOccupancy`, `tags`, `pricePerNightCents`, `rules` and
-`cancellationPolicy`, never `ownerId`, `ratingSum`, `ratingCount`, `imageId`, `lat`, `lng` or
-`removed`. It throws `NoSuchElementException` if the campsite ID doesn't exist.
+`region`, `description`, `maxOccupancy`, `tags`, `pricePerNightCents`, `rules`,
+`cancellationPolicy`, `lat` and `lng` (US 02.01.02c; `null` removes the map location) and `imageId`
+(US 02.01.02b; `null` removes the photo), never `ownerId`, `ratingSum`, `ratingCount` or `removed`.
+It throws `NoSuchElementException` if the campsite ID doesn't exist.
+
+`newCampsiteId()` makes a campsite ID without saving anything (Firestore makes it on the phone), and
+`addCampsite` saves a campsite under its own ID when it has one. The Add Campsite form uses this to
+save the photo for the new campsite's ID before the campsite itself (US 02.01.02b).
 
 ### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
 Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.
@@ -76,7 +81,7 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | Field | Type | Notes |
 |---|---|---|
 | openNights | string[] | dates the owner opened |
-| heldNights | string[] | dates held by CONFIRMED reservations |
+| heldNights | string[] | dates held by CONFIRMED reservations; a cancel or reject removes them |
 
 ### `lotteries`: `Lottery` (`LotteryRepository`)
 
@@ -142,6 +147,32 @@ winner; that is the replacement draw (T-12). Transactions need a connection, so 
 | rejectionReason | string? | only when `REJECTED` |
 
 **Active** = `CONFIRMED` and check-out is today or later. Everything else is **Past**.
+
+My Reservations (US 01.06.01) and the owner's Reservations screen (US 02.07.01) both list the
+Active ones sorted by check-in, soonest first: the entrant's come from
+`getReservationsForUser(userId)` and the owner's from `getReservationsForOwner(ownerId)`. A
+reservation whose dates can't be read is left out of both lists instead of breaking them.
+
+**Cancelling and rejecting** (US 01.07.01, 02.08.01) both use
+`changeStatus(id, status, reason, now)`, so there is one transaction for both. It only changes a
+`CONFIRMED` reservation (otherwise it returns `false` and writes nothing), and in the same
+transaction it:
+- sets `status` to `CANCELLED` or `REJECTED` and `statusChangedAt` to `now`; `rejectionReason` is
+  saved only for `REJECTED`,
+- removes the reservation's nights (check-in up to the night before check-out) from the
+  campsite's `heldNights`, so other winners can book them again,
+- writes the entrant's notice (`Reservation.statusNotice`): ID `cancelled_<reservationId>` or
+  `rejected_<reservationId>`, type `RESERVATION_CANCELLED` or `RESERVATION_REJECTED`, message
+  `<campsite name>: <check-in> to <check-out>` (plus `. Reason: <reason>` for a rejection with a
+  reason). A cancel is from `"system"`, a rejection from the owner.
+
+The entrant can cancel only while `Reservation.canCancel(today)` is true: `CONFIRMED` and check-in
+is today or later. The lottery entry stays `RESERVED` after a cancel or reject: the win was used,
+so the entrant can't reserve from it again and no replacement winner is drawn. The cancel notice
+is sent even if the entrant turned notifications off, the same as the confirmation, because it
+confirms something they just did. A rejection should respect the opt-out: check the entrant with
+`NotificationService.optedIn` first and pass `sendNotice = false` if they turned notifications
+off. Everything else in the transaction still happens.
 
 ### `notifications`: `Notification` (`NotificationRepository`)
 
@@ -217,16 +248,30 @@ repository yet (added by the rating story).
 | campsiteId, userId | string | |
 | stars | number | 1–5 |
 
-### `images`: `ImageAsset`
-Not used by a repository yet (added by the photo story).
+### `images`: `ImageAsset` (`ImageRepository`)
+One document per uploaded photo (US 02.01.02b). The photo itself is saved **in the document** as
+Base64 text, so we need no file storage (Firebase Storage would need the paid Blaze plan) and no
+new library.
 
 | Field | Type | Notes |
 |---|---|---|
-| storagePath | string | where the file is stored |
-| uploaderId | string | |
-| ownerType | string | `campsite` or `profile` |
-| ownerId | string | |
-| label | string | shown in the admin image browser |
+| data | string | the JPEG as Base64 text; at most `ImageAsset.MAX_DATA_LENGTH` (900,000) characters, because a document can be at most 1 MB |
+| uploaderId | string | device ID of who uploaded it |
+| ownerType | string | `campsite` or `profile` (`ImageAsset.OWNER_CAMPSITE` / `OWNER_PROFILE`) |
+| ownerId | string | the campsite's or profile's ID |
+| label | string | shown in the admin image browser, e.g. the campsite name |
+| createdAt | number | ms |
+
+- **Saving a photo:** pick it with the phone's photo picker, then `PhotoReader.readJpeg(uri, ImageAsset.MAX_JPEG_BYTES)`
+  shrinks it (longest side 1024 px, JPEG quality lowered until it is at most 600 KB). Make the
+  record with `ImageAsset.fromJpeg(...)` and save it with `addImage`, which returns its ID; put that
+  ID in the campsite's or profile's `imageId`. `addImage` throws if the image is too big
+  (`isSmallEnough()`). Like `addCampsite`, it doesn't wait for the server, so it works offline.
+- **Showing a photo:** use `SavedPhoto(imageId, ...)` from `ui/common/Photo.kt`. It loads the image
+  through the app's `ImageRepository`, caches it, and shows a placeholder while there's none.
+- **Replacing or removing a photo:** save the new `imageId` (or `null`) first, then
+  `deleteImage(oldId)`. An image never changes once saved; a new photo gets a new ID.
+- `getAllImages()` lists every image, newest first, for the admin image browser (US 03.06.01).
 
 ## Adding to a repository
 

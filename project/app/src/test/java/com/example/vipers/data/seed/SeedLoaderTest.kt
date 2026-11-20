@@ -7,6 +7,7 @@ package com.example.vipers.data.seed
 
 import com.example.vipers.AppContainer
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
@@ -30,6 +31,7 @@ class SeedLoaderTest {
         lotteryRepository = FakeLotteryRepository(),
         reservationRepository = FakeReservationRepository(),
         notificationRepository = FakeNotificationRepository(),
+        imageRepository = FakeImageRepository(),
     )
 
     @Test
@@ -71,6 +73,7 @@ class SeedLoaderTest {
                 lotteryRepository = container.lotteryRepository,
                 reservationRepository = container.reservationRepository,
                 notificationRepository = container.notificationRepository,
+                imageRepository = FakeImageRepository(),
             )
             SeedLoader(otherPhone, today.plusDays(daysLater)).seed()
             assertEquals(3, container.reservationRepository.getReservationsForUser(phone).size)

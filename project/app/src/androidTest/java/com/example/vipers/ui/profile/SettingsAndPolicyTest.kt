@@ -2,8 +2,9 @@
  * SettingsAndPolicyTest.kt
  * Intent tests for the Settings screen (mockup E20) and the Policy screen (mockup E21): Settings
  * opens Policy and loads the demo data, and both screens go back. The notifications switch
- * (US 01.10.01) is tested in OptOutNotificationsTest.
- * Known issues: the policy text (US 01.11.01) isn't built yet, so there's nothing to test for it.
+ * (US 01.10.01) is tested in OptOutNotificationsTest, and the policy text (US 01.11.01) in
+ * ViewAppPolicyTest.
+ * Known issues: none.
  */
 package com.example.vipers.ui.profile
 

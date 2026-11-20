@@ -10,6 +10,7 @@ package com.example.vipers.data.firestore
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Region
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CampsiteMappingTest {
@@ -44,11 +45,13 @@ class CampsiteMappingTest {
 
     @Test
     fun toEditableFields_always_holdsOnlyTheFieldsAnOwnerEdits() {
-        // updateCampsite writes exactly these, so nothing else can be overwritten (US 02.01.03)
+        // updateCampsite writes exactly these, so nothing else can be overwritten (US 02.01.03);
+        // lat and lng are the map location from Find location (US 02.01.02c), imageId the photo
+        // (US 02.01.02b)
         assertEquals(
             setOf(
                 "name", "address", "region", "description", "maxOccupancy", "tags",
-                "pricePerNightCents", "rules", "cancellationPolicy",
+                "pricePerNightCents", "rules", "cancellationPolicy", "lat", "lng", "imageId",
             ),
             campsite.toEditableFields().keys,
         )
@@ -62,5 +65,35 @@ class CampsiteMappingTest {
     @Test
     fun toMap_newCampsiteIsNotRemoved() {
         assertEquals(false, campsite.toMap()["removed"])
+    }
+
+    @Test
+    fun toEditableFields_mapLocation_isSaved() {
+        val fields = campsite.copy(lat = 53.405, lng = -117.585).toEditableFields()
+
+        assertEquals(53.405, fields["lat"])
+        assertEquals(-117.585, fields["lng"])
+    }
+
+    @Test
+    fun toEditableFields_noMapLocation_clearsIt() {
+        // null, so an edit that removes the location also removes it from Firestore
+        val fields = campsite.toEditableFields()
+
+        assertTrue(fields.containsKey("lat") && fields["lat"] == null)
+        assertTrue(fields.containsKey("lng") && fields["lng"] == null)
+    }
+
+    @Test
+    fun toEditableFields_photo_isSaved() {
+        assertEquals("photo-1", campsite.copy(imageId = "photo-1").toEditableFields()["imageId"])
+    }
+
+    @Test
+    fun toEditableFields_noPhoto_clearsIt() {
+        // null, so an edit that removes the photo also removes it from Firestore
+        val fields = campsite.toEditableFields()
+
+        assertTrue(fields.containsKey("imageId") && fields["imageId"] == null)
     }
 }

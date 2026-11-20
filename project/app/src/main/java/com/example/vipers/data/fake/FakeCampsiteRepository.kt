@@ -24,6 +24,8 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
         return id
     }
 
+    override fun newCampsiteId(): String = "campsite-${nextId++}"
+
     override suspend fun getCampsite(id: String): Campsite? = campsites[id]
 
     override suspend fun updateCampsite(campsite: Campsite) {
@@ -40,6 +42,9 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
             pricePerNightCents = campsite.pricePerNightCents,
             rules = campsite.rules,
             cancellationPolicy = campsite.cancellationPolicy,
+            lat = campsite.lat,
+            lng = campsite.lng,
+            imageId = campsite.imageId,
         )
     }
 
