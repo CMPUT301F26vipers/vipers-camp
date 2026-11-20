@@ -134,6 +134,11 @@ winner; that is the replacement draw (T-12). Transactions need a connection, so 
 
 **Active** = `CONFIRMED` and check-out is today or later. Everything else is **Past**.
 
+My Reservations (US 01.06.01) and the owner's Reservations screen (US 02.07.01) both list the
+Active ones sorted by check-in, soonest first: the entrant's come from
+`getReservationsForUser(userId)` and the owner's from `getReservationsForOwner(ownerId)`. A
+reservation whose dates can't be read is left out of both lists instead of breaking them.
+
 **Cancelling and rejecting** (US 01.07.01, 02.08.01) both use
 `changeStatus(id, status, reason, now)`, so there is one transaction for both. It only changes a
 `CONFIRMED` reservation (otherwise it returns `false` and writes nothing), and in the same

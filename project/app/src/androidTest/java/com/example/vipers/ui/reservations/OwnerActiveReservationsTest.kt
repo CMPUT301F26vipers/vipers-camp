@@ -73,7 +73,7 @@ class OwnerActiveReservationsTest {
         val controller = ReservationController(
             reservationRepository = FakeReservationRepository(reservations.toList()),
             profileRepository = profiles,
-            ownerId = "test-device",
+            userId = "test-device",
         )
         composeRule.setContent {
             VipersTheme {

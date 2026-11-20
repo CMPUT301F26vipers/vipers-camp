@@ -104,6 +104,7 @@ MainActivity --> ProfileScreen
 MainActivity --> AdminHomeScreen
 MainActivity ..> DeviceIdentityManager
 HomeScreen ..> CampsiteSearchController
+MyReservationsScreen ..> ReservationController
 MyCampsitesScreen ..> MyCampsitesController
 NotificationsScreen ..> NotificationsController
 ProfileScreen ..> ProfileController
