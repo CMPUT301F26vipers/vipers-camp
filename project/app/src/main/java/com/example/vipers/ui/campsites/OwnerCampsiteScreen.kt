@@ -5,8 +5,7 @@
  * OwnerCampsiteController loads the data; the whole promo photo shows at the top (US 02.01.02b).
  * QR Code opens the campsite's QR code in a dialog (mockup O06, US 02.02.01), where Save stores
  * it as an image wherever the owner picks.
- * Known issues: the map box shows the map location's coordinates (US 02.01.02c), and is hidden
- * when there is none, until T-04 draws a map there.
+ * Known issues: none.
  */
 package com.example.vipers.ui.campsites
 
@@ -299,9 +298,7 @@ private fun QrCodeDialog(
 
 /**
  * The photo and map boxes at the top. A campsite with a promo photo shows the whole photo across
- * the screen, with the map box under it (US 02.01.02b); without one, the placeholder and the map
- * box sit side by side as in mockup O04. The map box shows [campsite]'s map coordinates
- * (US 02.01.02c) until T-04 puts a map there, and isn't shown at all when it has no map location.
+ * the screen, with Open in Maps underneath. Without a photo the two share a row (O04).
  */
 @Composable
 private fun PhotoAndMap(campsite: Campsite) {
@@ -314,7 +311,10 @@ private fun PhotoAndMap(campsite: Campsite) {
                 modifier = Modifier.fillMaxWidth().testTag("owner_photo"),
                 placeholderHeight = 96.dp,
             )
-            if (campsite.hasLocation()) MapBox(campsite, Modifier.fillMaxWidth().height(72.dp))
+            CampsiteMapButton(
+                campsite,
+                Modifier.fillMaxWidth().height(72.dp).testTag("owner_map_location"),
+            )
         }
         return
     }
@@ -325,29 +325,9 @@ private fun PhotoAndMap(campsite: Campsite) {
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.weight(1f).height(96.dp).testTag("owner_photo"),
         )
-        if (campsite.hasLocation()) MapBox(campsite, Modifier.weight(1f).height(96.dp))
-    }
-}
-
-// The map location's coordinates on green, until T-04 draws a map here.
-@Composable
-private fun MapBox(campsite: Campsite, modifier: Modifier) {
-    Column(
-        modifier
-            .background(GreenFill, RoundedCornerShape(12.dp))
-            .testTag("owner_map_location"),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            painterResource(R.drawable.ic_campsite),
-            contentDescription = null,
-            tint = Primary,
-        )
-        Text(
-            campsite.coordinatesText().orEmpty(),
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
+        CampsiteMapButton(
+            campsite,
+            Modifier.weight(1f).height(96.dp).testTag("owner_map_location"),
         )
     }
 }
