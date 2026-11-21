@@ -12,7 +12,10 @@ import com.example.vipers.domain.model.Message
 /** Saves and loads [Message]s. All messages with the same reservation ID form one conversation. */
 interface MessageRepository {
 
-    /** Saves a new [message] and returns the ID it was given (US 02.12.01). */
+    /**
+     * Saves a new [message] and returns the ID it was given (US 02.12.01). Offline, the message
+     * is saved on the phone first and uploaded once it reconnects.
+     */
     suspend fun addMessage(message: Message): String
 
     /**

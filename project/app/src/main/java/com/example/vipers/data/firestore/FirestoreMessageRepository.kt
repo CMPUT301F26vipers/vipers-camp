@@ -24,7 +24,10 @@ class FirestoreMessageRepository(
 
     override suspend fun addMessage(message: Message): String {
         val doc = collection.document()
-        doc.set(message.copy(id = doc.id).toMap()).await()
+        // Not awaited, like addCampsite: offline, set() only finishes once the phone reconnects,
+        // so sending would hang. Firestore keeps the message on the phone, shows it in the
+        // conversation straight away and uploads it later.
+        doc.set(message.copy(id = doc.id).toMap())
         return doc.id
     }
 

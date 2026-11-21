@@ -157,33 +157,35 @@ class MessageController(
      * Saves the [draft], trimmed, as a message from the user sent at [now] (milliseconds since
      * 1970), clears the box, and then tells the other side ([NotificationService.sendNewMessage]).
      * Does nothing if [canSend] is false. If saving fails the text stays in the box and
-     * [sendError] says so; if only the notice fails the message is still sent.
-     * [send] runs this in the background; unit tests call it directly.
+     * [sendError] says so; if only the notice fails the message is still sent. [sending] ends
+     * before the notice, so a notice still waiting for the connection doesn't hold up the next
+     * message. [send] runs this in the background; unit tests call it directly.
      */
     suspend fun sendMessage(now: Long = System.currentTimeMillis()) {
         val current = reservation ?: return
         if (!canSend) return
         val typed = draft
+        val message = Message(
+            reservationId = reservationId,
+            senderId = userId,
+            text = typed.trim(),
+            createdAt = now,
+        )
         sending = true
         sendError = null
-        try {
-            val message = Message(
-                reservationId = reservationId,
-                senderId = userId,
-                text = typed.trim(),
-                createdAt = now,
-            )
-            val id = messageRepository.addMessage(message)
-            // keep anything typed while it was sending
-            if (draft == typed) draft = ""
-            tellOtherSide(current, message.copy(id = id))
+        val id = try {
+            messageRepository.addMessage(message)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             sendError = "Couldn't send. Check your connection and try again."
+            return
         } finally {
             sending = false
         }
+        // keep anything typed while it was sending
+        if (draft == typed) draft = ""
+        tellOtherSide(current, message.copy(id = id))
     }
 
     // The message is already saved, so a notice that fails doesn't make the send fail.

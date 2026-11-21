@@ -235,7 +235,8 @@ reservation's status, so an owner can still explain a rejection. `Message.canSen
 empty messages (only spaces counts as empty); the text is saved trimmed. Messages are never edited
 or deleted, so the admin message log (03.12.01) can always show them.
 
-- `addMessage(message)` saves a new message and returns its ID.
+- `addMessage(message)` saves a new message and returns its ID. Like `addCampsite`, it doesn't
+  wait for the server, so sending works offline.
 - `listenToThread(reservationId, listener)` sends the conversation, oldest first
   (`Message.inOrder`: by `createdAt`, then by ID), to a `ThreadListener` straight away and on every
   change, until the returned `Subscription` is cancelled; `onThreadError()` if it can't be read.

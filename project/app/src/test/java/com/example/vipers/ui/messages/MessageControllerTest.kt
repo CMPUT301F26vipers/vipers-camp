@@ -24,6 +24,8 @@ import com.example.vipers.domain.repository.Subscription
 import com.example.vipers.domain.repository.ThreadListener
 import com.example.vipers.domain.service.NotificationService
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -345,5 +347,35 @@ class MessageControllerTest {
         assertEquals("Check-in is at 2 PM", controller.messages.last().text)
         assertNull(controller.sendError)
         assertEquals("", controller.draft)
+    }
+
+    @Test
+    fun sendMessage_noticeWaitingForTheConnection_theNextMessageCanBeTyped() = runBlocking {
+        // offline, saving the notice only finishes once the phone reconnects
+        val noticeStarted = CompletableDeferred<Unit>()
+        val reconnected = CompletableDeferred<Unit>()
+        val offline = object : NotificationRepository by notifications {
+            override suspend fun saveNotification(notification: Notification): String {
+                noticeStarted.complete(Unit)
+                reconnected.await()
+                return notifications.saveNotification(notification)
+            }
+        }
+        val controller = controllerFor("owner-priya", notificationRepository = offline)
+        controller.fetchThread()
+        controller.onDraftChange("Check-in is at 2 PM")
+
+        val sent = launch { controller.sendMessage(now = 2_000) }
+        noticeStarted.await()
+
+        assertEquals("Check-in is at 2 PM", controller.messages.last().text)
+        assertFalse(controller.sending)
+        assertEquals("", controller.draft)
+        controller.onDraftChange("See you then")
+        assertTrue(controller.canSend)
+
+        reconnected.complete(Unit)
+        sent.join()
+        assertEquals(1, notifications.getNotificationsFor("sam").size)
     }
 }
