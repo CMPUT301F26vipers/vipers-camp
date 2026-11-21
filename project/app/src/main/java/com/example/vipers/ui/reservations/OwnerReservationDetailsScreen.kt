@@ -1,12 +1,14 @@
 /*
  * OwnerReservationDetailsScreen.kt
  * The owner's view of one reservation (mockup O15, US 02.07.01): the entrant's name and contact
- * details, then the campsite, dates, guests and whether the rules were accepted.
- * Known issues: the Message Entrant (US 02.12.01) and Reject Reservation (US 02.08.01) buttons
- * from the mockup are added by those stories.
+ * details, then the campsite, dates, guests and whether the rules were accepted, and a Message
+ * Entrant button that opens the conversation (US 02.12.01).
+ * Known issues: the Reject Reservation button (US 02.08.01) from the mockup is added by that story,
+ * under Message Entrant.
  */
 package com.example.vipers.ui.reservations
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,19 +16,24 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,8 +41,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.theme.ButtonHeight
+import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFillStrong
+import com.example.vipers.ui.theme.Primary
 import com.example.vipers.ui.theme.TextMuted
 
 /**
@@ -44,12 +54,14 @@ import com.example.vipers.ui.theme.TextMuted
  *
  * @param reservationId ID of the reservation being viewed.
  * @param onBack Called when the back arrow is tapped.
+ * @param onMessage Called with the reservation's ID when Message Entrant is tapped (US 02.12.01).
  * @param controller Loads the reservation and its entrant.
  */
 @Composable
 fun OwnerReservationDetailsScreen(
     reservationId: String,
     onBack: () -> Unit,
+    onMessage: (reservationId: String) -> Unit,
     controller: OwnerReservationDetailsController =
         viewModel(factory = OwnerReservationDetailsController.factory(reservationId)),
 ) {
@@ -71,9 +83,10 @@ fun OwnerReservationDetailsScreen(
                 }
             controller.error != null -> Message(controller.error!!)
             reservation == null -> Message("Reservation not found")
-            else ->
+            else -> {
                 Column(
                     modifier = Modifier
+                        .weight(1f)
                         .verticalScroll(rememberScrollState())
                         .padding(16.dp),
                 ) {
@@ -83,6 +96,27 @@ fun OwnerReservationDetailsScreen(
                     DetailLine("Guests", reservation.groupSize.toString())
                     DetailLine("Rules accepted", rulesAcceptedText(reservation))
                 }
+                // the buttons stay at the bottom, as in mockup O15
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(16.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = { onMessage(reservation.id) },
+                        shape = ButtonShape,
+                        border = BorderStroke(1.5.dp, Primary),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(ButtonHeight)
+                            .testTag("button_message_entrant"),
+                    ) {
+                        Text("Message Entrant", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         }
     }
 }

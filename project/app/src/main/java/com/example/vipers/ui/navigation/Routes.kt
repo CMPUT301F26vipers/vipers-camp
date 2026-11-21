@@ -31,6 +31,8 @@ object Routes {
 
     const val OWNER_RESERVATIONS = "owner_reservations"
     const val OWNER_RESERVATION_DETAILS = "owner_reservation/{reservationId}"
+    // one reservation's conversation, for its owner and its entrant (02.12.01, 01.14.01)
+    const val MESSAGES = "messages/{reservationId}"
 
     const val OWNER_SENT = "owner_sent"
 

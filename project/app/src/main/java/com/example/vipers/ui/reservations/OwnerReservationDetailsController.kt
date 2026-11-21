@@ -2,8 +2,8 @@
  * OwnerReservationDetailsController.kt
  * The controller (a ViewModel) behind the owner's view of one reservation (mockup O15,
  * US 02.07.01). It loads the reservation and the entrant who made it.
- * Known issues: none. Rejecting (US 02.08.01) and messaging the entrant (US 02.12.01) are added
- * by those stories.
+ * Known issues: none. Rejecting (US 02.08.01) is added by that story. Messaging the entrant
+ * (US 02.12.01) only needs the reservation's ID, so the screen opens the conversation itself.
  */
 package com.example.vipers.ui.reservations
 
