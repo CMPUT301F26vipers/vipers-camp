@@ -175,6 +175,12 @@ note bottom of SentScreen
   It is a placeholder for now.
 end note
 
+note bottom of OwnerCampsiteScreen
+  QR Code opens the Campsite QR Code
+  dialog (O06, US 02.02.01) over this
+  screen; Save keeps it as a PNG.
+end note
+
 note bottom of ReservationConfirmationDialog
   E13 (Reservation Confirmed): a dialog
   shown over ReserveScreen, not its own screen.

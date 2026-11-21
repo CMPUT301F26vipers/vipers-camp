@@ -91,7 +91,31 @@ data class Campsite(
         return "$${dollarsText(totalPriceCents(nights))}"
     }
 
+    /**
+     * The link stored in this campsite's QR code (US 02.02.01), e.g. "vipers-camp://campsite/abc".
+     * It only uses [id], so the code stays the same when the owner edits the campsite.
+     */
+    fun qrLink(): String {
+        return QR_LINK_PREFIX + id
+    }
+
     companion object {
+        /** The start of every campsite QR link; the campsite ID follows it. */
+        const val QR_LINK_PREFIX = "vipers-camp://campsite/"
+
+        /**
+         * The campsite ID in a scanned QR [link] made by [qrLink], or null if it isn't one of our
+         * campsite links (another app's QR code, an empty ID, or extra parts after the ID).
+         * Scanning (US 01.12.01) uses this.
+         */
+        fun idFromQrLink(link: String): String? {
+            val text = link.trim()
+            if (!text.startsWith(QR_LINK_PREFIX)) return null
+            val id = text.removePrefix(QR_LINK_PREFIX)
+            if (id.isBlank() || id.contains('/') || id.any { it.isWhitespace() }) return null
+            return id
+        }
+
         /** An amount in cents as dollars: "50" or "65.50". Cents only show when there are some. */
         fun dollarsText(amountCents: Long): String {
             val dollars = amountCents / 100

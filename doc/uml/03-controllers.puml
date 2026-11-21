@@ -109,7 +109,12 @@ package "controllers (ViewModels)" {
     lotteries: List<Lottery>
     entrySummaries: Map<String, String>
     canEdit: Boolean
+    qrMessage: String?
+    qrSaveFailed: Boolean
     suspend fetchData()
+    saveQrCode(openOutput: () -> OutputStream?)
+    suspend writeQrCode(openOutput, write)
+    clearQrMessage()
   }
 
   class AvailabilityController <<ViewModel>> {
