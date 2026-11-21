@@ -2,7 +2,8 @@
  * OwnerCampsiteControllerTest.kt
  * Unit tests for OwnerCampsiteController (US 02.01.04): loading one of the owner's campsites with
  * its details, its lotteries and how many joined or reserved each one, and who may edit it
- * (US 02.01.03), using the fake campsite and lottery repositories.
+ * (US 02.01.03) and saving its QR code (US 02.02.01), using the fake campsite and lottery
+ * repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -15,6 +16,9 @@ import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.repository.CampsiteRepository
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.OutputStream
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
@@ -192,5 +196,96 @@ class OwnerCampsiteControllerTest {
         load.cancelAndJoin()
         assertNull(controller.error)
         assertFalse(controller.loading)
+    }
+
+    @Test
+    fun writeQrCode_whenItSaves_writesTheCampsiteLinkAndSaysSaved() = runBlocking {
+        val controller = loadedController()
+        val file = ByteArrayOutputStream()
+        var written = ""
+
+        controller.writeQrCode({ file }) { link, output ->
+            written = link
+            output.write(link.toByteArray())
+            true
+        }
+
+        assertEquals("vipers-camp://campsite/hinton", written)
+        assertEquals("vipers-camp://campsite/hinton", file.toString())
+        assertEquals("QR code saved", controller.qrMessage)
+    }
+
+    @Test
+    fun writeQrCode_whenTheFileCantBeOpened_saysItCouldntSave() = runBlocking {
+        val controller = loadedController()
+
+        controller.writeQrCode({ null }) { _, _ -> true }
+
+        assertEquals("Couldn't save the QR code. Try again.", controller.qrMessage)
+    }
+
+    @Test
+    fun writeQrCode_whenWritingFails_saysItCouldntSave() = runBlocking {
+        val controller = loadedController()
+
+        // e.g. the phone runs out of space part way through
+        controller.writeQrCode({ ByteArrayOutputStream() }) { _, _ -> throw IOException("full") }
+
+        assertEquals("Couldn't save the QR code. Try again.", controller.qrMessage)
+    }
+
+    @Test
+    fun writeQrCode_whenTheImageIsntWritten_saysItCouldntSave() = runBlocking {
+        val controller = loadedController()
+
+        controller.writeQrCode({ ByteArrayOutputStream() }) { _, _ -> false }
+
+        assertEquals("Couldn't save the QR code. Try again.", controller.qrMessage)
+    }
+
+    @Test
+    fun writeQrCode_closesTheFileAfterSaving() = runBlocking {
+        val controller = loadedController()
+        var closed = false
+        val file = object : OutputStream() {
+            override fun write(b: Int) = Unit
+
+            override fun close() {
+                closed = true
+            }
+        }
+
+        controller.writeQrCode({ file }) { _, _ -> true }
+
+        assertTrue(closed)
+    }
+
+    @Test
+    fun writeQrCode_beforeTheCampsiteLoads_doesNothing() = runBlocking {
+        val controller = OwnerCampsiteController(
+            FakeCampsiteRepository(listOf(hinton)),
+            FakeLotteryRepository(),
+            "hinton",
+            "owner-priya",
+        )
+        var opened = false
+
+        controller.writeQrCode({
+            opened = true
+            ByteArrayOutputStream()
+        }) { _, _ -> true }
+
+        assertFalse(opened)
+        assertNull(controller.qrMessage)
+    }
+
+    @Test
+    fun clearQrMessage_removesTheMessage() = runBlocking {
+        val controller = loadedController()
+        controller.writeQrCode({ ByteArrayOutputStream() }) { _, _ -> true }
+
+        controller.clearQrMessage()
+
+        assertNull(controller.qrMessage)
     }
 }
