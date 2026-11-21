@@ -50,6 +50,29 @@ class FirestoreLotteryRepository(
             .get().await()
             .documents.map { it.toLottery() }
 
+    override suspend fun getLotteriesToDraw(now: Long): List<Lottery> =
+        // only asks for undrawn lotteries and checks the dates here, so Firestore doesn't need a
+        // composite index for drawnAt and registrationEnd together
+        lotteries
+            .whereEqualTo("drawnAt", null)
+            .get().await()
+            .documents.map { it.toLottery() }
+            .filter { it.isDueForDraw(now) }
+
+    override suspend fun closeRegistration(lotteryId: String, now: Long): Boolean {
+        val lotteryDoc = lotteries.document(lotteryId)
+        return db.runTransaction { tx ->
+            val snap = tx.get(lotteryDoc)
+            if (!snap.exists()) return@runTransaction false
+            val lottery = snap.toLottery()
+            if (!lottery.canOwnerDraw(now)) return@runTransaction false
+            if (now < lottery.registrationEnd) {
+                tx.update(lotteryDoc, "registrationEnd", now)
+            }
+            true
+        }.await()
+    }
+
     override suspend fun updateLottery(
         lottery: Lottery,
         callerId: String,

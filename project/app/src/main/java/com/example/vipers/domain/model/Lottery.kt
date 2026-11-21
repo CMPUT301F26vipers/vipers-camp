@@ -71,6 +71,26 @@ data class Lottery(
     }
 
     /**
+     * Whether the owner can run the draw at time [now] (US 02.05.01b): registration has started,
+     * it hasn't been drawn or removed, and the booking period hasn't ended (winners couldn't
+     * reserve anything). Registration can still be open, since the owner may draw early.
+     */
+    fun canOwnerDraw(now: Long = System.currentTimeMillis()): Boolean =
+        !removed &&
+            drawnAt == null &&
+            registrationStart > 0L &&
+            registrationEnd > registrationStart &&
+            now >= registrationStart &&
+            !(bookingEnd > 0L && now > bookingEnd)
+
+    /**
+     * Whether the app should draw this lottery on its own at time [now] (US 02.05.01b): the owner
+     * could draw it and registration has ended. Never true while registration is open.
+     */
+    fun isDueForDraw(now: Long = System.currentTimeMillis()): Boolean =
+        canOwnerDraw(now) && now > registrationEnd
+
+    /**
      * Checks if registration is currently open for entrants at time [now] (milliseconds since 1970).
      * Registration is open between [registrationStart] and [registrationEnd] (inclusive).
      */
