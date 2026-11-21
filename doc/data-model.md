@@ -229,15 +229,36 @@ that user's notifications, newest first, straight away and on every change, unti
 the device, so no composite index is needed. `Subscription` keeps Firestore's
 `ListenerRegistration` out of `domain/`.
 
-### `messages`: `Message`
-Not used by a repository yet (added by the messaging story).
+### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |
 |---|---|---|
 | reservationId | string | one conversation per reservation |
-| senderId | string | |
+| senderId | string | device ID of the owner or the entrant |
 | text | string | must not be empty |
 | createdAt | number | ms |
+
+One conversation per reservation, between the reservation's entrant and the campsite's owner
+(US 02.12.01, 01.14.01). Only those two can open it: `Reservation.canMessage(userId)`, and
+`Reservation.otherSide(userId)` is the person to notify. Messaging works whatever the
+reservation's status, so an owner can still explain a rejection. `Message.canSend(text)` stops
+empty messages (only spaces counts as empty); the text is saved trimmed. Messages are never edited
+or deleted, so the admin message log (03.12.01) can always show them.
+
+- `addMessage(message)` saves a new message and returns its ID. Like `addCampsite`, it doesn't
+  wait for the server, so sending works offline.
+- `listenToThread(reservationId, listener)` sends the conversation, oldest first
+  (`Message.inOrder`: by `createdAt`, then by ID), to a `ThreadListener` straight away and on every
+  change, until the returned `Subscription` is cancelled; `onThreadError()` if it can't be read.
+  Firestore filters only by `reservationId` and sorts on the device, so no composite index is
+  needed. The fake re-sends the conversation after every `addMessage`, like Firestore.
+- `getAllThreads()` is for the admin message log: every conversation, each oldest first, the one
+  with the newest message first (`Message.threads`).
+
+Each new message adds a `NEW_MESSAGE` notification to the other side's inbox
+(`NotificationService.sendNewMessage`), unless they turned notifications off. Its ID is
+`message_<messageId>`, it has the reservation's `campsiteId` and `reservationId` (so a tap opens
+the conversation), the title "New message" and the message `<campsite name>: <text>`.
 
 ### `ratings`: `Rating`
 Document ID = **`campsiteId_userId`**, so rating again replaces the old rating. Not used by a

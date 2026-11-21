@@ -2,9 +2,8 @@
  * NotificationTarget.kt
  * Where tapping a notification in the inbox takes the user (T-13, mockup E10).
  * Never stored; Notification.target works it out from the notification's type and IDs.
- * Known issues: the message thread (messaging story) isn't built yet, so OpenThread just marks
- * the item read until that screen exists. OpenReservation opens the reservation details screen
- * (US 01.05.01). OpenReserve opens the Reserve screen (01.04.01).
+ * Known issues: none. OpenThread opens the Messages screen (US 02.12.01). OpenReservation opens
+ * the reservation details screen (US 01.05.01). OpenReserve opens the Reserve screen (01.04.01).
  */
 package com.example.vipers.domain.model
 

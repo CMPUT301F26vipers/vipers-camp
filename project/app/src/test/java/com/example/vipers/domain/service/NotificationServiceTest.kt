@@ -2,7 +2,9 @@
  * NotificationServiceTest.kt
  * Unit tests for NotificationService.sendDrawResults (US 01.03.01, 01.03.02): the "You won" and
  * "Not selected" notices a draw adds to inboxes, using the fake repositories and a fixed date format.
- * Also tests optedIn and that the draw skips users who turned notifications off (US 01.10.01).
+ * Also tests optedIn and that the draw skips users who turned notifications off (US 01.10.01),
+ * and the "New message" notice sendNewMessage sends to the other side of a conversation
+ * (US 02.12.01).
  * Known issues: none. The inbox and markRead pass-throughs are covered by NotificationsControllerTest.
  */
 package com.example.vipers.domain.service
@@ -12,9 +14,11 @@ import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.Message
 import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
@@ -383,5 +387,72 @@ class NotificationServiceTest {
         assertEquals(1, notifications.getNotificationsFor("sam").size)
         assertEquals(1, notifications.getNotificationsFor("jo").size)
         assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+    }
+
+    // Sam's May stay at Priya's Hinton campsite, and a message about it saved as "m1"
+    private val samsStay = Reservation(
+        id = "res-hinton",
+        userId = "sam",
+        ownerId = "owner-priya",
+        campsiteId = "hinton",
+        campsiteName = "Hinton Ridge Campground",
+    )
+    private val fromOwner = Message(
+        id = "m1",
+        reservationId = "res-hinton",
+        senderId = "owner-priya",
+        text = "Thanks for booking!",
+        createdAt = 1_000,
+    )
+
+    @Test
+    fun sendNewMessage_fromTheOwner_addsANewMessageNoticeForTheEntrant() = runBlocking {
+        service.sendNewMessage(samsStay, fromOwner)
+
+        val notice = notifications.getNotificationsFor("sam").single()
+        assertEquals("message_m1", notice.id)
+        assertEquals(NotificationType.NEW_MESSAGE, notice.type)
+        assertEquals("owner-priya", notice.senderId)
+        assertEquals("hinton", notice.campsiteId)
+        assertEquals("New message", notice.title)
+        assertEquals("Hinton Ridge Campground: Thanks for booking!", notice.message)
+        assertEquals(1_000L, notice.createdAt)
+        assertFalse(notice.read)
+        // tapping it opens the conversation
+        assertEquals(NotificationTarget.OpenThread("res-hinton"), notice.target)
+        assertTrue(notifications.getNotificationsFor("owner-priya").isEmpty())
+    }
+
+    @Test
+    fun sendNewMessage_fromTheEntrant_notifiesTheOwner() = runBlocking {
+        service.sendNewMessage(samsStay, fromOwner.copy(senderId = "sam", text = "Is there water?"))
+
+        val notice = notifications.getNotificationsFor("owner-priya").single()
+        assertEquals("Hinton Ridge Campground: Is there water?", notice.message)
+        assertTrue(notifications.getNotificationsFor("sam").isEmpty())
+    }
+
+    @Test
+    fun sendNewMessage_toSomeoneWhoTurnedNotificationsOff_sendsNothing() = runBlocking {
+        // Riley reserved too, but turned notifications off (US 01.10.01)
+        service.sendNewMessage(samsStay.copy(userId = "riley"), fromOwner)
+
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+    }
+
+    @Test
+    fun sendNewMessage_fromSomeoneOutsideTheConversation_sendsNothing() = runBlocking {
+        service.sendNewMessage(samsStay, fromOwner.copy(senderId = "owner-daniel"))
+
+        assertTrue(notifications.getNotificationsFor("sam").isEmpty())
+        assertTrue(notifications.getNotificationsFor("owner-priya").isEmpty())
+    }
+
+    @Test
+    fun sendNewMessage_sameMessageTwice_keepsOneNotice() = runBlocking {
+        service.sendNewMessage(samsStay, fromOwner)
+        service.sendNewMessage(samsStay, fromOwner)
+
+        assertEquals(1, notifications.getNotificationsFor("sam").size)
     }
 }

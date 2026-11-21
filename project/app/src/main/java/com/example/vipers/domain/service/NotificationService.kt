@@ -2,15 +2,17 @@
  * NotificationService.kt
  * The app's notification logic, between the screens and NotificationRepository. It passes the
  * inbox and marking read through to the repository (T-13), builds and saves a draw's "You won"
- * (US 01.03.01) and "Not selected" (US 01.03.02) notices, and skips users who turned
- * notifications off in Settings (US 01.10.01).
+ * (US 01.03.01) and "Not selected" (US 01.03.02) notices and the "New message" notice
+ * (US 02.12.01), and skips users who turned notifications off in Settings (US 01.10.01).
  * Known issues: showing notifications on the phone is left to T-14.
  */
 package com.example.vipers.domain.service
 
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.Message
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
@@ -98,6 +100,19 @@ class NotificationService(
             message = "You weren't selected for $where this time.",
         )
         notificationRepository.addAll(won + lost)
+    }
+
+    /**
+     * Tells the other person in [reservation]'s conversation about the saved [message]
+     * (US 02.12.01): the entrant when the owner wrote, and the owner when the entrant wrote
+     * ([Reservation.otherSide]). It adds one NEW_MESSAGE notice ([Message.notice]) that opens the
+     * conversation. Nothing is sent if the other person turned notifications off ([optedIn],
+     * US 01.10.01), or if there is nobody else in the conversation.
+     */
+    suspend fun sendNewMessage(reservation: Reservation, message: Message) {
+        val recipientId = reservation.otherSide(message.senderId) ?: return
+        if (optedIn(listOf(recipientId)).isEmpty()) return
+        notificationRepository.saveNotification(message.notice(reservation, recipientId))
     }
 
     // One notice per user in userIds with what every draw notice shares: the ID

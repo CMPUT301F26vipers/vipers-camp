@@ -10,6 +10,7 @@ import com.example.vipers.data.device.DeviceIdentityManager
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.MessageRepository
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
@@ -25,6 +26,7 @@ class AppContainer(
     val campsiteRepository: CampsiteRepository,
     val lotteryRepository: LotteryRepository,
     val reservationRepository: ReservationRepository,
+    val messageRepository: MessageRepository,
     val notificationRepository: NotificationRepository,
     val imageRepository: ImageRepository,
 ) {
