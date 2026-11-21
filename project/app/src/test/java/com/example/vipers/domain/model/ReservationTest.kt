@@ -24,6 +24,18 @@ class ReservationTest {
     )
 
     @Test
+    fun messageOwnerIsAvailableOnlyForTheEntrantsConfirmedOrRejectedStay() {
+        val stay = mayEightToTen.copy(userId = "sam", ownerId = "priya")
+        assertTrue(stay.canMessageOwner("sam"))
+        assertTrue(stay.copy(status = ReservationStatus.REJECTED).canMessageOwner("sam"))
+        assertFalse(stay.copy(status = ReservationStatus.CANCELLED).canMessageOwner("sam"))
+        assertFalse(stay.canMessageOwner("another-entrant"))
+        assertFalse(stay.canMessageOwner("priya"))
+        assertFalse(stay.copy(ownerId = "sam").canMessageOwner("sam"))
+        assertFalse(stay.copy(ownerId = "").canMessageOwner("sam"))
+    }
+
+    @Test
     fun isActive_whenConfirmedAndNotCheckedOut() {
         assertTrue(mayEightToTen.isActive(today))
     }

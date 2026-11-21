@@ -120,6 +120,11 @@ data class Reservation(
     fun canMessage(userId: String): Boolean =
         userId.isNotBlank() && (userId == this.userId || userId == ownerId)
 
+    /** Shows Message Owner on the entrant's confirmed or rejected reservation (E15, E15c). */
+    fun canMessageOwner(entrantId: String): Boolean =
+        status != ReservationStatus.CANCELLED && entrantId == userId &&
+            !otherSide(entrantId).isNullOrBlank()
+
     /**
      * The other person in this reservation's conversation (US 02.12.01): the entrant for the
      * owner, and the owner for the entrant. Null if [userId] can't message about it

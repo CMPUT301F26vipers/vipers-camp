@@ -73,6 +73,7 @@ class ReservationDetailsScreenTest {
                 ReservationDetailsScreen(
                     reservationId = "res-1",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }
@@ -102,6 +103,7 @@ class ReservationDetailsScreenTest {
                 ReservationDetailsScreen(
                     reservationId = "nope",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }
@@ -121,6 +123,7 @@ class ReservationDetailsScreenTest {
                 ReservationDetailsScreen(
                     reservationId = "res-1",
                     onBack = { backCalled = true },
+                    onMessage = {},
                     controller = controller,
                 )
             }
