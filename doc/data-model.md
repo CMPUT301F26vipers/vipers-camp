@@ -75,6 +75,13 @@ It throws `NoSuchElementException` if the campsite ID doesn't exist.
 `addCampsite` saves a campsite under its own ID when it has one. The Add Campsite form uses this to
 save the photo for the new campsite's ID before the campsite itself (US 02.01.02b).
 
+**QR code link (US 02.02.01).** A campsite's QR code holds `vipers-camp://campsite/<campsiteId>`,
+made by `Campsite.qrLink()`. Nothing about the QR code is stored: the app draws it from the ID
+each time with ZXing, so it stays the same after edits and each campsite gets its own.
+`Campsite.idFromQrLink(link)` reads the ID back when a code is scanned (US 01.12.01) and returns
+`null` for anything that isn't exactly this format (another app's code, no ID, or extra parts
+after the ID).
+
 ### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
 Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.
 
