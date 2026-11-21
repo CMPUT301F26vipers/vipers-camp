@@ -19,6 +19,7 @@ import com.example.vipers.domain.repository.CampsiteRepository
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
@@ -27,6 +28,7 @@ import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -213,6 +215,7 @@ class OwnerCampsiteControllerTest {
         assertEquals("vipers-camp://campsite/hinton", written)
         assertEquals("vipers-camp://campsite/hinton", file.toString())
         assertEquals("QR code saved", controller.qrMessage)
+        assertFalse(controller.qrSaveFailed)
     }
 
     @Test
@@ -222,6 +225,7 @@ class OwnerCampsiteControllerTest {
         controller.writeQrCode({ null }) { _, _ -> true }
 
         assertEquals("Couldn't save the QR code. Try again.", controller.qrMessage)
+        assertTrue(controller.qrSaveFailed)
     }
 
     @Test
@@ -241,6 +245,34 @@ class OwnerCampsiteControllerTest {
         controller.writeQrCode({ ByteArrayOutputStream() }) { _, _ -> false }
 
         assertEquals("Couldn't save the QR code. Try again.", controller.qrMessage)
+    }
+
+    @Test
+    fun writeQrCode_whenCancelled_rethrowsWithoutSettingAMessage() {
+        val controller = loadedController()
+
+        // e.g. the owner leaves the screen while the file is still being written
+        assertThrows(CancellationException::class.java) {
+            runBlocking {
+                controller.writeQrCode({ ByteArrayOutputStream() }) { _, _ ->
+                    throw CancellationException("left the screen")
+                }
+            }
+        }
+
+        assertNull(controller.qrMessage)
+        assertFalse(controller.qrSaveFailed)
+    }
+
+    @Test
+    fun writeQrCode_afterAFailedSave_savingAgainClearsTheError() = runBlocking {
+        val controller = loadedController()
+        controller.writeQrCode({ null }) { _, _ -> true }
+
+        controller.writeQrCode({ ByteArrayOutputStream() }) { _, _ -> true }
+
+        assertEquals("QR code saved", controller.qrMessage)
+        assertFalse(controller.qrSaveFailed)
     }
 
     @Test
@@ -287,5 +319,16 @@ class OwnerCampsiteControllerTest {
         controller.clearQrMessage()
 
         assertNull(controller.qrMessage)
+    }
+
+    @Test
+    fun clearQrMessage_afterAFailedSave_clearsTheError() = runBlocking {
+        val controller = loadedController()
+        controller.writeQrCode({ null }) { _, _ -> true }
+
+        controller.clearQrMessage()
+
+        assertNull(controller.qrMessage)
+        assertFalse(controller.qrSaveFailed)
     }
 }

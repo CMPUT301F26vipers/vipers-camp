@@ -73,6 +73,10 @@ class OwnerCampsiteController(
     var qrMessage by mutableStateOf<String?>(null)
         private set
 
+    /** True when [qrMessage] is the error, so the screen can show it in red. */
+    var qrSaveFailed by mutableStateOf(false)
+        private set
+
     /**
      * Loads the campsite and its lotteries in the background. The screen calls this each time it
      * comes back into view, so it always shows the latest saved values (e.g. after Edit).
@@ -134,12 +138,14 @@ class OwnerCampsiteController(
             // e.g. the phone is out of space or the file was removed while saving
             false
         }
+        qrSaveFailed = !saved
         qrMessage = if (saved) "QR code saved" else "Couldn't save the QR code. Try again."
     }
 
     /** Clears [qrMessage] once the screen has shown it. */
     fun clearQrMessage() {
         qrMessage = null
+        qrSaveFailed = false
     }
 
     // like mockup O04: "36 joined" while people sign up, "3 reserved" once winners start reserving
