@@ -4,7 +4,7 @@
  * tapping a search result on Home: all its details, the lottery they can join with its registration
  * deadline, and an action to join the waiting list. A winner's Reserve button opens the Reserve
  * screen (US 01.04.01). CampsiteDetailsController loads the data.
- * Known issues: the map comes with T-04, and Rate (01.13.01) is added by that story.
+ * Known issues: the Rate action is planned for US 01.13.01.
  */
 package com.example.vipers.ui.campsites
 
@@ -123,6 +123,7 @@ fun CampsiteDetailsScreen(
                     onReserve = onReserve,
                 )
                 CampsiteDetails(campsite, showSummary = false)
+                CampsiteMapButton(campsite, Modifier.fillMaxWidth())
             }
         }
     }
