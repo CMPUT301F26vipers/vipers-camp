@@ -1,7 +1,8 @@
 /*
  * MainActivity.kt
  * The app's only Activity. It shows Welcome on first launch, or the app's navigation (bottom
- * bar and screens) once this device has a profile.
+ * bar and screens) once this device has a profile. Whenever the app opens it starts the lottery
+ * draws that are due (US 02.05.01b).
  * Known issues: none.
  */
 package com.example.vipers
@@ -29,7 +30,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT))
         setContent {
             VipersTheme {
-                AppRoot(container.deviceIdentityManager, onLoadDemoData = { loadDemoData() })
+                AppRoot(
+                    container.deviceIdentityManager,
+                    onLoadDemoData = { loadDemoData() },
+                    onAppOpened = { container.drawAndNotifyWorker.runDueDraws() },
+                )
             }
         }
     }
