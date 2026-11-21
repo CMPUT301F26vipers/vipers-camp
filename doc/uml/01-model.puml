@@ -92,6 +92,8 @@ package "domain.model" {
     --
     status(now: Long): LotteryStatus
     canEntrantJoin(now: Long): Boolean
+    canOwnerDraw(now: Long): Boolean
+    isDueForDraw(now: Long): Boolean
     isBookingOpen(now: Long): Boolean
     isBookingExpired(now: Long): Boolean
     freeNights(calendar: AvailabilityCalendar, today: LocalDate): List<String>

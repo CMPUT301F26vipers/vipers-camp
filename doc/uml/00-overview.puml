@@ -48,7 +48,7 @@ package "Controller (ViewModels and services)" {
   class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class LotteryDrawer
   class NotificationService
-  class DrawAndNotifyWorker <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class DrawAndNotifyWorker
   class CsvExporter <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class DeletionService <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
 }
@@ -118,6 +118,7 @@ AppContainer --> ReservationRepository
 AppContainer --> NotificationRepository
 AppContainer o-- DeviceIdentityManager
 AppContainer o-- LotteryDrawer
+AppContainer o-- DrawAndNotifyWorker
 
 NotificationsController ..> NotificationService
 LotteryDrawer ..> NotificationService

@@ -28,7 +28,7 @@ class MainActivity <<Activity>> {
 
 package "ui.navigation" {
   class AppRoot <<Composable>> {
-    AppRoot(deviceIdentityManager, onLoadDemoData)
+    AppRoot(deviceIdentityManager, onLoadDemoData, onAppOpened)
   }
   class AppNavigation <<Composable>>
   class BottomBar <<Composable>> {
@@ -102,12 +102,14 @@ package "Controllers (see 03-controllers)" {
   class AdminController <<ViewModel>>
   class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class DeviceIdentityManager
+  class DrawAndNotifyWorker
 }
 
 MainActivity --> AppRoot : setContent >
 AppRoot ..> DeviceIdentityManager : hasProfile()
 AppRoot --> WelcomeScreen : first launch
 AppRoot --> AppNavigation : after a profile exists
+AppRoot ..> DrawAndNotifyWorker : runDueDraws() when the app opens
 AppNavigation --> BottomBar
 AppNavigation ..> Routes
 AppNavigation --> HomeScreen
@@ -184,6 +186,11 @@ end note
 note bottom of ReservationConfirmationDialog
   E13 (Reservation Confirmed): a dialog
   shown over ReserveScreen, not its own screen.
+end note
+
+note bottom of LotteryDetailsScreen
+  The owner's Draw Now (US 02.05.01b) draws the lottery any time;
+  while registration is open it asks first, since drawing closes it.
 end note
 
 note bottom of MyReservationsScreen
