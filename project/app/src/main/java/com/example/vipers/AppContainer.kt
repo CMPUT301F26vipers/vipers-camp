@@ -14,6 +14,7 @@ import com.example.vipers.domain.repository.MessageRepository
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
+import com.example.vipers.ui.lottery.DrawAndNotifyWorker
 import com.example.vipers.ui.lottery.LotteryDrawer
 
 /**
@@ -37,4 +38,7 @@ class AppContainer(
     val lotteryDrawer = LotteryDrawer(
         lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
     )
+
+    /** Starts the draws that are due whenever the app is opened (US 02.05.01b). */
+    val drawAndNotifyWorker = DrawAndNotifyWorker(lotteryRepository, lotteryDrawer)
 }
