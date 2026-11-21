@@ -3,10 +3,10 @@
  * The owner's view of one of their campsites (mockup O04, US 02.01.04): all its saved details,
  * buttons to manage it, and its lotteries with a Create Lottery button (US 02.04.01).
  * OwnerCampsiteController loads the data; the whole promo photo shows at the top (US 02.01.02b).
- * Known issues: the map box shows the map location's coordinates (US 02.01.02c), and is hidden
- * when there is none, until T-04 draws a map there.
  * QR Code opens the campsite's QR code in a dialog (mockup O06, US 02.02.01), where Save stores
  * it as an image wherever the owner picks.
+ * Known issues: the map box shows the map location's coordinates (US 02.01.02c), and is hidden
+ * when there is none, until T-04 draws a map there.
  */
 package com.example.vipers.ui.campsites
 
@@ -72,6 +72,7 @@ import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.ButtonHeight
 import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
+import com.example.vipers.ui.theme.Error
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.Primary
 import com.example.vipers.ui.theme.TextMuted
@@ -213,7 +214,12 @@ fun OwnerCampsiteScreen(
                     QrCodeDialog(
                         campsite = campsite,
                         message = controller.qrMessage,
-                        onSave = { saveQrCode.launch(qrFileName(campsite.name)) },
+                        saveFailed = controller.qrSaveFailed,
+                        onSave = {
+                            // so an old "QR code saved" goes away if the owner cancels this time
+                            controller.clearQrMessage()
+                            saveQrCode.launch(qrFileName(campsite.name))
+                        },
                         onClose = { showQrCode = false },
                     )
                 }
@@ -225,12 +231,13 @@ fun OwnerCampsiteScreen(
 /**
  * The Campsite QR Code dialog (mockup O06, US 02.02.01): the QR code for [campsite], drawn here
  * from its link each time so it never has to be stored. Save lets the owner keep it as an image
- * for posters; [message] says whether that worked.
+ * for posters; [message] says whether that worked, in red when [saveFailed].
  */
 @Composable
 private fun QrCodeDialog(
     campsite: Campsite,
     message: String?,
+    saveFailed: Boolean,
     onSave: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -262,7 +269,7 @@ private fun QrCodeDialog(
                         message,
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = Primary,
+                        color = if (saveFailed) Error else Primary,
                         modifier = Modifier.testTag("qr_code_message"),
                     )
                 }
