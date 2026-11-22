@@ -141,6 +141,9 @@ fun AppNavigation(
                 ReservationDetailsScreen(
                     reservationId = reservationId,
                     onBack = { navController.popBackStack() },
+                    onMessage = { id ->
+                        navController.navigate(Routes.MESSAGES.replace("{reservationId}", id))
+                    },
                 )
             }
             composable(Routes.CAMPSITES) {
