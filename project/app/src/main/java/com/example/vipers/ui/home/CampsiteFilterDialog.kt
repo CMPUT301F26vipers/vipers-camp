@@ -1,9 +1,8 @@
 /*
  * CampsiteFilterDialog.kt
  * The filter dialog opened from Home (US 01.01.02, mockup E02b), allowing entrants to filter
- * campsites by region (fixed list), date range, and number of guests.
- * Known issues: "Preferred tags (optional)" from mockup E02b is added by the WOW factor (W-01)
- * story for calculating percentage match, not 01.01.02.
+ * campsites by region, dates and guests and choose preferred tags for match scoring (E03).
+ * Known issues: none.
  */
 package com.example.vipers.ui.home
 
@@ -13,6 +12,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +30,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.vipers.R
 import com.example.vipers.domain.model.Region
+import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.InputShape
 import com.example.vipers.ui.theme.Primary
 import java.time.LocalDate
@@ -70,7 +74,9 @@ fun CampsiteFilterDialog(
     currentStartDate: String?,
     currentEndDate: String?,
     currentMinGuests: Int?,
-    onApply: (region: Region?, startDate: String?, endDate: String?, minGuests: Int?) -> Unit,
+    availableTags: List<String>,
+    currentTags: Set<String>,
+    onApply: (Region?, String?, String?, Int?, Set<String>) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -79,6 +85,7 @@ fun CampsiteFilterDialog(
     var startDate by remember { mutableStateOf(currentStartDate ?: "") }
     var endDate by remember { mutableStateOf(currentEndDate ?: "") }
     var guestsCount by remember { mutableStateOf(currentMinGuests?.takeIf { it > 0 }) }
+    var selectedTags by remember { mutableStateOf(currentTags) }
     var dateError by remember { mutableStateOf<String?>(null) }
 
     var datesRawText by remember {
@@ -210,6 +217,9 @@ fun CampsiteFilterDialog(
                     guestsCount = guestsCount,
                     onGuestsChange = { guestsCount = it },
                 )
+                PreferredTags(availableTags, selectedTags) { tag ->
+                    selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                }
             }
         },
         confirmButton = {},
@@ -238,7 +248,7 @@ fun CampsiteFilterDialog(
                 }
                 Button(
                     onClick = {
-                        onApply(selectedRegion, startDate, endDate, guestsCount)
+                        onApply(selectedRegion, startDate, endDate, guestsCount, selectedTags)
                     },
                     enabled = dateError == null,
                     shape = CircleShape,
@@ -435,6 +445,30 @@ private fun GuestsSection(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Primary,
+                )
+            }
+        }
+    }
+}
+
+/** Optional amenities from the campsite listings, selected locally until Apply is tapped. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PreferredTags(tags: List<String>, selected: Set<String>, onToggle: (String) -> Unit) {
+    Column {
+        Text("Preferred tags (optional)", style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold)
+        if (tags.isEmpty()) {
+            Text("No tags available", style = MaterialTheme.typography.bodySmall)
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (tag in tags) {
+                FilterChip(
+                    selected = tag in selected,
+                    onClick = { onToggle(tag) },
+                    label = { Text(tag) },
+                    shape = CircleShape,
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = GreenFill),
                 )
             }
         }
