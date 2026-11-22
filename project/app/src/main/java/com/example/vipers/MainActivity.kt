@@ -58,7 +58,14 @@ class MainActivity : ComponentActivity() {
         val options = GmsBarcodeScannerOptions.Builder()
             .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
             .build()
-        GmsBarcodeScanning.getClient(this, options).startScan()
+        val scan = try {
+            GmsBarcodeScanning.getClient(this, options).startScan()
+        } catch (e: Exception) {
+            // the scanner couldn't even start (e.g. no Google Play services), so don't crash
+            continuation.resume(QrScanResult.Failed)
+            return@suspendCancellableCoroutine
+        }
+        scan
             .addOnSuccessListener { barcode ->
                 if (continuation.isActive) {
                     continuation.resume(QrScanResult.Scanned(barcode.rawValue ?: ""))

@@ -52,6 +52,17 @@ class ScanQrCodeTest {
     }
 
     @Test
+    fun scanningACampsiteCodeWithExtraCharacters_saysItIsNotValid() {
+        // "?" or "#" would break the Campsite Details route, so these never get opened
+        val controller = controller()
+
+        assertNull(controller.onQrScanned(QrScanResult.Scanned("vipers-camp://campsite/?")))
+        assertEquals("Not a valid campsite code", controller.scanMessage)
+        assertNull(controller.onQrScanned(QrScanResult.Scanned("vipers-camp://campsite/hinton#top")))
+        assertEquals("Not a valid campsite code", controller.scanMessage)
+    }
+
+    @Test
     fun scanningAnEmptyCode_saysItIsNotValid() {
         val controller = controller()
 
