@@ -41,6 +41,8 @@ package "domain.repository" {
     suspend addLottery(lottery: Lottery): String
     suspend getLottery(id: String): Lottery?
     suspend getLotteriesForCampsite(campsiteId: String): List<Lottery>
+    suspend getLotteriesToDraw(now: Long): List<Lottery>
+    suspend closeRegistration(lotteryId: String, now: Long): Boolean
     suspend joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult
     suspend leaveWaitingList(lotteryId: String, userId: String)
     suspend updateEntry(entry: LotteryEntry)

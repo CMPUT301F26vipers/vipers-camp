@@ -119,6 +119,15 @@ removed, or closed) and model rules against the current `waitingUserIds` count, 
 `drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`, `manifestChunkCount`,
 `participantCount`, or `winnerCount`, preventing concurrent entrants from being reset or lost.
 
+**Starting the draw (US 02.05.01b).** Whenever the app opens, `DrawAndNotifyWorker` calls
+`getLotteriesToDraw(now)` and draws each one. It returns the lotteries where `Lottery.isDueForDraw(now)`
+is true: registration has ended, `drawnAt` is `null`, not removed, and the booking period hasn't ended.
+Firestore is only asked for `drawnAt == null` and the dates are checked on the phone, so no composite
+index is needed. The owner's Draw now button can also draw while registration is open: it calls
+`closeRegistration(lotteryId, now)` first, which in one transaction sets `registrationEnd` to `now`
+(only if `Lottery.canOwnerDraw(now)`), so nobody can join after the winners are picked. The draw
+transaction still refuses to draw twice, so several phones running the check at once is safe.
+
 ### `lotteryEntries`: `LotteryEntry` (`LotteryRepository`)
 Document ID = **`lotteryId_userId`**, so a user can only have one entry per lottery.
 
