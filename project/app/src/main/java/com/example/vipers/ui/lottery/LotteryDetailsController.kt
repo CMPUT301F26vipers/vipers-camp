@@ -120,6 +120,9 @@ class LotteryDetailsController(
         val drawer = lotteryDrawer
         if (isDrawing || drawer == null || !canDraw(now)) return
         isDrawing = true
+        // don't leave an old error on screen while trying again
+        drawMessage = null
+        drawFailed = false
         val result = try {
             drawer.drawNow(lotteryId, now)
         } catch (e: CancellationException) {
@@ -128,16 +131,19 @@ class LotteryDetailsController(
         } catch (e: Exception) {
             LotteryDrawResult.Error(e.message ?: "Draw failed")
         }
-        drawFailed = result is LotteryDrawResult.Error
-        drawMessage = when (result) {
-            is LotteryDrawResult.Success ->
-                "Draw done: ${result.winnerCount} of ${result.totalCount} " +
-                    (if (result.totalCount == 1) "entrant" else "entrants") + " won"
-            LotteryDrawResult.EmptyList -> "Draw done: nobody had joined the waiting list"
-            is LotteryDrawResult.Error -> "Couldn't run the draw. Try again."
-        }
         isDrawing = false
         fetchData()
+        // another phone's automatic draw may have finished just before the owner tapped
+        val drawnElsewhere = result is LotteryDrawResult.Error && lottery?.drawnAt != null
+        drawFailed = result is LotteryDrawResult.Error && !drawnElsewhere
+        drawMessage = when {
+            drawnElsewhere -> "This lottery has already been drawn"
+            result is LotteryDrawResult.Success ->
+                "Draw done: ${result.winnerCount} of ${result.totalCount} " +
+                    (if (result.totalCount == 1) "entrant" else "entrants") + " won"
+            result is LotteryDrawResult.EmptyList -> "Draw done: nobody had joined the waiting list"
+            else -> "Couldn't run the draw. Try again."
+        }
     }
 
     /**

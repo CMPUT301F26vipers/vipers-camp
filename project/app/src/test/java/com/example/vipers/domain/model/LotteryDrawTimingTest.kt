@@ -39,6 +39,13 @@ class LotteryDrawTimingTest {
     }
 
     @Test
+    fun canOwnerDraw_atTheExactStartTime_isFalse() {
+        // closing registration here would leave a failed draw that can't be retried
+        assertFalse(may.canOwnerDraw(now = 1000))
+        assertTrue(may.canOwnerDraw(now = 1001))
+    }
+
+    @Test
     fun canOwnerDraw_onceDrawn_isFalse() {
         assertFalse(may.copy(drawnAt = 2100).canOwnerDraw(now = 2500))
     }

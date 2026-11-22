@@ -193,6 +193,27 @@ class DrawNowTest {
         assertEquals("Couldn't run the draw. Try again.", controller.drawMessage)
         assertTrue(controller.drawFailed)
         assertFalse(controller.isDrawing)
+
+        // back online, trying again replaces the red error
+        offline = false
+        controller.performDrawNow(now = 2500)
+
+        assertEquals("Draw done: 2 of 3 entrants won", controller.drawMessage)
+        assertFalse(controller.drawFailed)
+    }
+
+    @Test
+    fun performDrawNow_afterAnotherPhoneDrewIt_saysItWasDrawnWithoutAnError() = runBlocking {
+        val lotteries = FakeLotteryRepository(listOf(may), entries)
+        val controller = controllerFor(lotteries)
+        // the automatic draw on someone else's phone finishes before the owner taps Draw now
+        drawerFor(lotteries).drawLottery("may", now = 2500)
+
+        controller.performDrawNow(now = 2500)
+
+        assertEquals("This lottery has already been drawn", controller.drawMessage)
+        assertFalse(controller.drawFailed)
+        assertNotNull(controller.lottery?.drawnAt)
     }
 
     @Test

@@ -74,13 +74,15 @@ data class Lottery(
      * Whether the owner can run the draw at time [now] (US 02.05.01b): registration has started,
      * it hasn't been drawn or removed, and the booking period hasn't ended (winners couldn't
      * reserve anything). Registration can still be open, since the owner may draw early.
+     * Not at the exact start time: closing registration then would make its end equal its start,
+     * and a failed draw could never be tried again.
      */
     fun canOwnerDraw(now: Long = System.currentTimeMillis()): Boolean =
         !removed &&
             drawnAt == null &&
             registrationStart > 0L &&
             registrationEnd > registrationStart &&
-            now >= registrationStart &&
+            now > registrationStart &&
             !(bookingEnd > 0L && now > bookingEnd)
 
     /**
