@@ -34,6 +34,7 @@ import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
@@ -232,7 +233,6 @@ class NavigationTest {
         // Images
         composeRule.onNodeWithText("Images").performClick()
         assertShown("All Images")
-        assertShown("Browse Images (03.06.01)")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
 
@@ -322,5 +322,60 @@ class NavigationTest {
             composeRule.onNodeWithContentDescription("Back").performClick()
             assertShown("Owner Campground")
         }
+    }
+
+    @Test
+    fun adminCanBrowseUploadedImagesAndOpenEnlargedViewAndGoBack() {
+        val imageRepo = FakeImageRepository(
+            listOf(
+                ImageAsset(
+                    id = "img-1",
+                    data = "campsite-data",
+                    ownerType = ImageAsset.OWNER_CAMPSITE,
+                    ownerId = "camp-1",
+                    label = "Pine Ridge Camp",
+                    createdAt = 1000L
+                ),
+                ImageAsset(
+                    id = "img-2",
+                    data = "profile-data",
+                    ownerType = ImageAsset.OWNER_PROFILE,
+                    ownerId = "user-1",
+                    label = "Alice Smith",
+                    createdAt = 2000L
+                )
+            )
+        )
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(listOf(UserProfile(id = "test-device", name = "Sam Patel"))),
+            campsiteRepository = FakeCampsiteRepository(),
+            lotteryRepository = FakeLotteryRepository(),
+            reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
+            notificationRepository = FakeNotificationRepository(),
+            imageRepository = imageRepo,
+        )
+
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        composeRule.onNodeWithText("Images").performClick()
+        assertShown("All Images")
+        assertShown("Pine Ridge Camp")
+        assertShown("Alice Smith")
+        assertShown("Campsite")
+        assertShown("Profile")
+
+        composeRule.onNodeWithText("Pine Ridge Camp").performClick()
+        assertShown("Image")
+        assertShown("Pine Ridge Camp")
+
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("All Images")
+
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
     }
 }

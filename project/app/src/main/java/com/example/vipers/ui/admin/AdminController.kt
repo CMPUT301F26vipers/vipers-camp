@@ -68,6 +68,11 @@ class AdminController(
         return ownerNames[ownerId] ?: "Deleted user"
     }
 
+    /** Returns the image asset with the given [imageId], or null if not found. */
+    fun getImage(imageId: String): ImageAsset? {
+        return images.firstOrNull { it.id == imageId }
+    }
+
     /** Loads all campsites that have not been removed, along with owner display names. */
     fun loadCampsites() {
         viewModelScope.launch {

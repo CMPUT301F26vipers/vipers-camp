@@ -289,4 +289,18 @@ class AdminControllerTest {
         assertFalse(viewModel.isLoading)
         assertEquals(1, viewModel.campsites.size)
     }
+
+    @Test
+    fun getImage_returnsMatchingImageAssetOrNull() = runBlocking {
+        val image = ImageAsset(id = "img-1", label = "Test Image")
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            imageRepository = FakeImageRepository(listOf(image)),
+        )
+        viewModel.fetchImages()
+
+        assertEquals(image, viewModel.getImage("img-1"))
+        assertNull(viewModel.getImage("non-existent"))
+    }
 }
