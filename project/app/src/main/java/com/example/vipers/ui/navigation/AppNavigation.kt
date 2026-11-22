@@ -22,6 +22,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
+import com.example.vipers.ui.admin.BrowseProfilesScreen
+import com.example.vipers.ui.admin.ProfileDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
@@ -358,9 +360,22 @@ fun AppNavigation(
                 }
 
                 composable(Routes.ADMIN_PROFILES) {
-                    AdminPlaceholderScreen(
-                        "All Profiles",
-                        "Browse Profiles (03.05.01)",
+                    BrowseProfilesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenProfile = { profileId ->
+                            val route = Routes.ADMIN_PROFILE_DETAILS.replace("{profileId}", profileId)
+                            navController.navigate(route)
+                        }
+                    )
+                }
+
+                composable(
+                    route = Routes.ADMIN_PROFILE_DETAILS,
+                    arguments = listOf(navArgument("profileId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val profileId = backStackEntry.arguments?.getString("profileId") ?: ""
+                    ProfileDetailsScreen(
+                        profileId = profileId,
                         onBack = { navController.popBackStack() }
                     )
                 }

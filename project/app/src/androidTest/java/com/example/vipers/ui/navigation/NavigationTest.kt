@@ -225,7 +225,6 @@ class NavigationTest {
         // Profiles
         composeRule.onNodeWithText("Profiles").performClick()
         assertShown("All Profiles")
-        assertShown("Browse Profiles (03.05.01)")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
 
@@ -322,5 +321,30 @@ class NavigationTest {
             composeRule.onNodeWithContentDescription("Back").performClick()
             assertShown("Owner Campground")
         }
+    }
+
+    @Test
+    fun adminNavigatesToProfiles_showsProfileListAndCanOpenProfileDetails() {
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        // Open Profiles
+        composeRule.onNodeWithText("Profiles").performClick()
+        assertShown("All Profiles")
+        assertShown("Sam Patel")
+
+        // Open Profile Details
+        composeRule.onNodeWithText("Sam Patel").performClick()
+        assertShown("Profile")
+        assertShown("Sam Patel")
+        assertShown("Campsites owned")
+
+        // Back returns to All Profiles
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("All Profiles")
+
+        // Back returns to Admin menu
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
     }
 }

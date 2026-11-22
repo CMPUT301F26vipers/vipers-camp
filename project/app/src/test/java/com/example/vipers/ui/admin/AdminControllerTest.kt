@@ -247,4 +247,38 @@ class AdminControllerTest {
         assertEquals(1, viewModel.profiles.size)
         assertEquals("Alice", viewModel.profiles[0].name)
     }
+
+    @Test
+    fun getProfile_returnsProfileWhenFoundAndNullWhenMissing() = runTest {
+        val profiles = listOf(UserProfile(id = "p1", name = "Alice"))
+        val viewModel = AdminController(FakeCampsiteRepository(), FakeProfileRepository(profiles))
+        viewModel.fetchProfiles()
+
+        val found = viewModel.getProfile("p1")
+        assertEquals("Alice", found?.name)
+
+        val missing = viewModel.getProfile("p2")
+        assertNull(missing)
+    }
+
+    @Test
+    fun getCampsitesForOwner_returnsOnlyActiveCampsitesForOwner() = runTest {
+        val campsites = listOf(
+            Campsite(id = "c1", ownerId = "o1", name = "Camp 1", removed = false),
+            Campsite(id = "c2", ownerId = "o1", name = "Camp 2", removed = true),
+            Campsite(id = "c3", ownerId = "o2", name = "Camp 3", removed = false),
+        )
+        val viewModel = AdminController(FakeCampsiteRepository(campsites), FakeProfileRepository())
+
+        val ownedByO1 = viewModel.getCampsitesForOwner("o1")
+        assertEquals(1, ownedByO1.size)
+        assertEquals("Camp 1", ownedByO1[0].name)
+
+        val ownedByO2 = viewModel.getCampsitesForOwner("o2")
+        assertEquals(1, ownedByO2.size)
+        assertEquals("Camp 3", ownedByO2[0].name)
+
+        val ownedByO3 = viewModel.getCampsitesForOwner("o3")
+        assertTrue(ownedByO3.isEmpty())
+    }
 }

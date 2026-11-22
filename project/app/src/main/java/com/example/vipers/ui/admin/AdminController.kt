@@ -65,6 +65,16 @@ class AdminController(
     /** Returns whether the user with the given [profileId] owns at least one campsite. */
     fun isOwner(profileId: String): Boolean = isCampsiteOwner(profileId)
 
+    /** Returns the profile with the given [profileId] from the loaded profiles, or null if not found. */
+    fun getProfile(profileId: String): UserProfile? {
+        return profiles.firstOrNull { it.id == profileId }
+    }
+
+    /** Returns the active campsites owned by [ownerId] from the loaded campsites list. */
+    fun getCampsitesForOwner(ownerId: String): List<Campsite> {
+        return campsites.filter { it.ownerId == ownerId && !it.removed }
+    }
+
     /** Loads all campsites that have not been removed, along with owner display names. */
     fun loadCampsites() {
         viewModelScope.launch {
