@@ -71,8 +71,18 @@ package "controllers (ViewModels)" {
     onSearchTextChange(text: String)
     applyFilters(...)
     clearFilters()
+    scanMessage: String?
     hasOpenLottery(campsite: Campsite): Boolean
+    onQrScanned(result: QrScanResult): String?
+    clearScanMessage()
     suspend fetchCampsites(now: Long)
+  }
+
+  class QrScanResult <<sealed>> {
+    Scanned(text: String)
+    Cancelled
+    NoCameraPermission
+    Failed
   }
 
   class CampsiteDetailsController <<ViewModel>> {
@@ -300,6 +310,8 @@ DeviceIdentityManager ..> ProfileRepository
 ProfileController ..> ProfileRepository
 CampsiteSearchController ..> CampsiteRepository
 CampsiteSearchController ..> LotteryRepository
+CampsiteSearchController ..> QrScanResult
+CampsiteSearchController ..> Campsite : idFromQrLink()
 CampsiteDetailsController ..> CampsiteRepository
 CampsiteDetailsController ..> LotteryRepository
 MyCampsitesController ..> CampsiteRepository
