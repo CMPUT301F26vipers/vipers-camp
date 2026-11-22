@@ -21,6 +21,14 @@ data class AvailabilityCalendar(
     val openNights: List<String> = emptyList(),
     val heldNights: List<String> = emptyList(),
 ) {
+    companion object {
+        /** Number of requested nights, including both endpoints, or null outside 1–365 nights. */
+        fun requestedNightCount(first: LocalDate, last: LocalDate): Int? {
+            val nights = kotlin.math.abs(first.toEpochDay() - last.toEpochDay()) + 1
+            return if (nights <= 365) nights.toInt() else null
+        }
+    }
+
     /** True if the owner marked [night] as available. */
     fun isOpen(night: String): Boolean = night in openNights
 

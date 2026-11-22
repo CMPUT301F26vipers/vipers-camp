@@ -81,6 +81,41 @@ class CampsiteSearchControllerTest {
     private fun campsite(id: String): Campsite = campsites.first { it.id == id }
 
     @Test
+    fun bestMatch_breaksEqualPercentagesByRatingThenName() {
+        val sites = listOf(
+            Campsite(id = "a", name = "Aspen", ratingSum = 45, ratingCount = 10),
+            Campsite(id = "b", name = "Birch", ratingSum = 451, ratingCount = 100),
+            Campsite(id = "c", name = "Cedar", ratingSum = 451, ratingCount = 100),
+        )
+        val controller = loadedController(campsiteRepository = FakeCampsiteRepository(sites))
+        controller.applyFilters(minGuests = 1)
+        assertEquals(listOf(98, 98, 98), controller.rankedResults.map { it.score })
+        assertEquals(listOf("b", "c", "a"), controller.results.map { it.id })
+    }
+
+    @Test
+    fun dateScore_countsBothEndpointsAndExcludesHeldNights() {
+        val first = "2027-05-08"
+        val last = "2027-05-09"
+        val calendar = AvailabilityCalendar("1", listOf(first, last), listOf(last))
+        val controller = loadedController(calendars = listOf(calendar))
+        controller.applyFilters(startDate = last, endDate = first)
+        assertEquals(55, controller.rankedResults.single().score)
+        controller.applyFilters(startDate = first)
+        assertEquals(80, controller.rankedResults.single().score)
+    }
+
+    @Test
+    fun dateRange_accepts365NightsAndRejects366() {
+        val first = "2027-01-01"
+        val controller = loadedController(calendars = listOf(AvailabilityCalendar("1", listOf(first))))
+        controller.applyFilters(startDate = first, endDate = "2027-12-31")
+        assertEquals("1", controller.results.single().id)
+        controller.applyFilters(startDate = first, endDate = "2028-01-01")
+        assertTrue(controller.results.isEmpty())
+    }
+
+    @Test
     fun results_emptySearchShowsEveryCampsiteSortedByName() {
         val controller = loadedController()
         assertEquals(

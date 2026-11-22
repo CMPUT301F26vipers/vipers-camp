@@ -15,6 +15,28 @@ import org.junit.Test
 class CampsiteTest {
 
     @Test
+    fun matchScore_weightsPartialAvailabilityTagsAndRating() {
+        val site = Campsite(tags = listOf("Cookhouse"), ratingSum = 9, ratingCount = 2)
+        assertEquals(58, site.matchScore(2, 4, setOf("cookhouse", "Showers")))
+    }
+
+    @Test
+    fun matchScore_givesFullCreditForUnspecifiedPreferences() {
+        assertEquals(80, Campsite().matchScore(0, 0, emptySet()))
+    }
+
+    @Test
+    fun matchScore_canReachZero() {
+        assertEquals(0, Campsite().matchScore(0, 2, setOf("Showers")))
+    }
+
+    @Test
+    fun matchScore_canReachOneHundredWithEquivalentTags() {
+        val site = Campsite(tags = listOf(" cookhouse "), ratingSum = 10, ratingCount = 2)
+        assertEquals(100, site.matchScore(2, 2, setOf("Cookhouse", "COOKHOUSE")))
+    }
+
+    @Test
     fun averageRating_isZeroWithNoRatings() {
         assertEquals(0.0, Campsite(ratingSum = 0, ratingCount = 0).averageRating(), 0.001)
     }

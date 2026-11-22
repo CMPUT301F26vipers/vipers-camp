@@ -11,6 +11,7 @@
  */
 package com.example.vipers.ui.home
 
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -29,7 +30,7 @@ import com.example.vipers.domain.repository.LotteryRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
+import java.time.format.DateTimeParseException
 
 /**
  * Turns the entrant's search text into the list of campsites shown on Home.
@@ -61,9 +62,28 @@ class CampsiteSearchController(
     var filterMinGuests by mutableStateOf<Int?>(null)
         private set
 
-    /** True if any filter is set (region, date range, or guest count > 0). */
+    /** Optional amenities that improve a campsite's score. */
+    var preferredTags by mutableStateOf(emptySet<String>())
+        private set
+
+    /** Tags offered by the loaded campsites, with equivalent labels shown only once. */
+    val availableTags by derivedStateOf {
+        allCampsites.flatMap { it.tags }.map { it.trim() }.filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase() }.sortedBy { it.lowercase() }
+    }
+
+    /** Whether Home sorts filtered results by match percentage. */
+    var sortByBestMatch by mutableStateOf(true)
+        private set
+
+    /** Selects best match or alphabetical order for the current filters. */
+    fun changeSort(bestMatch: Boolean) {
+        sortByBestMatch = bestMatch
+    }
+
+    /** True when at least one filter or preferred tag is set. */
     val hasActiveFilters: Boolean
-        get() = selectedRegion != null ||
+        get() = preferredTags.isNotEmpty() || selectedRegion != null ||
                 !filterStartDate.isNullOrBlank() ||
                 !filterEndDate.isNullOrBlank() ||
                 (filterMinGuests != null && filterMinGuests!! > 0)
@@ -85,49 +105,50 @@ class CampsiteSearchController(
     // Availability calendars by campsite ID for date filtering (US 01.01.02)
     private var availabilityByCampsiteId by mutableStateOf<Map<String, AvailabilityCalendar>>(emptyMap())
 
-    /**
-     * The campsites matching [searchText] and any active region, date, or guest filters,
-     * sorted by name.
-     */
-    val results: List<Campsite>
-        get() {
-            val start = filterStartDate?.trim()?.takeIf { it.isNotEmpty() }
-            val end = filterEndDate?.trim()?.takeIf { it.isNotEmpty() }
-            val hasDateFilter = start != null || end != null
-            val effectiveStart = start ?: end
-            val effectiveEnd = end ?: start
+    /** A visible campsite and the whole percentage displayed on its Home card. */
+    internal data class Result(val campsite: Campsite, val score: Int?)
 
-            return allCampsites
-                .filter { it.matchesSearch(searchText) }
-                .filter { it.matchesRegion(selectedRegion) }
-                .filter { it.matchesGuests(filterMinGuests) }
-                .filter { campsite ->
-                    if (!hasDateFilter) {
-                        true
-                    } else {
-                        val calendar = availabilityByCampsiteId[campsite.id]
-                        try {
-                            val s = LocalDate.parse(effectiveStart!!)
-                            val e = LocalDate.parse(effectiveEnd!!)
-                            // Cap date range to ~1 year (365 days) to avoid long loops in freeNights
-                            if (Math.abs(ChronoUnit.DAYS.between(s, e)) > 365) {
-                                false
-                            } else {
-                                calendar?.freeNights(effectiveStart, effectiveEnd).orEmpty().isNotEmpty()
-                            }
-                        } catch (_: Exception) {
-                            false
-                        }
-                    }
-                }
-                .sortedBy { it.name.lowercase() }
+    /** Filters and scores each campsite once when the search inputs change. */
+    internal val rankedResults by derivedStateOf { findResults() }
+
+    /** The campsites in the order shown on Home. */
+    val results: List<Campsite>
+        get() = rankedResults.map { it.campsite }
+
+    private fun findResults(): List<Result> {
+        val first = filterStartDate ?: filterEndDate
+        val last = filterEndDate ?: filterStartDate
+        val nights = if (first != null && last != null) {
+            try {
+                AvailabilityCalendar.requestedNightCount(LocalDate.parse(first), LocalDate.parse(last))
+                    ?: return emptyList()
+            } catch (_: DateTimeParseException) {
+                return emptyList()
+            }
+        } else 0
+
+        val matches = mutableListOf<Result>()
+        for (site in allCampsites) {
+            if (!site.matchesSearch(searchText) || !site.matchesRegion(selectedRegion) ||
+                !site.matchesGuests(filterMinGuests)) continue
+            val free = if (first != null && last != null) {
+                availabilityByCampsiteId[site.id]?.freeNights(first, last).orEmpty().size
+            } else 0
+            if (nights > 0 && free == 0) continue
+            val score = if (hasActiveFilters) site.matchScore(free, nights, preferredTags) else null
+            matches.add(Result(site, score))
         }
+        return if (hasActiveFilters && sortByBestMatch) {
+            matches.sortedWith(compareByDescending<Result> { it.score }
+                .thenByDescending { it.campsite.averageRating() }.thenBy { it.campsite.name.lowercase() })
+        } else matches.sortedBy { it.campsite.name.lowercase() }
+    }
 
     /**
      * Formats the count of matching campsites for display on Home, e.g. "4 campsites" or "1 campsite" (US 01.01.03).
      */
     val resultCountText: String
-        get() = if (results.size == 1) "1 campsite" else "${results.size} campsites"
+        get() = if (rankedResults.size == 1) "1 campsite" else "${rankedResults.size} campsites"
 
     /** Called as the user types; the [results] update right away. */
     fun onSearchTextChange(text: String) {
@@ -142,19 +163,19 @@ class CampsiteSearchController(
         startDate: String? = null,
         endDate: String? = null,
         minGuests: Int? = null,
+        preferredTags: Set<String> = emptySet(),
     ) {
+        this.preferredTags = preferredTags.toSet()
         selectedRegion = region
         filterStartDate = startDate?.trim()?.ifBlank { null }
         filterEndDate = endDate?.trim()?.ifBlank { null }
         filterMinGuests = minGuests?.takeIf { it > 0 }
+        if (!hasActiveFilters) sortByBestMatch = true
     }
 
     /** Clears all active filters (US 01.01.02), restoring the full list of campsites. */
     fun clearFilters() {
-        selectedRegion = null
-        filterStartDate = null
-        filterEndDate = null
-        filterMinGuests = null
+        applyFilters()
     }
 
     /** Updates the region filter alone. */
