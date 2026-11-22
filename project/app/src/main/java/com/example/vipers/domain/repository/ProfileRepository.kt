@@ -1,8 +1,7 @@
 /*
  * ProfileRepository.kt
  * What the app can do with user profiles, without saying how they are stored (Repository pattern).
- * Known issues: only the methods needed for the half-way checkpoint. Listing and deleting
- * profiles (admin stories) are added by the stories that need them.
+ * Known issues: deleting profiles (admin story) is added by the story that needs it.
  */
 package com.example.vipers.domain.repository
 
@@ -16,6 +15,9 @@ interface ProfileRepository {
 
     /** Creates or updates [profile], using its ID as the document ID. */
     suspend fun saveProfile(profile: UserProfile)
+
+    /** Returns all user profiles. */
+    suspend fun getAllProfiles(): List<UserProfile>
 
     /**
      * The current name of the user with this [id], or "Deleted user" if they have no profile.

@@ -24,6 +24,9 @@ class FirestoreProfileRepository(
         return if (snapshot.exists()) snapshot.toUserProfile() else null
     }
 
+    override suspend fun getAllProfiles(): List<UserProfile> =
+        collection.get().await().documents.map { it.toUserProfile() }
+
     override suspend fun saveProfile(profile: UserProfile) {
         // Not awaited, same as addCampsite: offline, set() only finishes once the phone
         // reconnects. Firestore keeps the write on the phone and sends it later.
