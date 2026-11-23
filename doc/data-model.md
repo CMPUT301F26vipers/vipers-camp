@@ -145,11 +145,7 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | joinedAt | number | ms |
 | status | string | `WAITING`, `WON`, `LOST`, `DECLINED`, `RESERVED`, `EXPIRED`, `REMOVED` |
 
-A winner declines with `declineTransaction(lotteryId, userId)` (US 01.04.03). In one transaction it
-sets `status` to `DECLINED` only if the entry is still `WON`, and writes no other field. It returns
-`true` if it changed the entry, and `false` if the entry is missing or has any other status (already
-`DECLINED`, `RESERVED`…), so two quick taps can't decline twice. It doesn't pick a replacement
-winner; that is the replacement draw (T-12). Transactions need a connection, so it fails offline.
+A winner declines via `LotteryDrawer.declineAndDrawReplacement` (US 01.04.03, T-12), which shuffles the lottery's `LOST` user IDs once with its injected `Random`, prepares the replacement `WON` notice asynchronously for each candidate in turn outside the transaction (`NotificationService.prepareReplacementWinNotice`), and calls `declineTransaction(lotteryId, userId, candidateUserId, replacementNotice, now)`. In one atomic transaction it re-reads the lottery, declining entry, selected candidate entry, and deterministic replacement notice document before any write, checks `LotteryEntry.canDecline(lottery, now)` (entry still `WON`, lottery not removed, `now` within inclusive `bookingStart..bookingEnd`), and verifies the candidate is still `LOST` in the same lottery. If the candidate is stale, it writes nothing and returns `CandidateStale` so `LotteryDrawer` advances to the next shuffled candidate; if the decline is stale, it writes nothing and returns `NotDeclined`; if the pool is empty or exhausted, it commits the decline alone; otherwise it sets the declining entry to `DECLINED`, promotes the candidate entry to `WON`, and persists the prepared notice (preserving any existing notice's `read` and `shownOnDevice` flags). If the notice write fails, the transaction rolls back so the winner remains `WON` and the candidate remains `LOST` for retry. Cancelling or rejecting a reservation keeps the entry `RESERVED`, so no replacement winner is drawn. Transactions need a connection, so declining fails offline.
 
 ### `reservations`: `Reservation` (`ReservationRepository`)
 
@@ -233,8 +229,14 @@ set only when the lottery covers one campsite. A win is `WON` with the title "Yo
 the message "You won a spot at <campsite names>. Reserve your nights before <booking end>." A loss is
 `NOT_SELECTED` with the title "Not selected this time" and the message "You weren't selected for
 <campsite names> this time." Someone in both lists only gets the win. `NotificationService.sendDrawResults`
-builds them all and saves them in one `addAll`. `batchId` stays `null` for draws; it only groups owner
-broadcasts.
+builds them all and saves them in one `addAll`. When a winner declines and a `LOST` entrant is
+promoted (T-12), `NotificationService.prepareReplacementWinNotice` prepares a separate deterministic
+`WON` notice with ID `replacement_<lotteryId>_<userId>` and `createdAt = promotionTime` (returning
+`null` if the recipient opted out via `optedIn`), and `LotteryRepository.declineTransaction` commits
+it atomically with the decline and promotion—preserving `read` and `shownOnDevice` on any existing
+deterministic notice, leaving `draw_<lotteryId>_<userId>` (`NOT_SELECTED`) intact as the original
+draw record, and preventing original-manifest replays from overwriting the promotion. `batchId` stays
+`null` for draws; it only groups owner broadcasts.
 
 Users who turned notifications off on Settings (`notificationsEnabled = false`) get none
 (US 01.10.01). Before saving a notification for some users, call

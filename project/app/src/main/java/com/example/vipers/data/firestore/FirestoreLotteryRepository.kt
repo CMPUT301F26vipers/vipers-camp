@@ -11,11 +11,15 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.validateLottery
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.UpdateLotteryResult
+import com.example.vipers.domain.service.NotificationService
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import java.time.ZoneId
@@ -31,6 +35,7 @@ class FirestoreLotteryRepository(
 
     private val lotteries = db.collection("lotteries")
     private val entries = db.collection("lotteryEntries")
+    private val notifications = db.collection("notifications")
 
     override suspend fun addLottery(lottery: Lottery): String {
         val doc = lotteries.document()
@@ -239,17 +244,80 @@ class FirestoreLotteryRepository(
         }.await()
     }
 
-    override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean {
-        val entryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+    override suspend fun declineTransaction(
+        lotteryId: String,
+        userId: String,
+        candidateUserId: String?,
+        replacementNotice: Notification?,
+        now: Long,
+    ): DeclineTransactionResult {
+        if (candidateUserId == null) {
+            require(replacementNotice == null) {
+                "replacementNotice must be null when no replacement candidate is specified"
+            }
+        } else if (replacementNotice != null) {
+            require(replacementNotice.id == NotificationService.replacementNoticeId(lotteryId, candidateUserId)) {
+                "replacementNotice id must match replacement_<lotteryId>_<candidateUserId>"
+            }
+            require(replacementNotice.lotteryId == lotteryId) {
+                "replacementNotice lotteryId must match $lotteryId"
+            }
+            require(replacementNotice.recipientId == candidateUserId) {
+                "replacementNotice recipientId must match $candidateUserId"
+            }
+            require(replacementNotice.type == NotificationType.WON) {
+                "replacementNotice type must be WON"
+            }
+        }
+
+        val lotteryDoc = lotteries.document(lotteryId)
+        val decliningEntryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+        val candidateDoc = candidateUserId?.let { entries.document(LotteryEntry.idFor(lotteryId, it)) }
+        val noticeDoc = replacementNotice?.let { notifications.document(it.id) }
 
         return db.runTransaction { tx ->
-            val snap = tx.get(entryDoc)
-            if (!snap.exists() || snap.getString("status") != EntryStatus.WON.name) {
-                return@runTransaction false
+            // All reads first (Firestore requirement)
+            val lotterySnap = tx.get(lotteryDoc)
+            if (!lotterySnap.exists()) {
+                return@runTransaction DeclineTransactionResult.NotDeclined
             }
-            // only the status, so groupSize and joinedAt keep their saved values
-            tx.update(entryDoc, "status", EntryStatus.DECLINED.name)
-            true
+            val lottery = lotterySnap.toLottery()
+
+            val decliningSnap = tx.get(decliningEntryDoc)
+            if (!decliningSnap.exists()) {
+                return@runTransaction DeclineTransactionResult.NotDeclined
+            }
+            val decliningEntry = decliningSnap.toLotteryEntry()
+            if (decliningEntry.lotteryId != lotteryId || !decliningEntry.canDecline(lottery, now)) {
+                return@runTransaction DeclineTransactionResult.NotDeclined
+            }
+
+            if (candidateUserId != null) {
+                if (candidateUserId == userId || candidateDoc == null) {
+                    return@runTransaction DeclineTransactionResult.CandidateStale
+                }
+                val candidateSnap = tx.get(candidateDoc)
+                if (!candidateSnap.exists()) {
+                    return@runTransaction DeclineTransactionResult.CandidateStale
+                }
+                val candidateEntry = candidateSnap.toLotteryEntry()
+                if (candidateEntry.lotteryId != lotteryId || candidateEntry.status != EntryStatus.LOST) {
+                    return@runTransaction DeclineTransactionResult.CandidateStale
+                }
+            }
+
+            val existingNoticeSnap = noticeDoc?.let { tx.get(it) }
+
+            // Writes commit together; only the necessary fields change
+            tx.update(decliningEntryDoc, "status", EntryStatus.DECLINED.name)
+            if (candidateDoc != null) {
+                tx.update(candidateDoc, "status", EntryStatus.WON.name)
+            }
+            if (replacementNotice != null && noticeDoc != null && existingNoticeSnap != null) {
+                tx.set(noticeDoc, replacementNotice.keepingStateOf(existingNoticeSnap).toMap())
+            }
+
+            DeclineTransactionResult.Declined(promotedUserId = candidateUserId)
         }.await()
     }
 
