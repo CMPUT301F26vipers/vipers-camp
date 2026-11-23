@@ -125,6 +125,7 @@ LotteryDrawer ..> NotificationService
 LotteryDrawer ..> LotteryRepository
 NotificationService ..> NotificationRepository
 LotteryDetailsController ..> LotteryDrawer
+ReserveController ..> LotteryDrawer
 DrawAndNotifyWorker ..> LotteryDrawer
 MessageController ..> MessageRepository
 DeletionService ..> ImageRepository

@@ -10,17 +10,23 @@ package com.example.vipers.ui.reservations
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.ReservationStatus
+import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ReserveResult
+import com.example.vipers.ui.lottery.LotteryDrawer
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,6 +36,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.Random
 
 class ReserveControllerTest {
 
@@ -80,6 +87,19 @@ class ReserveControllerTest {
         status = status,
     )
 
+    private fun drawerFor(
+        lotteries: LotteryRepository,
+        campsites: CampsiteRepository,
+        notifications: NotificationRepository = FakeNotificationRepository(),
+        random: Random = Random(42),
+    ) = LotteryDrawer(
+        lotteryRepository = lotteries,
+        notificationRepository = notifications,
+        campsiteRepository = campsites,
+        profileRepository = FakeProfileRepository(),
+        random = random,
+    )
+
     /** A controller for Sam's win in [theLottery], loaded at time [now]. */
     private fun loaded(
         status: EntryStatus? = EntryStatus.WON,
@@ -102,6 +122,7 @@ class ReserveControllerTest {
             userId = "user-sam",
             lotteryId = "lot-may",
             campsiteId = campsiteId,
+            lotteryDrawer = drawerFor(lotteries, campsites),
         )
         controller.fetchData(now)
         controller
@@ -179,13 +200,15 @@ class ReserveControllerTest {
             override suspend fun getLottery(id: String): Lottery? =
                 throw IllegalStateException("offline")
         }
+        val campsites = FakeCampsiteRepository(listOf(hinton))
         val controller = ReserveController(
-            campsiteRepository = FakeCampsiteRepository(listOf(hinton)),
+            campsiteRepository = campsites,
             lotteryRepository = failing,
             userId = "user-sam",
             lotteryId = "lot-may",
             campsiteId = "hinton",
             reservationRepository = FakeReservationRepository(),
+            lotteryDrawer = drawerFor(failing, campsites),
         )
         controller.fetchData(duringBooking)
 
@@ -269,16 +292,18 @@ class ReserveControllerTest {
     fun fetchData_clearsThePickWhenAPickedNightWasBookedSinceTheLastLoad() = runBlocking {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         campsites.saveAvailability(hintonCalendar)
+        val lotteries = FakeLotteryRepository(
+            listOf(lottery),
+            listOf(entry(EntryStatus.WON)),
+        )
         val controller = ReserveController(
             campsiteRepository = campsites,
-            lotteryRepository = FakeLotteryRepository(
-                listOf(lottery),
-                listOf(entry(EntryStatus.WON)),
-            ),
+            lotteryRepository = lotteries,
             userId = "user-sam",
             lotteryId = "lot-may",
             campsiteId = "hinton",
             reservationRepository = FakeReservationRepository(),
+            lotteryDrawer = drawerFor(lotteries, campsites),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -298,16 +323,18 @@ class ReserveControllerTest {
     fun fetchData_keepsThePickWhenItsNightsAreStillFree() = runBlocking {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         campsites.saveAvailability(hintonCalendar)
+        val lotteries = FakeLotteryRepository(
+            listOf(lottery),
+            listOf(entry(EntryStatus.WON)),
+        )
         val controller = ReserveController(
             campsiteRepository = campsites,
-            lotteryRepository = FakeLotteryRepository(
-                listOf(lottery),
-                listOf(entry(EntryStatus.WON)),
-            ),
+            lotteryRepository = lotteries,
             userId = "user-sam",
             lotteryId = "lot-may",
             campsiteId = "hinton",
             reservationRepository = FakeReservationRepository(),
+            lotteryDrawer = drawerFor(lotteries, campsites),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -396,6 +423,7 @@ class ReserveControllerTest {
             userId = "user-sam",
             lotteryId = "lot-may",
             campsiteId = "hinton",
+            lotteryDrawer = drawerFor(lotteries, campsites),
         )
         controller.fetchData(duringBooking)
 
@@ -463,6 +491,7 @@ class ReserveControllerTest {
             lotteryId = "lot-may",
             campsiteId = "hinton",
             reservationRepository = FakeReservationRepository(oddCampsites, oddLotteries),
+            lotteryDrawer = drawerFor(oddLotteries, oddCampsites),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -494,6 +523,7 @@ class ReserveControllerTest {
             lotteryId = "lot-may",
             campsiteId = "hinton",
             reservationRepository = reservations,
+            lotteryDrawer = drawerFor(lotteries, campsites, notifications),
         )
         controller.fetchData(duringBooking)
         controller.onNightTap("2027-05-22")
@@ -510,25 +540,52 @@ class ReserveControllerTest {
         assertEquals((result as ReserveResult.Success).reservation.id, notice.reservationId)
     }
 
-    // US 01.04.03: declining the win
+    // US 01.04.03 / T-12: declining the win and drawing a replacement
 
     /** Counts declineTransaction calls on [lotteries], so a test can see a second tap made none. */
-    private class CountingLotteryRepository(private val lotteries: LotteryRepository) :
+    private class CountingLotteryRepository(val lotteries: LotteryRepository) :
         LotteryRepository by lotteries {
         var declineCalls = 0
 
-        override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean {
+        override suspend fun declineTransaction(
+            lotteryId: String,
+            userId: String,
+            candidateUserId: String?,
+            replacementNotice: Notification?,
+            now: Long,
+        ): DeclineTransactionResult {
             declineCalls++
-            return lotteries.declineTransaction(lotteryId, userId)
+            return lotteries.declineTransaction(lotteryId, userId, candidateUserId, replacementNotice, now)
         }
     }
 
-    /** Sam's [status] entry in [lottery], held in a counting fake so tests can check what was saved. */
-    private fun lotteriesWith(status: EntryStatus) =
-        CountingLotteryRepository(FakeLotteryRepository(listOf(lottery), listOf(entry(status))))
+    /** Sam's [status] entry in [lottery] plus [extraEntries], held in a counting fake. */
+    private fun lotteriesWith(
+        status: EntryStatus,
+        extraEntries: List<LotteryEntry> = emptyList(),
+        notifications: NotificationRepository? = null,
+    ) = CountingLotteryRepository(
+        FakeLotteryRepository(
+            listOf(lottery),
+            listOf(entry(status)) + extraEntries,
+            notificationRepository = notifications,
+        ),
+    )
 
     /** A controller for Sam's win, loaded from [lotteries] during booking. */
-    private suspend fun loadedFrom(lotteries: LotteryRepository): ReserveController {
+    private suspend fun loadedFrom(
+        lotteries: LotteryRepository,
+        notifications: NotificationRepository = FakeNotificationRepository(),
+        random: Random = Random(42),
+    ): ReserveController {
+        val sharedNotifications = (lotteries as? CountingLotteryRepository)?.let {
+            (it.lotteries as? FakeLotteryRepository)?.notificationRepository
+        } ?: (lotteries as? FakeLotteryRepository)?.notificationRepository ?: notifications.also { shared ->
+            (lotteries as? CountingLotteryRepository)?.let {
+                (it.lotteries as? FakeLotteryRepository)?.let { fake -> fake.notificationRepository = shared }
+            }
+            (lotteries as? FakeLotteryRepository)?.let { it.notificationRepository = shared }
+        }
         val campsites = FakeCampsiteRepository(listOf(hinton))
         campsites.saveAvailability(hintonCalendar)
         val controller = ReserveController(
@@ -538,6 +595,7 @@ class ReserveControllerTest {
             lotteryId = "lot-may",
             campsiteId = "hinton",
             reservationRepository = FakeReservationRepository(),
+            lotteryDrawer = drawerFor(lotteries, campsites, sharedNotifications, random),
         )
         controller.fetchData(duringBooking)
         return controller
@@ -617,8 +675,13 @@ class ReserveControllerTest {
     @Test
     fun decline_whenTheRepositoryFails_setsDeclineErrorAndKeepsTheWin() = runBlocking {
         val failing = object : LotteryRepository by lotteriesWith(EntryStatus.WON) {
-            override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean =
-                throw IllegalStateException("offline")
+            override suspend fun declineTransaction(
+                lotteryId: String,
+                userId: String,
+                candidateUserId: String?,
+                replacementNotice: Notification?,
+                now: Long,
+            ): DeclineTransactionResult = throw IllegalStateException("offline")
         }
         val controller = loadedFrom(failing)
 
@@ -629,5 +692,83 @@ class ReserveControllerTest {
         assertTrue(controller.canDecline)
         assertFalse(controller.isDeclining)
         assertNull(controller.error) // the rest of the screen stays on show
+    }
+
+    @Test
+    fun decline_withLostEntrant_promotesReplacementAndDeliversWonNotice() = runBlocking {
+        val notifications = FakeNotificationRepository()
+        val lotteries = lotteriesWith(
+            EntryStatus.WON,
+            extraEntries = listOf(entry(EntryStatus.LOST, userId = "user-jo")),
+            notifications = notifications,
+        )
+        val controller = loadedFrom(lotteries, notifications = notifications)
+
+        controller.decline(duringBooking)
+
+        assertEquals(EntryStatus.DECLINED, lotteries.getEntry("lot-may", "user-sam")?.status)
+        assertEquals(EntryStatus.WON, lotteries.getEntry("lot-may", "user-jo")?.status)
+        val joNotices = notifications.getNotificationsFor("user-jo")
+        assertEquals(1, joNotices.size)
+        assertEquals("replacement_lot-may_user-jo", joNotices[0].id)
+        assertEquals(NotificationType.WON, joNotices[0].type)
+        assertEquals(duringBooking, joNotices[0].createdAt)
+    }
+
+    @Test
+    fun decline_whenNoticePersistenceFails_keepsWinWithErrorAndRetrySucceedsOnce() = runBlocking {
+        val realNotifications = FakeNotificationRepository()
+        var failSend = true
+        val flakyNotifications = object : NotificationRepository by realNotifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                if (failSend) throw IllegalStateException("notification write failed")
+                realNotifications.addAll(notifications)
+            }
+        }
+        val lotteries = lotteriesWith(
+            EntryStatus.WON,
+            extraEntries = listOf(
+                entry(EntryStatus.LOST, userId = "user-jo"),
+                entry(EntryStatus.LOST, userId = "user-kim"),
+            ),
+            notifications = flakyNotifications,
+        )
+
+        val firstController = loadedFrom(lotteries, notifications = flakyNotifications, random = Random(42))
+        firstController.decline(duringBooking)
+
+        assertEquals(1, lotteries.declineCalls)
+        assertEquals("Unable to decline your win. Please try again.", firstController.declineError)
+        assertEquals(EntryStatus.WON, firstController.entry?.status)
+        assertEquals(OfferState.OPEN, firstController.offerState)
+        assertTrue(firstController.canDecline)
+        assertEquals(EntryStatus.WON, lotteries.getEntry("lot-may", "user-sam")?.status)
+        assertEquals(EntryStatus.LOST, lotteries.getEntry("lot-may", "user-jo")?.status)
+        assertEquals(EntryStatus.LOST, lotteries.getEntry("lot-may", "user-kim")?.status)
+        assertTrue(realNotifications.getNotificationsFor("user-jo").isEmpty())
+        assertTrue(realNotifications.getNotificationsFor("user-kim").isEmpty())
+
+        // Network returns: retrying decline commits the decline, promotion, and inbox notice together.
+        failSend = false
+        val secondController = loadedFrom(lotteries, notifications = flakyNotifications, random = Random(99))
+        secondController.decline(duringBooking)
+        val callsAfterSuccess = lotteries.declineCalls
+        secondController.decline(duringBooking)
+
+        assertEquals(callsAfterSuccess, lotteries.declineCalls)
+        assertNull(secondController.declineError)
+        assertEquals(EntryStatus.DECLINED, secondController.entry?.status)
+        assertEquals(OfferState.USED, secondController.offerState)
+        assertFalse(secondController.canDecline)
+
+        val entries = lotteries.getEntries("lot-may").associateBy { it.userId }
+        val promotedId = listOf("user-jo", "user-kim").single { entries[it]?.status == EntryStatus.WON }
+        val notices = realNotifications.getNotificationsFor(promotedId)
+        assertEquals(1, notices.size)
+        assertEquals("replacement_lot-may_$promotedId", notices[0].id)
+        assertEquals(duringBooking, notices[0].createdAt)
+        val otherLost = if (promotedId == "user-jo") "user-kim" else "user-jo"
+        assertEquals(EntryStatus.LOST, entries[otherLost]?.status)
+        assertTrue(realNotifications.getNotificationsFor(otherLost).isEmpty())
     }
 }
