@@ -23,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
@@ -125,13 +126,14 @@ class NavigationTest {
     fun settingsAndPolicyOpenFromProfile() {
         startApp()
         tapTab(Routes.PROFILE)
-        composeRule.onNodeWithText("Settings").performClick()
+        // Settings and Policy are at the bottom of Profile, below the screen on small phones
+        composeRule.onNodeWithText("Settings").performScrollTo().performClick()
         assertShown("Load demo data")
 
         pressBack()
         assertShown("Sam Patel")
 
-        composeRule.onNodeWithText("Policy").performClick()
+        composeRule.onNodeWithText("Policy").performScrollTo().performClick()
         assertShown("How the lottery works")
     }
 
