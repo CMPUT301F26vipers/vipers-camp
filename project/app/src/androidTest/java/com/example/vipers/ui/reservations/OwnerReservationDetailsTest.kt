@@ -14,10 +14,13 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.service.NotificationService
 import com.example.vipers.ui.theme.VipersTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -53,6 +56,11 @@ class OwnerReservationDetailsTest {
         val controller = OwnerReservationDetailsController(
             reservationRepository = FakeReservationRepository(listOf(reservation)),
             profileRepository = profiles,
+            notificationService = NotificationService(
+                FakeNotificationRepository(),
+                FakeCampsiteRepository(),
+                profiles,
+            ),
             ownerId = ownerId,
             reservationId = "res-1",
         )
