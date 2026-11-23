@@ -1,8 +1,9 @@
 /*
  * AppNavigation.kt
  * Puts the bottom bar and the screens together, and decides which screen each route shows (T-02).
- * The app always opens on Home, and Back returns to the previous screen.
- * Known issues: the Welcome screen on first launch is added in T-01.
+ * The app always opens on Home, and Back returns to the previous screen. A scanned campsite QR
+ * code opens that campsite's details, like tapping it on Home (US 01.12.01).
+ * Known issues: none.
  */
 package com.example.vipers.ui.navigation
 
@@ -23,13 +24,16 @@ import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
 import com.example.vipers.ui.admin.BrowseImagesScreen
+import com.example.vipers.ui.admin.BrowseProfilesScreen
 import com.example.vipers.ui.admin.ImageDetailsScreen
+import com.example.vipers.ui.admin.ProfileDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.campsites.OwnerCampsiteScreen
 import com.example.vipers.ui.campsites.AvailabilityScreen
 import com.example.vipers.ui.home.HomeScreen
+import com.example.vipers.ui.home.QrScanResult
 import com.example.vipers.ui.messages.MessagesScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SentScreen
@@ -55,13 +59,14 @@ private val tabRoutes = listOf(
 )
 
 /**
- * The whole app's navigation. [isAdmin] shows the Admin tab, and [onLoadDemoData] is called
- * by the button on Settings.
+ * The whole app's navigation. [isAdmin] shows the Admin tab, [onLoadDemoData] is called
+ * by the button on Settings, and [onScanQr] opens the QR scanner from Home.
  */
 @Composable
 fun AppNavigation(
     isAdmin: Boolean,
     onLoadDemoData: () -> Unit,
+    onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -83,6 +88,7 @@ fun AppNavigation(
                         val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
                     },
+                    onScanQr = onScanQr,
                 )
             }
             composable(
@@ -360,9 +366,22 @@ fun AppNavigation(
                 }
 
                 composable(Routes.ADMIN_PROFILES) {
-                    AdminPlaceholderScreen(
-                        "All Profiles",
-                        "Browse Profiles (03.05.01)",
+                    BrowseProfilesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenProfile = { profileId ->
+                            val route = Routes.ADMIN_PROFILE_DETAILS.replace("{profileId}", profileId)
+                            navController.navigate(route)
+                        }
+                    )
+                }
+
+                composable(
+                    route = Routes.ADMIN_PROFILE_DETAILS,
+                    arguments = listOf(navArgument("profileId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val profileId = backStackEntry.arguments?.getString("profileId") ?: ""
+                    ProfileDetailsScreen(
+                        profileId = profileId,
                         onBack = { navController.popBackStack() }
                     )
                 }
