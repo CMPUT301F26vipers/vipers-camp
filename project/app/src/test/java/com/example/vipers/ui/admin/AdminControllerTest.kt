@@ -1,19 +1,25 @@
 /*
  * AdminControllerTest.kt
- * Unit tests for AdminController (US 03.04.01, US 03.05.01, US 03.06.01).
+ * Unit tests for AdminController (US 03.04.01, US 03.05.01, US 03.06.01, US 03.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeImageRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeProfileRepository
+import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.ImageAsset
+import com.example.vipers.domain.model.Message
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ImageRepository
+import com.example.vipers.domain.repository.MessageRepository
 import com.example.vipers.domain.repository.ProfileRepository
+import com.example.vipers.domain.repository.ReservationRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -663,5 +669,313 @@ class AdminControllerTest {
         assertEquals(2, viewModel.images.size)
         assertEquals("Fallback Camp Label", viewModel.getImageOwnerName(campImage))
         assertEquals("Fallback Profile Label", viewModel.getImageOwnerName(profileImage))
+    }
+
+    @Test
+    fun fetchMessageLogs_withEmptyRepository_returnsEmptyListWithoutError() = runBlocking {
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(),
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        assertTrue(viewModel.messageLogs.isEmpty())
+        assertFalse(viewModel.messageLogsLoadFailed)
+        assertNull(viewModel.messageLogsError)
+        assertFalse(viewModel.isMessageLogsLoading)
+    }
+
+    @Test
+    fun fetchMessageLogs_withMultipleConversations_preservesOrderFromRepository() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-1", text = "Old message", createdAt = 1000L),
+            Message(id = "m2", reservationId = "res-2", text = "Middle message", createdAt = 2000L),
+            Message(id = "m3", reservationId = "res-3", text = "Newest message", createdAt = 3000L),
+        )
+        val reservations = listOf(
+            Reservation(id = "res-1", campsiteName = "Camp 1"),
+            Reservation(id = "res-2", campsiteName = "Camp 2"),
+            Reservation(id = "res-3", campsiteName = "Camp 3"),
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(reservations),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        assertEquals(3, viewModel.messageLogs.size)
+        // MessageRepository.getAllThreads() returns threads sorted newest conversation first (res-3, res-2, res-1)
+        assertEquals(listOf("res-3", "res-2", "res-1"), viewModel.messageLogs.map { it.reservationId })
+        assertEquals(listOf(3000L, 2000L, 1000L), viewModel.messageLogs.map { it.lastMessageTime })
+    }
+
+    @Test
+    fun fetchMessageLogs_resolvesOwnerEntrantAndCampsiteCorrectly() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-1", senderId = "user1", text = "Hi", createdAt = 100L)
+        )
+        val reservations = listOf(
+            Reservation(
+                id = "res-1",
+                ownerId = "owner1",
+                userId = "user1",
+                campsiteName = "Pine Ridge Camp"
+            )
+        )
+        val profiles = listOf(
+            UserProfile(id = "owner1", name = "Owen Owner"),
+            UserProfile(id = "user1", name = "Emma Entrant")
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(profiles),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(reservations),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        val log = viewModel.messageLogs.single()
+        assertEquals("res-1", log.reservationId)
+        assertEquals("Pine Ridge Camp", log.campsiteName)
+        assertEquals("Owen Owner", log.ownerName)
+        assertEquals("Emma Entrant", log.entrantName)
+        assertEquals(100L, log.lastMessageTime)
+    }
+
+    @Test
+    fun fetchMessageLogs_preservesCompleteMessageHistoryForEachConversation() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-1", senderId = "user1", text = "Is firewood available?", createdAt = 100L),
+            Message(id = "m2", reservationId = "res-1", senderId = "owner1", text = "Yes, stacked by the cabin.", createdAt = 200L),
+            Message(id = "m3", reservationId = "res-1", senderId = "user1", text = "Great, thanks!", createdAt = 300L)
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        val log = viewModel.messageLogs.single()
+        assertEquals(3, log.messages.size)
+        assertEquals(listOf("m1", "m2", "m3"), log.messages.map { it.id })
+        assertEquals(listOf("Is firewood available?", "Yes, stacked by the cabin.", "Great, thanks!"), log.messages.map { it.text })
+        assertEquals(300L, log.lastMessageTime)
+    }
+
+    @Test
+    fun fetchMessageLogs_whenReservationMissing_retainsConversationWithFallbackInfo() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "missing-res", text = "Hello", createdAt = 500L)
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        assertEquals(1, viewModel.messageLogs.size)
+        val log = viewModel.messageLogs.single()
+        assertEquals("missing-res", log.reservationId)
+        assertEquals("Unknown campsite", log.campsiteName)
+        assertEquals("Deleted user", log.ownerName)
+        assertEquals("Deleted user", log.entrantName)
+        assertEquals(1, log.messages.size)
+    }
+
+    @Test
+    fun fetchMessageLogs_whenProfileMissingOrDeleted_showsDeletedUser() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-1", text = "Hello", createdAt = 500L)
+        )
+        val reservations = listOf(
+            Reservation(
+                id = "res-1",
+                ownerId = "deleted-owner",
+                userId = "deleted-entrant",
+                campsiteName = "Quiet Lake"
+            )
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(reservations),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        val log = viewModel.messageLogs.single()
+        assertEquals("Quiet Lake", log.campsiteName)
+        assertEquals("Deleted user", log.ownerName)
+        assertEquals("Deleted user", log.entrantName)
+    }
+
+    @Test
+    fun fetchMessageLogs_whenProfileLookupFails_gracefullyFallsBackToDeletedUser() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-1", text = "Hello", createdAt = 500L)
+        )
+        val reservations = listOf(
+            Reservation(id = "res-1", ownerId = "owner1", userId = "user1", campsiteName = "Mountain Peak")
+        )
+        val failingProfileRepo = object : ProfileRepository by FakeProfileRepository() {
+            override suspend fun getProfile(id: String): UserProfile? {
+                throw IllegalStateException("Profile network failure")
+            }
+        }
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = failingProfileRepo,
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(reservations),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        assertFalse(viewModel.messageLogsLoadFailed)
+        assertNull(viewModel.messageLogsError)
+        val log = viewModel.messageLogs.single()
+        assertEquals("Mountain Peak", log.campsiteName)
+        assertEquals("Deleted user", log.ownerName)
+        assertEquals("Deleted user", log.entrantName)
+    }
+
+    @Test
+    fun fetchMessageLogs_whenReservationLookupFails_gracefullyRetainsConversation() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-1", text = "Hello", createdAt = 500L)
+        )
+        val failingReservationRepo = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservation(id: String): Reservation? {
+                throw IllegalStateException("Reservation database failure")
+            }
+        }
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = failingReservationRepo,
+        )
+
+        viewModel.fetchMessageLogs()
+
+        assertFalse(viewModel.messageLogsLoadFailed)
+        assertNull(viewModel.messageLogsError)
+        val log = viewModel.messageLogs.single()
+        assertEquals("res-1", log.reservationId)
+        assertEquals("Unknown campsite", log.campsiteName)
+        assertEquals("Deleted user", log.ownerName)
+        assertEquals("Deleted user", log.entrantName)
+        assertEquals(1, log.messages.size)
+    }
+
+    @Test
+    fun fetchMessageLogs_whenMessageRepositoryFails_setsLoadFailedAndError() = runBlocking {
+        val failingMsgRepo = object : MessageRepository by FakeMessageRepository() {
+            override suspend fun getAllThreads(): List<List<Message>> {
+                throw IllegalStateException("Message repository error")
+            }
+        }
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = failingMsgRepo,
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        assertTrue(viewModel.messageLogsLoadFailed)
+        assertEquals("Unable to load message logs.", viewModel.messageLogsError)
+        assertFalse(viewModel.isMessageLogsLoading)
+        assertTrue(viewModel.messageLogs.isEmpty())
+    }
+
+    @Test
+    fun loadMessageLogs_launchesFetchMessageLogsAndCanRetryAfterFailure() = runBlocking {
+        val message = Message(id = "m1", reservationId = "res-1", text = "Hi", createdAt = 100L)
+        val fakeRepo = FakeMessageRepository(listOf(message))
+        var shouldFail = true
+        val failingRepo = object : MessageRepository by fakeRepo {
+            override suspend fun getAllThreads(): List<List<Message>> {
+                if (shouldFail) throw IllegalStateException("Database error")
+                return fakeRepo.getAllThreads()
+            }
+        }
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = failingRepo,
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.loadMessageLogs()
+
+        assertTrue(viewModel.messageLogsLoadFailed)
+        assertEquals("Unable to load message logs.", viewModel.messageLogsError)
+
+        shouldFail = false
+        viewModel.loadMessageLogs()
+
+        assertFalse(viewModel.messageLogsLoadFailed)
+        assertNull(viewModel.messageLogsError)
+        assertEquals(1, viewModel.messageLogs.size)
+        assertEquals("res-1", viewModel.messageLogs.single().reservationId)
+    }
+
+    @Test
+    fun fetchMessageLogs_keepsLoadingAndErrorStateSeparateFromCampsites() = runBlocking {
+        val failingMsgRepo = object : MessageRepository by FakeMessageRepository() {
+            override suspend fun getAllThreads(): List<List<Message>> {
+                throw IllegalStateException("Message failure")
+            }
+        }
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = failingMsgRepo,
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        assertTrue(viewModel.messageLogsLoadFailed)
+        assertEquals("Unable to load message logs.", viewModel.messageLogsError)
+        assertFalse(viewModel.loadFailed)
+        assertNull(viewModel.error)
+    }
+
+    @Test
+    fun getConversation_returnsMatchingConversationOrNull() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-1", text = "Hello", createdAt = 100L)
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        val found = viewModel.getConversation("res-1")
+        val missing = viewModel.getConversation("missing-res")
+
+        assertEquals("res-1", found?.reservationId)
+        assertNull(missing)
     }
 }

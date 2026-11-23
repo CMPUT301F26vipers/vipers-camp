@@ -1,6 +1,6 @@
 /*
  * AdminController.kt
- * Loads campsites, user profiles, and images for the admin browsing screens (US 03.04.01, US 03.05.01, US 03.06.01).
+ * Loads campsites, user profiles, images, and owner-entrant message logs for admin browsing (US 03.04.01, US 03.05.01, US 03.06.01, US 03.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
@@ -16,18 +16,51 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.vipers.CampApp
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.ImageAsset
+import com.example.vipers.domain.model.Message
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ImageRepository
+import com.example.vipers.domain.repository.MessageRepository
 import com.example.vipers.domain.repository.ProfileRepository
+import com.example.vipers.domain.repository.ReservationRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Loads campsites, user profiles, and images for the admin browsing screens. */
+/**
+ * A conversation thread for the admin message log (US 03.12.01).
+ *
+ * @property reservationId The reservation this conversation belongs to.
+ * @property campsiteName The name of the campsite booked.
+ * @property ownerName The resolved display name of the campsite owner.
+ * @property entrantName The resolved display name of the entrant.
+ * @property lastMessageTime Timestamp of the most recent message in the conversation.
+ * @property messages The full list of messages in this conversation, ordered oldest first.
+ */
+data class MessageLogConversation(
+    val reservationId: String,
+    val campsiteName: String,
+    val ownerName: String,
+    val entrantName: String,
+    val lastMessageTime: Long,
+    val messages: List<Message>,
+) {
+    /** Alias for [lastMessageTime]. */
+    val lastMessageAt: Long
+        get() = lastMessageTime
+
+    /** Alias for [messages]. */
+    val thread: List<Message>
+        get() = messages
+}
+
+/** Loads campsites, user profiles, images, and owner-entrant message logs for admin browsing. */
 class AdminController(
     private val campsiteRepository: CampsiteRepository,
     private val profileRepository: ProfileRepository,
     private val imageRepository: ImageRepository? = null,
+    private val messageRepository: MessageRepository? = null,
+    private val reservationRepository: ReservationRepository? = null,
 ) : ViewModel() {
 
     var campsites by mutableStateOf<List<Campsite>>(emptyList())
@@ -90,6 +123,46 @@ class AdminController(
 
     val imageError: String?
         get() = imagesError
+
+    /** Loaded message log conversations, sorted newest message first. */
+    var messageLogs by mutableStateOf<List<MessageLogConversation>>(emptyList())
+        private set
+
+    /** Alias for [messageLogs]. */
+    val conversations: List<MessageLogConversation>
+        get() = messageLogs
+
+    /** Whether message logs are currently being loaded. */
+    var isMessageLogsLoading by mutableStateOf(false)
+        private set
+
+    /** Alias for [isMessageLogsLoading]. */
+    val messageLogsLoading: Boolean
+        get() = isMessageLogsLoading
+
+    /** Alias for [isMessageLogsLoading]. */
+    val conversationsLoading: Boolean
+        get() = isMessageLogsLoading
+
+    /** Whether the most recent attempt to load message logs failed. */
+    var messageLogsLoadFailed by mutableStateOf(false)
+        private set
+
+    /** Alias for [messageLogsLoadFailed]. */
+    val conversationsLoadFailed: Boolean
+        get() = messageLogsLoadFailed
+
+    /** Error message if loading message logs failed. */
+    var messageLogsError by mutableStateOf<String?>(null)
+        private set
+
+    /** Alias for [messageLogsError]. */
+    val messageLogError: String?
+        get() = messageLogsError
+
+    /** Alias for [messageLogsError]. */
+    val conversationsError: String?
+        get() = messageLogsError
 
     init {
         loadCampsites()
@@ -254,6 +327,89 @@ class AdminController(
         return if (ownerType == ImageAsset.OWNER_CAMPSITE) "Campsite photo" else "Profile photo"
     }
 
+    /** Returns the conversation with the given [reservationId], or null if not found. */
+    fun getConversation(reservationId: String): MessageLogConversation? {
+        return messageLogs.firstOrNull { it.reservationId == reservationId }
+    }
+
+    /** Returns the conversation with the given [reservationId], or null if not found. */
+    fun getMessageLog(reservationId: String): MessageLogConversation? {
+        return getConversation(reservationId)
+    }
+
+    /** Loads all owner-entrant message logs in the background. */
+    fun loadMessageLogs() {
+        viewModelScope.launch { fetchMessageLogs() }
+    }
+
+    /**
+     * Loads all owner-entrant message logs and resolves their reservation and profile details.
+     * Can be called directly from unit tests using runBlocking or runTest.
+     */
+    suspend fun fetchMessageLogs() {
+        isMessageLogsLoading = true
+        messageLogsLoadFailed = false
+        messageLogsError = null
+
+        try {
+            val repo = messageRepository ?: throw IllegalStateException("MessageRepository not configured")
+            val threads = repo.getAllThreads()
+
+            val profileNameCache = mutableMapOf<String, String>()
+            suspend fun resolveName(id: String): String {
+                if (id.isBlank()) return "Deleted user"
+                return profileNameCache.getOrPut(id) {
+                    try {
+                        profileRepository.getDisplayName(id)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        "Deleted user"
+                    }
+                }
+            }
+
+            val logs = mutableListOf<MessageLogConversation>()
+            for (thread in threads) {
+                if (thread.isEmpty()) continue
+                val reservationId = thread.first().reservationId
+                val lastMessageTime = thread.last().createdAt
+
+                val reservation = try {
+                    reservationRepository?.getReservation(reservationId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+
+                val ownerName = if (reservation != null) resolveName(reservation.ownerId) else "Deleted user"
+                val entrantName = if (reservation != null) resolveName(reservation.userId) else "Deleted user"
+                val campsiteName = reservation?.campsiteName?.trim()?.ifBlank { null } ?: "Unknown campsite"
+
+                logs.add(
+                    MessageLogConversation(
+                        reservationId = reservationId,
+                        campsiteName = campsiteName,
+                        ownerName = ownerName,
+                        entrantName = entrantName,
+                        lastMessageTime = lastMessageTime,
+                        messages = thread,
+                    )
+                )
+            }
+
+            messageLogs = logs
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            messageLogsLoadFailed = true
+            messageLogsError = "Unable to load message logs."
+        } finally {
+            isMessageLogsLoading = false
+        }
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -264,6 +420,8 @@ class AdminController(
                     campsiteRepository = application.container.campsiteRepository,
                     profileRepository = application.container.profileRepository,
                     imageRepository = application.container.imageRepository,
+                    messageRepository = application.container.messageRepository,
+                    reservationRepository = application.container.reservationRepository,
                 )
             }
         }

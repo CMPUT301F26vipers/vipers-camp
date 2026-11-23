@@ -235,8 +235,15 @@ package "controllers (ViewModels)" {
   class AdminController <<ViewModel>> {
     campsites: List<Campsite>
     ownerNames: Map<String, String>
+    profiles: List<UserProfile>
+    images: List<ImageAsset>
+    messageLogs: List<MessageLogConversation>
     loadCampsites()
+    loadProfiles()
+    loadImages()
+    loadMessageLogs()
     getOwnerName(ownerId: String): String
+    getConversation(reservationId: String): MessageLogConversation?
   }
 
   class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
@@ -340,6 +347,9 @@ OwnerReservationDetailsController ..> ProfileRepository
 NotificationsController ..> NotificationService
 AdminController ..> CampsiteRepository
 AdminController ..> ProfileRepository
+AdminController ..> ImageRepository
+AdminController ..> MessageRepository
+AdminController ..> ReservationRepository
 MessageController ..> MessageRepository
 MessageController ..> NotificationService
 
