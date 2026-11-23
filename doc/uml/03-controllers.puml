@@ -140,13 +140,20 @@ package "controllers (ViewModels)" {
 
   class LotteryController <<ViewModel>> {
     campsite: Campsite?
+    ownedCampsites: List<Campsite>
+    selectedCampsiteIds: Set<String>
     availableNights: List<String>
     selectedNights: Set<String>
+    conflictingNights: Set<String>
+    hasIneligibleStoredCampsites: Boolean
     winnersCountText: String
     waitlistCapacityText: String
     suspend fetchCampsiteData()
+    suspend fetchLotteryForEdit(lotteryId: String, now: Long)
+    toggleCampsite(targetCampsiteId: String, checked: Boolean)
+    onConfirmRemoveIneligibleChange(confirmed: Boolean)
     toggleNight(night: String, checked: Boolean)
-    saveLottery()
+    saveLottery(now: Long?)
   }
 
   class LotteryDetailsController <<ViewModel>> {

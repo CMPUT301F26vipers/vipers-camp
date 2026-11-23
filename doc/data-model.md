@@ -116,13 +116,7 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | participantCount | number | total participants in draw |
 | winnerCount | number | total winners in draw |
 
-Owners save changes with `updateLottery(lottery, callerId)` (US 02.04.06). In one transaction, it
-verifies ownership (`callerId` matches `stored.ownerId`), validates edit eligibility (not drawn,
-removed, or closed) and model rules against the current `waitingUserIds` count, and writes only
-`nightsOffered`, `nightsDescription`, `registrationStart`, `registrationEnd`, `bookingStart`,
-`bookingEnd`, `winnersCount`, and `waitlistCapacity`. It never overwrites `ownerId`, `campsiteIds`,
-`drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`, `manifestChunkCount`,
-`participantCount`, or `winnerCount`, preventing concurrent entrants from being reset or lost.
+Owners save changes with `updateLottery(lottery, callerId)` (US 02.04.02, 02.04.06). Using the stored lottery read inside the transaction as its baseline, it verifies ownership (`callerId` matches `stored.ownerId`) and edit eligibility (not drawn, removed, or closed), reads every submitted campsite document to confirm it exists, is active (`removed == false`), and belongs to `stored.ownerId`, and reads the availability calendars needed for any newly introduced `(campsiteId, night)` pairs before writing (reusing `validateLottery` / `conflictingOfferedNights` so unrelated edits preserve already-offered pairs while checking `waitingUserIds` capacity). It writes only `campsiteIds` (deduplicated), `nightsOffered`, `nightsDescription`, `registrationStart`, `registrationEnd`, `bookingStart`, `bookingEnd`, `winnersCount`, and `waitlistCapacity`, never overwriting `ownerId`, `drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`, `manifestChunkCount`, `participantCount`, or `winnerCount`.
 
 **Starting the draw (US 02.05.01b).** Whenever the app opens, `DrawAndNotifyWorker` calls
 `getLotteriesToDraw(now)` and draws each one. It returns the lotteries where `Lottery.isDueForDraw(now)`

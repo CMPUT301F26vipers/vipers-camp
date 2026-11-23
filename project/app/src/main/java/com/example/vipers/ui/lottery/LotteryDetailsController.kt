@@ -218,22 +218,38 @@ class LotteryDetailsController(
             return false
         }
 
-        val currentLottery = lottery ?: run {
-            actionError = "Lottery not found."
-            joinSuccess = false
-            return false
-        }
-
-        if (currentLottery.ownerId == currentUserId) {
-            actionError = "Owners cannot join their own lottery."
-            joinSuccess = false
-            return false
-        }
-
         isJoining = true
         actionError = null
         joinSuccess = false
         leaveSuccess = false
+
+        val currentLottery = try {
+            lotteryRepository.getLottery(lotteryId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            isJoining = false
+            joinSuccess = false
+            actionError = "Unable to join waiting list. Please try again."
+            return false
+        }
+
+        if (currentLottery == null) {
+            lottery = null
+            maxOccupancy = null
+            isJoining = false
+            actionError = "Lottery not found."
+            joinSuccess = false
+            return false
+        }
+        lottery = currentLottery
+
+        if (currentLottery.ownerId == currentUserId) {
+            isJoining = false
+            actionError = "Owners cannot join their own lottery."
+            joinSuccess = false
+            return false
+        }
 
         val existing = try {
             userEntry ?: lotteryRepository.getEntry(lotteryId, currentUserId)
@@ -246,14 +262,14 @@ class LotteryDetailsController(
             return false
         }
 
-        val limit = maxOccupancy ?: resolveMaxOccupancy(currentLottery)
+        val limit = resolveMaxOccupancy(currentLottery)
+        maxOccupancy = limit
         if (limit == null) {
             isJoining = false
             joinSuccess = false
             actionError = "Campsite occupancy information is unavailable. Please try again."
             return false
         }
-        maxOccupancy = limit
 
         val validationErrors = validateJoinLottery(
             lottery = currentLottery,
@@ -398,8 +414,9 @@ class LotteryDetailsController(
     }
 
     /**
-     * Resolves the maximum occupancy across all campsites covered by [lottery].
-     * Returns null if any campsite lookup fails or is missing, ensuring incomplete data is not used.
+     * Resolves the maximum occupancy across all active (non-removed) campsites covered by [lottery].
+     * Returns null if any campsite lookup fails or is missing, or if every included campsite is removed,
+     * ensuring incomplete or removed-site data is not used to bypass occupancy limits.
      */
     private suspend fun resolveMaxOccupancy(lottery: Lottery?): Int? {
         val repo = campsiteRepository ?: return null
@@ -410,7 +427,9 @@ class LotteryDetailsController(
         for (cid in ids) {
             try {
                 val campsite = repo.getCampsite(cid) ?: return null
-                occupancies.add(campsite.maxOccupancy)
+                if (!campsite.removed) {
+                    occupancies.add(campsite.maxOccupancy)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

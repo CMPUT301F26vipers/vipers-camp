@@ -938,10 +938,11 @@ class FakeRepositoryTest {
         )
         val repo = FakeLotteryRepository(listOf(original))
 
-        // Proposed updates editable fields, and maliciously attempts to modify uneditable fields
+        // Proposed updates editable fields (including deduplicated campsiteIds), and maliciously attempts
+        // to modify uneditable fields
         val proposed = original.copy(
             ownerId = "intruder",
-            campsiteIds = listOf("other-camp"),
+            campsiteIds = listOf("camp-2", "camp-3", "camp-2"),
             nightsOffered = listOf("2027-06-01", "2027-06-02"),
             nightsDescription = "Updated description",
             registrationEnd = 2_500L,
@@ -961,7 +962,8 @@ class FakeRepositoryTest {
         val updated = repo.getLottery("lottery-1")
         assertNotNull(updated)
         // Verified updated fields
-        assertEquals(listOf("2027-06-01", "2027-06-02"), updated!!.nightsOffered)
+        assertEquals(listOf("camp-2", "camp-3"), updated!!.campsiteIds)
+        assertEquals(listOf("2027-06-01", "2027-06-02"), updated.nightsOffered)
         assertEquals("Updated description", updated.nightsDescription)
         assertEquals(2_500L, updated.registrationEnd)
         assertEquals(3_500L, updated.bookingStart)
@@ -971,11 +973,41 @@ class FakeRepositoryTest {
 
         // Verified preserved fields (tamper attempts ignored)
         assertEquals("owner-1", updated.ownerId)
-        assertEquals(listOf("camp-1", "camp-2"), updated.campsiteIds)
         assertEquals(listOf("entrant-1", "entrant-2"), updated.waitingUserIds)
         assertEquals(5L, updated.entriesVersion)
         assertNull(updated.drawnAt)
         assertFalse(updated.removed)
+    }
+
+    @Test
+    fun updateLottery_changingCampsiteIds_updatesCampsiteLookupAndPreservesEntries() = runBlocking {
+        val now = 1_500L
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1", "camp-2"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            waitingUserIds = listOf("entrant-1"),
+        )
+        val entry = LotteryEntry(lotteryId = "lottery-1", userId = "entrant-1", status = EntryStatus.WAITING)
+        val repo = FakeLotteryRepository(listOf(original), listOf(entry))
+
+        val updatedResult = repo.updateLottery(
+            original.copy(campsiteIds = listOf("camp-2", "camp-3")),
+            callerId = "owner-1",
+            now = now,
+        )
+        assertEquals(UpdateLotteryResult.Success, updatedResult)
+
+        assertTrue(repo.getLotteriesForCampsite("camp-1").isEmpty())
+        assertEquals(listOf("lottery-1"), repo.getLotteriesForCampsite("camp-2").map { it.id })
+        assertEquals(listOf("lottery-1"), repo.getLotteriesForCampsite("camp-3").map { it.id })
+        assertEquals(listOf("entrant-1"), repo.getLottery("lottery-1")?.waitingUserIds)
+        assertEquals(listOf("entrant-1"), repo.getEntries("lottery-1").map { it.userId })
     }
 
     @Test
@@ -1215,6 +1247,131 @@ class FakeRepositoryTest {
         // Entries stream remains undisturbed and accurate
         assertEquals(listOf("user-1"), entriesFlow.first().map { it.userId })
     }
+
+    @Test
+    fun updateLottery_withForeignOrRemovedCampsite_rejectedAndPreservesMembershipAndEntrants() = runBlocking {
+        val now = 1_500L
+        val campsites = FakeCampsiteRepository(
+            listOf(
+                Campsite(id = "camp-1", ownerId = "owner-1", name = "Pine Ridge"),
+                Campsite(id = "camp-removed", ownerId = "owner-1", name = "Removed Site", removed = true),
+                Campsite(id = "camp-foreign", ownerId = "other-owner", name = "Other Owner Site"),
+            ),
+        )
+        val original = Lottery(
+            id = "lottery-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-1"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = 1_000L,
+            registrationEnd = 2_000L,
+            bookingStart = 3_000L,
+            bookingEnd = 4_000L,
+            waitingUserIds = listOf("entrant-1"),
+        )
+        val entry = LotteryEntry(lotteryId = "lottery-1", userId = "entrant-1", status = EntryStatus.WAITING)
+        val repo = FakeLotteryRepository(
+            initialLotteries = listOf(original),
+            initialEntries = listOf(entry),
+            campsiteRepository = campsites,
+        )
+
+        val foreignResult = repo.updateLottery(
+            original.copy(campsiteIds = listOf("camp-1", "camp-foreign")),
+            callerId = "owner-1",
+            now = now,
+        )
+        assertEquals(
+            UpdateLotteryResult.Error("One or more selected campsites are no longer available or you do not own them."),
+            foreignResult,
+        )
+        assertEquals(listOf("camp-1"), repo.getLottery("lottery-1")?.campsiteIds)
+        assertEquals(listOf("entrant-1"), repo.getLottery("lottery-1")?.waitingUserIds)
+        assertEquals(listOf("entrant-1"), repo.getEntries("lottery-1").map { it.userId })
+
+        val removedResult = repo.updateLottery(
+            original.copy(campsiteIds = listOf("camp-1", "camp-removed")),
+            callerId = "owner-1",
+            now = now,
+        )
+        assertEquals(
+            UpdateLotteryResult.Error("One or more selected campsites are no longer available or you do not own them."),
+            removedResult,
+        )
+        assertEquals(listOf("camp-1"), repo.getLottery("lottery-1")?.campsiteIds)
+        assertEquals(listOf("entrant-1"), repo.getLottery("lottery-1")?.waitingUserIds)
+        assertEquals(listOf("entrant-1"), repo.getEntries("lottery-1").map { it.userId })
+    }
+
+    @Test
+    fun updateLottery_staleDraftReintroducingCampsiteWithUnavailableNight_rejectedAndPreservesMembershipAndEntrants() =
+        runBlocking {
+            val now = 1_500L
+            val campsites = FakeCampsiteRepository(
+                listOf(
+                    Campsite(id = "camp-1", ownerId = "owner-1", name = "Pine Ridge"),
+                    Campsite(id = "camp-2", ownerId = "owner-1", name = "Maple Grove"),
+                ),
+            )
+            campsites.saveAvailability(AvailabilityCalendar("camp-1", openNights = listOf("2027-06-01")))
+            campsites.saveAvailability(AvailabilityCalendar("camp-2", openNights = listOf("2027-06-01")))
+
+            val original = Lottery(
+                id = "lottery-1",
+                ownerId = "owner-1",
+                campsiteIds = listOf("camp-1", "camp-2"),
+                nightsOffered = listOf("2027-06-01"),
+                registrationStart = 1_000L,
+                registrationEnd = 2_000L,
+                bookingStart = 3_000L,
+                bookingEnd = 4_000L,
+                winnersCount = 1,
+                waitingUserIds = listOf("entrant-1"),
+            )
+            val entry = LotteryEntry(lotteryId = "lottery-1", userId = "entrant-1", status = EntryStatus.WAITING)
+            val repo = FakeLotteryRepository(
+                initialLotteries = listOf(original),
+                initialEntries = listOf(entry),
+                campsiteRepository = campsites,
+            )
+
+            // First edit drops camp-2 from the lottery.
+            val dropResult = repo.updateLottery(
+                original.copy(campsiteIds = listOf("camp-1")),
+                callerId = "owner-1",
+                now = now,
+            )
+            assertEquals(UpdateLotteryResult.Success, dropResult)
+
+            // Both calendars later hold 2027-06-01; an unrelated edit on camp-1 still succeeds.
+            campsites.saveAvailability(
+                AvailabilityCalendar("camp-1", openNights = listOf("2027-06-01"), heldNights = listOf("2027-06-01")),
+            )
+            campsites.saveAvailability(
+                AvailabilityCalendar("camp-2", openNights = listOf("2027-06-01"), heldNights = listOf("2027-06-01")),
+            )
+            val unrelatedResult = repo.updateLottery(
+                original.copy(campsiteIds = listOf("camp-1"), winnersCount = 2),
+                callerId = "owner-1",
+                now = now,
+            )
+            assertEquals(UpdateLotteryResult.Success, unrelatedResult)
+
+            // Stale draft captured before drop/hold tries to reintroduce camp-2 with 2027-06-01.
+            val staleResult = repo.updateLottery(original, callerId = "owner-1", now = now)
+            assertEquals(
+                UpdateLotteryResult.Error(
+                    "One or more selected nights are no longer available. Please reload the nights.",
+                ),
+                staleResult,
+            )
+
+            val stored = repo.getLottery("lottery-1")!!
+            assertEquals(listOf("camp-1"), stored.campsiteIds)
+            assertEquals(2, stored.winnersCount)
+            assertEquals(listOf("entrant-1"), stored.waitingUserIds)
+            assertEquals(listOf("entrant-1"), repo.getEntries("lottery-1").map { it.userId })
+        }
 
     /** Keeps every inbox it is sent, oldest call first (T-13). */
     private class RecordingInboxListener : InboxListener {

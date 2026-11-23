@@ -5,6 +5,7 @@
  */
 package com.example.vipers.data.fake
 
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
@@ -12,6 +13,7 @@ import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.validateLottery
+import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
@@ -31,6 +33,7 @@ class FakeLotteryRepository(
     initialLotteries: List<Lottery> = emptyList(),
     initialEntries: List<LotteryEntry> = emptyList(),
     var notificationRepository: NotificationRepository? = null,
+    var campsiteRepository: CampsiteRepository? = null,
 ) : LotteryRepository {
 
     private val mutex = Mutex()
@@ -57,7 +60,11 @@ class FakeLotteryRepository(
 
     override suspend fun addLottery(lottery: Lottery): String = mutex.withLock {
         val id = "lottery-${nextId++}"
-        lotteries[id] = lottery.copy(id = id)
+        lotteries[id] = lottery.copy(
+            id = id,
+            campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
+        )
+        publish()
         id
     }
 
@@ -87,30 +94,56 @@ class FakeLotteryRepository(
             return@withLock UpdateLotteryResult.ReadOnly(blockedReason)
         }
 
+        val submittedIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct()
+        val normalizedLottery = lottery.copy(campsiteIds = submittedIds)
         val currentWaitingCount = stored.waitingUserIds.size
 
+        val calendarsByCampsiteId: Map<String, AvailabilityCalendar>? = campsiteRepository?.let { campsites ->
+            for (cid in submittedIds) {
+                val campsite = campsites.getCampsite(cid)
+                if (campsite == null || campsite.removed || campsite.ownerId != stored.ownerId) {
+                    return@withLock UpdateLotteryResult.Error(
+                        "One or more selected campsites are no longer available or you do not own them.",
+                    )
+                }
+            }
+
+            val storedIds = stored.campsiteIds.filter { it.isNotBlank() }.toSet()
+            val storedNights = stored.nightsOffered.toSet()
+            val hasAddedNight = normalizedLottery.nightsOffered.any { it !in storedNights }
+            val idsNeedingCalendars = submittedIds.filter { cid -> cid !in storedIds || hasAddedNight }
+            if (idsNeedingCalendars.isNotEmpty()) {
+                idsNeedingCalendars.associateWith { cid -> campsites.getAvailability(cid) }
+            } else {
+                null
+            }
+        }
+
         val validationErrors = validateLottery(
-            lottery = lottery,
+            lottery = normalizedLottery,
             now = now,
             storedLottery = stored,
             currentWaitingCount = currentWaitingCount,
             zone = zone,
+            calendarsByCampsiteId = calendarsByCampsiteId,
         )
         if (validationErrors.isNotEmpty()) {
             return@withLock UpdateLotteryResult.Error(validationErrors.first())
         }
 
         val updated = stored.copy(
-            nightsOffered = lottery.nightsOffered,
-            nightsDescription = lottery.nightsDescription,
-            registrationStart = lottery.registrationStart,
-            registrationEnd = lottery.registrationEnd,
-            bookingStart = lottery.bookingStart,
-            bookingEnd = lottery.bookingEnd,
-            winnersCount = lottery.winnersCount,
-            waitlistCapacity = lottery.waitlistCapacity,
+            campsiteIds = normalizedLottery.campsiteIds,
+            nightsOffered = normalizedLottery.nightsOffered,
+            nightsDescription = normalizedLottery.nightsDescription,
+            registrationStart = normalizedLottery.registrationStart,
+            registrationEnd = normalizedLottery.registrationEnd,
+            bookingStart = normalizedLottery.bookingStart,
+            bookingEnd = normalizedLottery.bookingEnd,
+            winnersCount = normalizedLottery.winnersCount,
+            waitlistCapacity = normalizedLottery.waitlistCapacity,
         )
         lotteries[lottery.id] = updated
+        publish()
         UpdateLotteryResult.Success
     }
 
