@@ -48,6 +48,24 @@ class AdminController(
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** Whether user profiles are currently being loaded. */
+    var isProfilesLoading by mutableStateOf(false)
+        private set
+
+    val profilesLoading: Boolean
+        get() = isProfilesLoading
+
+    /** Whether the most recent attempt to load profiles failed. */
+    var profilesLoadFailed by mutableStateOf(false)
+        private set
+
+    /** Error message if loading profiles failed. */
+    var profilesError by mutableStateOf<String?>(null)
+        private set
+
+    val profileError: String?
+        get() = profilesError
+
     init {
         loadCampsites()
     }
@@ -61,9 +79,6 @@ class AdminController(
     fun isCampsiteOwner(profileId: String): Boolean {
         return profileId in ownerProfileIds
     }
-
-    /** Returns whether the user with the given [profileId] owns at least one campsite. */
-    fun isOwner(profileId: String): Boolean = isCampsiteOwner(profileId)
 
     /** Returns the profile with the given [profileId] from the loaded profiles, or null if not found. */
     fun getProfile(profileId: String): UserProfile? {
@@ -103,14 +118,17 @@ class AdminController(
 
     /** Loads all user profiles and determines campsite ownership in the background. */
     fun loadProfiles() {
+        isProfilesLoading = true
+        profilesLoadFailed = false
+        profilesError = null
         viewModelScope.launch { fetchProfiles() }
     }
 
     /** Loads all user profiles and determines campsite ownership. Can be called directly by unit tests. */
-    suspend fun fetchProfiles() {
-        isLoading = true
-        loadFailed = false
-        error = null
+    internal suspend fun fetchProfiles() {
+        isProfilesLoading = true
+        profilesLoadFailed = false
+        profilesError = null
 
         try {
             val loadedProfiles = profileRepository.getAllProfiles()
@@ -123,10 +141,10 @@ class AdminController(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            loadFailed = true
-            error = "Unable to load profiles."
+            profilesLoadFailed = true
+            profilesError = "Unable to load profiles."
         } finally {
-            isLoading = false
+            isProfilesLoading = false
         }
     }
 

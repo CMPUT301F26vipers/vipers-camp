@@ -71,7 +71,7 @@ fun ProfileDetailsScreen(
         TopBar(title = "Profile", onBack = onBack)
 
         when {
-            controller.isLoading && profile == null -> {
+            controller.isProfilesLoading && profile == null -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -81,7 +81,7 @@ fun ProfileDetailsScreen(
                     CircularProgressIndicator()
                 }
             }
-            controller.loadFailed && profile == null -> {
+            controller.profilesLoadFailed && profile == null -> {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -90,7 +90,7 @@ fun ProfileDetailsScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = controller.error ?: "Could not load profile.",
+                        text = controller.profilesError ?: "Could not load profile.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

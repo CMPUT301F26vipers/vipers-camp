@@ -152,9 +152,9 @@ class AdminControllerTest {
 
         assertEquals(2, viewModel.profiles.size)
         assertEquals(listOf("user-1", "user-2"), viewModel.profiles.map { it.id })
-        assertFalse(viewModel.loadFailed)
-        assertFalse(viewModel.isLoading)
-        assertNull(viewModel.error)
+        assertFalse(viewModel.profilesLoadFailed)
+        assertFalse(viewModel.isProfilesLoading)
+        assertNull(viewModel.profilesError)
     }
 
     @Test
@@ -175,15 +175,12 @@ class AdminControllerTest {
         viewModel.fetchProfiles()
 
         assertTrue(viewModel.isCampsiteOwner("owner-1"))
-        assertTrue(viewModel.isOwner("owner-1"))
         assertTrue("owner-1" in viewModel.ownerProfileIds)
 
         assertFalse(viewModel.isCampsiteOwner("former-owner"))
-        assertFalse(viewModel.isOwner("former-owner"))
         assertFalse("former-owner" in viewModel.ownerProfileIds)
 
         assertFalse(viewModel.isCampsiteOwner("entrant-only"))
-        assertFalse(viewModel.isOwner("entrant-only"))
         assertFalse("entrant-only" in viewModel.ownerProfileIds)
     }
 
@@ -198,9 +195,9 @@ class AdminControllerTest {
 
         viewModel.fetchProfiles()
 
-        assertTrue(viewModel.loadFailed)
-        assertEquals("Unable to load profiles.", viewModel.error)
-        assertFalse(viewModel.isLoading)
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
         assertTrue(viewModel.profiles.isEmpty())
         assertTrue(viewModel.ownerProfileIds.isEmpty())
     }
@@ -217,9 +214,9 @@ class AdminControllerTest {
 
         viewModel.fetchProfiles()
 
-        assertTrue(viewModel.loadFailed)
-        assertEquals("Unable to load profiles.", viewModel.error)
-        assertFalse(viewModel.isLoading)
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
     }
 
     @Test
@@ -236,16 +233,72 @@ class AdminControllerTest {
 
         viewModel.loadProfiles()
 
-        assertTrue(viewModel.loadFailed)
-        assertEquals("Unable to load profiles.", viewModel.error)
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
 
         shouldFail = false
         viewModel.loadProfiles()
 
-        assertFalse(viewModel.loadFailed)
-        assertNull(viewModel.error)
+        assertFalse(viewModel.profilesLoadFailed)
+        assertNull(viewModel.profilesError)
         assertEquals(1, viewModel.profiles.size)
         assertEquals("Alice", viewModel.profiles[0].name)
+    }
+
+    @Test
+    fun fetchProfiles_keepsLoadingAndErrorStateSeparateFromCampsites() = runTest {
+        val failingCampsiteRepo = object : CampsiteRepository by FakeCampsiteRepository() {
+            override suspend fun getAllCampsites(): List<Campsite> {
+                throw IllegalStateException("Campsite error")
+            }
+        }
+        val profileRepo = FakeProfileRepository(listOf(UserProfile(id = "p1", name = "Alice")))
+        val viewModel = AdminController(failingCampsiteRepo, profileRepo)
+
+        // Campsite loading in init failed
+        assertTrue(viewModel.loadFailed)
+        assertEquals("Unable to load campsites.", viewModel.error)
+
+        // Loading profiles should succeed and have clean profile state
+        viewModel.fetchProfiles()
+
+        assertFalse(viewModel.profilesLoadFailed)
+        assertNull(viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
+        assertEquals(1, viewModel.profiles.size)
+
+        // Campsite state remains intact
+        assertTrue(viewModel.loadFailed)
+        assertEquals("Unable to load campsites.", viewModel.error)
+    }
+
+    @Test
+    fun campsiteLoadingFailure_doesNotAffectProfileLoadingState() = runTest {
+        val failingProfileRepo = object : ProfileRepository by FakeProfileRepository() {
+            override suspend fun getAllProfiles(): List<UserProfile> {
+                throw IllegalStateException("Profile error")
+            }
+        }
+        val campsite = Campsite(id = "c1", name = "Pine Camp")
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val viewModel = AdminController(campsiteRepo, failingProfileRepo)
+
+        // Campsite loaded successfully
+        assertFalse(viewModel.loadFailed)
+        assertFalse(viewModel.isLoading)
+        assertEquals(1, viewModel.campsites.size)
+
+        // Profile loading fails
+        viewModel.fetchProfiles()
+
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
+
+        // Campsite state remains unaffected
+        assertFalse(viewModel.loadFailed)
+        assertFalse(viewModel.isLoading)
+        assertEquals(1, viewModel.campsites.size)
     }
 
     @Test

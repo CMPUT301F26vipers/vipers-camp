@@ -94,7 +94,7 @@ fun BrowseProfilesScreen(
         }
 
         when {
-            controller.isLoading && controller.profiles.isEmpty() -> {
+            controller.isProfilesLoading && controller.profiles.isEmpty() -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -104,7 +104,7 @@ fun BrowseProfilesScreen(
                     CircularProgressIndicator()
                 }
             }
-            controller.loadFailed && controller.profiles.isEmpty() -> {
+            controller.profilesLoadFailed && controller.profiles.isEmpty() -> {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -113,7 +113,7 @@ fun BrowseProfilesScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = controller.error ?: "Could not load profiles.",
+                        text = controller.profilesError ?: "Unable to load profiles.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
