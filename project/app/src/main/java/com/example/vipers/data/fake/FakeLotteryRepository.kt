@@ -10,6 +10,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.validateLottery
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
@@ -177,12 +178,69 @@ class FakeLotteryRepository(
         publish()
     }
 
-    override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean = mutex.withLock {
+    override suspend fun declineTransaction(
+        lotteryId: String,
+        userId: String,
+        candidateUserIds: List<String>,
+        now: Long,
+    ): DeclineTransactionResult = mutex.withLock {
+        val lottery = lotteries[lotteryId] ?: return@withLock DeclineTransactionResult(declined = false)
         val id = LotteryEntry.idFor(lotteryId, userId)
-        val entry = entries[id]
-        if (entry == null || entry.status != EntryStatus.WON) return@withLock false
-        entries[id] = entry.copy(status = EntryStatus.DECLINED)
+        val entry = entries[id] ?: return@withLock DeclineTransactionResult(declined = false)
+        if (entry.lotteryId != lotteryId || !entry.canDecline(lottery, now)) {
+            return@withLock DeclineTransactionResult(declined = false)
+        }
+
+        val promoted = candidateUserIds
+            .distinct()
+            .filter { it != userId }
+            .firstNotNullOfOrNull { candidateId ->
+                val candidate = entries[LotteryEntry.idFor(lotteryId, candidateId)]
+                candidate?.takeIf { it.lotteryId == lotteryId && it.status == EntryStatus.LOST }
+            }
+
+        val updatedDeclined = if (promoted != null) {
+            entries[promoted.id] = promoted.copy(status = EntryStatus.WON)
+            entry.copy(
+                status = EntryStatus.DECLINED,
+                replacementUserId = promoted.userId,
+                replacementPromotedAt = now,
+                replacementNotified = false,
+            )
+        } else {
+            entry.copy(status = EntryStatus.DECLINED)
+        }
+        entries[id] = updatedDeclined
+        // Publish once after both updates so live observers see the completed atomic state.
         publish()
+        DeclineTransactionResult(
+            declined = true,
+            promotedUserId = promoted?.userId,
+            declinedEntry = updatedDeclined,
+            lottery = lottery,
+        )
+    }
+
+    override suspend fun markReplacementNotified(
+        lotteryId: String,
+        decliningUserId: String,
+        expectedReplacementUserId: String,
+        expectedPromotedAt: Long,
+    ): Boolean = mutex.withLock {
+        val id = LotteryEntry.idFor(lotteryId, decliningUserId)
+        val current = entries[id] ?: return@withLock false
+        if (
+            current.lotteryId != lotteryId ||
+            current.status != EntryStatus.DECLINED ||
+            current.replacementUserId != expectedReplacementUserId ||
+            current.replacementPromotedAt != expectedPromotedAt
+        ) {
+            return@withLock false
+        }
+        if (!current.replacementNotified) {
+            entries[id] = current.copy(replacementNotified = true)
+            publish()
+        }
         true
     }
 

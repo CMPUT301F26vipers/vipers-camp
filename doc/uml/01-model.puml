@@ -102,6 +102,9 @@ package "domain.model" {
     groupSize: Int
     joinedAt: Long
     status: EntryStatus
+    replacementUserId: String?
+    replacementPromotedAt: Long?
+    replacementNotified: Boolean
     --
     canReserve(lottery: Lottery, now: Long): Boolean
     canDecline(lottery: Lottery, now: Long): Boolean

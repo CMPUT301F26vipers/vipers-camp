@@ -455,4 +455,83 @@ class NotificationServiceTest {
 
         assertEquals(1, notifications.getNotificationsFor("sam").size)
     }
+
+    // US 01.04.03 / T-12: replacement win notices
+
+    @Test
+    fun sendReplacementWin_oneCampsite_usesReplacementIdPromotionTimeAndWinWording() = runBlocking {
+        service.sendReplacementWin(hintonLottery, "jo", promotedAt = 1_750L)
+
+        val notice = notifications.getNotificationsFor("jo").single()
+        assertEquals("replacement_may_jo", notice.id)
+        assertEquals(NotificationType.WON, notice.type)
+        assertEquals("system", notice.senderId)
+        assertEquals("hinton", notice.campsiteId)
+        assertEquals("may", notice.lotteryId)
+        assertEquals("You won the lottery!", notice.title)
+        assertEquals(
+            "You won a spot at Hinton Ridge Campground. Reserve your nights before time 2000.",
+            notice.message,
+        )
+        assertEquals(1_750L, notice.createdAt)
+        assertFalse(notice.read)
+        assertFalse(notice.shownOnDevice)
+        assertEquals(NotificationTarget.OpenReserve("may"), notice.target)
+    }
+
+    @Test
+    fun sendReplacementWin_twoCampsites_namesBothWithNullCampsiteId() = runBlocking {
+        val bothLottery = hintonLottery.copy(campsiteIds = listOf("hinton", "banff"))
+        service.sendReplacementWin(bothLottery, "jo", promotedAt = 1_800L)
+
+        val notice = notifications.getNotificationsFor("jo").single()
+        assertEquals(
+            "You won a spot at Hinton Ridge Campground, Bow River Sites. " +
+                "Reserve your nights before time 2000.",
+            notice.message,
+        )
+        assertNull(notice.campsiteId)
+    }
+
+    @Test
+    fun sendReplacementWin_optedOutRecipient_savesNothing() = runBlocking {
+        var addAllCalled = false
+        val counting = object : NotificationRepository by notifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                addAllCalled = true
+            }
+        }
+        NotificationService(counting, campsites, profiles, formatDate = { "time $it" })
+            .sendReplacementWin(hintonLottery, "riley", promotedAt = 1_750L)
+
+        assertFalse(addAllCalled)
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+    }
+
+    @Test
+    fun sendReplacementWin_redeliveredAfterReadAndShown_preservesFlagsAndPromotionTime() = runBlocking {
+        val seeded = Notification(
+            id = "replacement_may_jo",
+            recipientId = "jo",
+            senderId = "system",
+            campsiteId = "hinton",
+            lotteryId = "may",
+            type = NotificationType.WON,
+            title = "You won the lottery!",
+            message = "You won a spot at Hinton Ridge Campground. Reserve your nights before time 2000.",
+            read = true,
+            shownOnDevice = true,
+            createdAt = 1_750L,
+        )
+        val repo = FakeNotificationRepository(listOf(seeded))
+        val svc = NotificationService(repo, campsites, profiles, formatDate = { "time $it" })
+
+        svc.sendReplacementWin(hintonLottery, "jo", promotedAt = 1_750L)
+
+        val notice = repo.getNotificationsFor("jo").single()
+        assertEquals("replacement_may_jo", notice.id)
+        assertEquals(1_750L, notice.createdAt)
+        assertTrue(notice.read)
+        assertTrue(notice.shownOnDevice)
+    }
 }

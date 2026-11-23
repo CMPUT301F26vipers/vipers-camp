@@ -122,12 +122,13 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | groupSize | number | |
 | joinedAt | number | ms |
 | status | string | `WAITING`, `WON`, `LOST`, `DECLINED`, `RESERVED`, `EXPIRED`, `REMOVED` |
+| replacementUserId | string? | default `null`; promoted replacement user ID saved when a win is declined (T-12) |
+| replacementPromotedAt | number? | ms, default `null`; promotion time for post-commit notice recovery (T-12) |
+| replacementNotified | bool | default `false`; true once the replacement notice is delivered or skipped by opt-out |
 
-A winner declines with `declineTransaction(lotteryId, userId)` (US 01.04.03). In one transaction it
-sets `status` to `DECLINED` only if the entry is still `WON`, and writes no other field. It returns
-`true` if it changed the entry, and `false` if the entry is missing or has any other status (already
-`DECLINED`, `RESERVED`…), so two quick taps can't decline twice. It doesn't pick a replacement
-winner; that is the replacement draw (T-12). Transactions need a connection, so it fails offline.
+Existing `lotteryEntries` documents missing the three replacement fields default to `replacementUserId = null`, `replacementPromotedAt = null`, and `replacementNotified = false`.
+
+A winner declines via `LotteryDrawer.declineAndDrawReplacement` (US 01.04.03, T-12), which shuffles the lottery's `LOST` user IDs outside the transaction with its injected `Random` and calls `declineTransaction(lotteryId, userId, candidateUserIds, now)`. In one atomic transaction it re-reads the lottery and declining entry, checks `LotteryEntry.canDecline(lottery, now)` (entry still `WON`, lottery not removed, `now` within inclusive `bookingStart..bookingEnd`), reads candidate entries in the supplied order until finding one still `LOST` in the same lottery, sets the declining entry to `DECLINED` (recording `replacementUserId`, `replacementPromotedAt`, and `replacementNotified = false` when promoted), and sets the chosen replacement entry to `WON`. If the candidate pool is empty, the valid decline still succeeds with no promotion; if the decline is stale, neither entry changes. Notification delivery runs after the commit (`NotificationService.sendReplacementWin`) and acknowledges handling with `markReplacementNotified(lotteryId, decliningUserId, expectedReplacementUserId, expectedPromotedAt)` (updating only `replacementNotified = true` in a transaction after verifying `DECLINED`, `replacementUserId`, and `replacementPromotedAt` still match, idempotently on duplicates); if delivery fails, reloading the Reserve screen (`ReserveController.fetchData` -> `LotteryDrawer.retryPendingReplacementNotice`) recovers delivery without running another draw. Cancelling or rejecting a reservation keeps the entry `RESERVED`, so no replacement winner is drawn. Transactions need a connection, so declining fails offline.
 
 ### `reservations`: `Reservation` (`ReservationRepository`)
 
@@ -211,8 +212,13 @@ set only when the lottery covers one campsite. A win is `WON` with the title "Yo
 the message "You won a spot at <campsite names>. Reserve your nights before <booking end>." A loss is
 `NOT_SELECTED` with the title "Not selected this time" and the message "You weren't selected for
 <campsite names> this time." Someone in both lists only gets the win. `NotificationService.sendDrawResults`
-builds them all and saves them in one `addAll`. `batchId` stays `null` for draws; it only groups owner
-broadcasts.
+builds them all and saves them in one `addAll`. When a winner declines and a `LOST` entrant is
+promoted (T-12), `NotificationService.sendReplacementWin` writes a separate deterministic `WON` notice
+with ID `replacement_<lotteryId>_<userId>` and `createdAt = promotionTime` via `addAll` (respecting
+`optedIn`), leaving `draw_<lotteryId>_<userId>` (`NOT_SELECTED`) intact as the original draw record;
+starting unread and unshown, preserving `read`, `shownOnDevice`, and `createdAt` on retry, and
+preventing original-manifest replays from overwriting the promotion. `batchId` stays `null` for
+draws; it only groups owner broadcasts.
 
 Users who turned notifications off on Settings (`notificationsEnabled = false`) get none
 (US 01.10.01). Before saving a notification for some users, call

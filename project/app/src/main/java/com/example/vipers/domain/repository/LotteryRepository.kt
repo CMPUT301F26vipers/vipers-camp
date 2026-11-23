@@ -1,7 +1,7 @@
 /*
  * LotteryRepository.kt
  * What the app can do with lotteries and their waiting-list entries (Repository pattern).
- * Known issues: only the draw and the replacement draw run as transactions and are added by those stories.
+ * Known issues: none.
  */
 package com.example.vipers.domain.repository
 
@@ -42,6 +42,18 @@ sealed class DrawTransactionResult {
     /** Validation or state error (e.g. registration still open or lottery not found). */
     data class Error(val message: String) : DrawTransactionResult()
 }
+
+/** Result of an atomic win-decline and replacement-promotion transaction (US 01.04.03, T-12). */
+data class DeclineTransactionResult(
+    /** True if the declining entry changed from WON to DECLINED in this transaction. */
+    val declined: Boolean,
+    /** User ID of the LOST entrant promoted to WON, or null if none was eligible or decline did not occur. */
+    val promotedUserId: String? = null,
+    /** The committed declined entry, when [declined] is true. */
+    val declinedEntry: LotteryEntry? = null,
+    /** The committed lottery snapshot, when [declined] is true. */
+    val lottery: Lottery? = null,
+)
 
 /** Saves and loads [Lottery]s and their [LotteryEntry]s. */
 interface LotteryRepository {
@@ -97,12 +109,42 @@ interface LotteryRepository {
     suspend fun updateEntry(entry: LotteryEntry)
 
     /**
-     * Declines [userId]'s win in [lotteryId] (US 01.04.03): in one transaction, sets the entry to
-     * [EntryStatus.DECLINED] only if it is still [EntryStatus.WON], and changes no other field.
-     * Returns true if it changed the entry, or false if the entry is missing or has any other
-     * status (e.g. already DECLINED or RESERVED), so two quick taps can't decline twice.
+     * Atomically declines [userId]'s win in [lotteryId] and promotes the first eligible LOST
+     * entrant from [candidateUserIds] in one transaction at time [now] (US 01.04.03, T-12).
+     *
+     * Re-reads the lottery and declining entry, checks [LotteryEntry.canDecline], and reads
+     * candidate entry documents in the supplied order until finding one still [EntryStatus.LOST]
+     * in [lotteryId]. Atomically transitions `WON -> DECLINED` (persisting [LotteryEntry.replacementUserId],
+     * [LotteryEntry.replacementPromotedAt], and `replacementNotified = false` when a recipient is
+     * promoted for post-commit notice recovery) and `LOST -> WON` for the promoted recipient.
+     * When the pool is empty, the valid decline still succeeds with `promotedUserId = null`.
+     * When the decline is stale (missing, not WON, removed lottery, or outside booking), neither
+     * entry changes and `declined = false` is returned.
      */
-    suspend fun declineTransaction(lotteryId: String, userId: String): Boolean
+    suspend fun declineTransaction(
+        lotteryId: String,
+        userId: String,
+        candidateUserIds: List<String>,
+        now: Long = System.currentTimeMillis(),
+    ): DeclineTransactionResult
+
+    /**
+     * Marks replacement-notice delivery as handled (`replacementNotified = true`) on
+     * [decliningUserId]'s declined entry in [lotteryId] only when the stored entry still has
+     * [EntryStatus.DECLINED], [LotteryEntry.replacementUserId] == [expectedReplacementUserId], and
+     * [LotteryEntry.replacementPromotedAt] == [expectedPromotedAt] (T-12).
+     *
+     * Updates only `replacementNotified`, leaving all other fields untouched so a stale
+     * acknowledgment preserves newer fields and cannot acknowledge a different replacement record.
+     * Duplicate acknowledgments when `replacementNotified` is already `true` are idempotent
+     * no-ops returning `true`; missing or mismatched records return `false`.
+     */
+    suspend fun markReplacementNotified(
+        lotteryId: String,
+        decliningUserId: String,
+        expectedReplacementUserId: String,
+        expectedPromotedAt: Long,
+    ): Boolean
 
     /** Directly seeds an entry without transactional lifecycle validation. For tests and SeedLoader only. */
     suspend fun seedEntry(entry: LotteryEntry)

@@ -228,11 +228,14 @@ package "services" {
     listenToInbox(userId: String, listener: InboxListener): Subscription
     suspend markRead(id: String)
     suspend sendDrawResults(result: DrawResult, now: Long)
+    suspend sendReplacementWin(lottery: Lottery, recipientId: String, promotedAt: Long)
   }
 
   class LotteryDrawer {
     random: Random
     suspend drawLottery(lotteryId: String, now: Long): LotteryDrawResult
+    suspend declineAndDrawReplacement(lotteryId: String, decliningUserId: String, now: Long): ReplacementDrawResult
+    suspend retryPendingReplacementNotice(lottery: Lottery, declinedEntry: LotteryEntry): Boolean
   }
 
   class DrawAndNotifyWorker <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
@@ -274,6 +277,11 @@ abstract class LotteryDrawResult <<sealed>> {
   Error(message)
 }
 
+abstract class ReplacementDrawResult <<sealed>> {
+  Declined(promotedUserId, noticeDelivered)
+  NotDeclined
+}
+
 CampApp *-- AppContainer : creates >
 AppContainer o-- DeviceIdentityManager
 AppContainer o-- LotteryDrawer
@@ -305,6 +313,7 @@ WaitingListController ..> ProfileRepository
 ReserveController ..> CampsiteRepository
 ReserveController ..> LotteryRepository
 ReserveController ..> ReservationRepository
+ReserveController ..> LotteryDrawer
 ReserveController ..> OfferState
 ReservationController ..> ReservationRepository
 ReservationController ..> ProfileRepository
@@ -325,6 +334,7 @@ LotteryDrawer ..> NotificationRepository
 LotteryDrawer ..> CampsiteRepository
 LotteryDrawer --> NotificationService : sends results through >
 LotteryDrawer ..> LotteryDrawResult
+LotteryDrawer ..> ReplacementDrawResult
 DrawAndNotifyWorker ..> LotteryDrawer
 DrawAndNotifyWorker ..> NotificationRepository
 DeletionService ..> ProfileRepository

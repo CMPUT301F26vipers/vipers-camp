@@ -12,10 +12,12 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.validateLottery
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.UpdateLotteryResult
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import java.time.ZoneId
@@ -209,16 +211,101 @@ class FirestoreLotteryRepository(
         }.await()
     }
 
-    override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean {
-        val entryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+    override suspend fun declineTransaction(
+        lotteryId: String,
+        userId: String,
+        candidateUserIds: List<String>,
+        now: Long,
+    ): DeclineTransactionResult {
+        val lotteryDoc = lotteries.document(lotteryId)
+        val decliningEntryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+        val uniqueCandidates = candidateUserIds.distinct().filter { it != userId }
 
         return db.runTransaction { tx ->
+            // All reads first (Firestore requirement)
+            val lotterySnap = tx.get(lotteryDoc)
+            if (!lotterySnap.exists()) {
+                return@runTransaction DeclineTransactionResult(declined = false)
+            }
+            val lottery = lotterySnap.toLottery()
+
+            val decliningSnap = tx.get(decliningEntryDoc)
+            if (!decliningSnap.exists()) {
+                return@runTransaction DeclineTransactionResult(declined = false)
+            }
+            val decliningEntry = decliningSnap.toLotteryEntry()
+            if (decliningEntry.lotteryId != lotteryId || !decliningEntry.canDecline(lottery, now)) {
+                return@runTransaction DeclineTransactionResult(declined = false)
+            }
+
+            var promotedUserId: String? = null
+            var promotedDoc: DocumentReference? = null
+            for (candidateId in uniqueCandidates) {
+                val candidateDoc = entries.document(LotteryEntry.idFor(lotteryId, candidateId))
+                val candidateSnap = tx.get(candidateDoc)
+                if (!candidateSnap.exists()) continue
+                val candidateEntry = candidateSnap.toLotteryEntry()
+                if (candidateEntry.lotteryId == lotteryId && candidateEntry.status == EntryStatus.LOST) {
+                    promotedUserId = candidateId
+                    promotedDoc = candidateDoc
+                    break
+                }
+            }
+
+            // Writes commit together; only the necessary fields change
+            val updatedDeclined = if (promotedUserId != null && promotedDoc != null) {
+                tx.update(
+                    decliningEntryDoc,
+                    mapOf(
+                        "status" to EntryStatus.DECLINED.name,
+                        "replacementUserId" to promotedUserId,
+                        "replacementPromotedAt" to now,
+                        "replacementNotified" to false,
+                    ),
+                )
+                tx.update(promotedDoc, "status", EntryStatus.WON.name)
+                decliningEntry.copy(
+                    status = EntryStatus.DECLINED,
+                    replacementUserId = promotedUserId,
+                    replacementPromotedAt = now,
+                    replacementNotified = false,
+                )
+            } else {
+                tx.update(decliningEntryDoc, "status", EntryStatus.DECLINED.name)
+                decliningEntry.copy(status = EntryStatus.DECLINED)
+            }
+
+            DeclineTransactionResult(
+                declined = true,
+                promotedUserId = promotedUserId,
+                declinedEntry = updatedDeclined,
+                lottery = lottery,
+            )
+        }.await()
+    }
+
+    override suspend fun markReplacementNotified(
+        lotteryId: String,
+        decliningUserId: String,
+        expectedReplacementUserId: String,
+        expectedPromotedAt: Long,
+    ): Boolean {
+        val entryDoc = entries.document(LotteryEntry.idFor(lotteryId, decliningUserId))
+        return db.runTransaction { tx ->
             val snap = tx.get(entryDoc)
-            if (!snap.exists() || snap.getString("status") != EntryStatus.WON.name) {
+            if (!snap.exists()) return@runTransaction false
+            val current = snap.toLotteryEntry()
+            if (
+                current.lotteryId != lotteryId ||
+                current.status != EntryStatus.DECLINED ||
+                current.replacementUserId != expectedReplacementUserId ||
+                current.replacementPromotedAt != expectedPromotedAt
+            ) {
                 return@runTransaction false
             }
-            // only the status, so groupSize and joinedAt keep their saved values
-            tx.update(entryDoc, "status", EntryStatus.DECLINED.name)
+            if (!current.replacementNotified) {
+                tx.update(entryDoc, "replacementNotified", true)
+            }
             true
         }.await()
     }
@@ -519,6 +606,9 @@ fun LotteryEntry.toMap(): Map<String, Any?> = mapOf(
     "groupSize" to groupSize,
     "joinedAt" to joinedAt,
     "status" to status.name,
+    "replacementUserId" to replacementUserId,
+    "replacementPromotedAt" to replacementPromotedAt,
+    "replacementNotified" to replacementNotified,
 )
 
 /** Builds an entry from its Firestore document. Missing fields get the model's defaults. */
@@ -529,4 +619,7 @@ fun DocumentSnapshot.toLotteryEntry(): LotteryEntry = LotteryEntry(
     groupSize = getInt("groupSize") ?: 1,
     joinedAt = getLong("joinedAt") ?: 0,
     status = getString("status")?.let { EntryStatus.valueOf(it) } ?: EntryStatus.WAITING,
+    replacementUserId = getString("replacementUserId"),
+    replacementPromotedAt = getLong("replacementPromotedAt"),
+    replacementNotified = getBoolean("replacementNotified") ?: false,
 )
