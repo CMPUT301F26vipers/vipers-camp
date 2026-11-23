@@ -185,6 +185,16 @@ confirms something they just did. A rejection should respect the opt-out: check 
 `NotificationService.optedIn` first and pass `sendNotice = false` if they turned notifications
 off. Everything else in the transaction still happens.
 
+The owner rejects with `rejectTransaction(reservationId, reason, now, sendNotice)` (US 02.08.01).
+It checks `Reservation.isValidRejectionReason(reason)` first and throws
+`IllegalArgumentException`, writing nothing, if the reason is blank. Otherwise it runs the same
+`changeStatus` transaction with `REJECTED` and the trimmed reason: if the reservation is missing or
+no longer `CONFIRMED` (e.g. the entrant cancelled first, or a second tap) it writes nothing and
+returns `false`; otherwise it sets `status`, `statusChangedAt` and `rejectionReason`, removes the
+reservation's `nights()` from `heldNights` (nights already missing are ignored, and `openNights`
+stays the same), writes the `rejected_<reservationId>` notice unless `sendNotice` is false, and
+returns `true`. Transactions need a connection, so rejecting fails offline.
+
 ### `notifications`: `Notification` (`NotificationRepository`)
 
 | Field | Type | Notes |

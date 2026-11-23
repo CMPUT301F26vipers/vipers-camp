@@ -3,7 +3,7 @@
  * An in-memory ReservationRepository for unit and intent tests (test double for Repository).
  * Supports atomic reservation transactions with conflict checks (T-03) and sends confirmation
  * notifications to the entrant's inbox (US 01.05.01). Cancelling or rejecting gives the nights
- * back to the campsite's calendar if a campsite repository is attached (US 01.07.01).
+ * back to the campsite's calendar if a campsite repository is attached (US 01.07.01, 02.08.01).
  * Known issues: none.
  */
 package com.example.vipers.data.fake
@@ -208,5 +208,15 @@ class FakeReservationRepository(
 
         if (sendNotice) notificationRepository?.saveNotification(changed.statusNotice(now))
         true
+    }
+
+    override suspend fun rejectTransaction(
+        reservationId: String,
+        reason: String,
+        now: Long,
+        sendNotice: Boolean,
+    ): Boolean {
+        require(Reservation.isValidRejectionReason(reason)) { "A rejection needs a reason" }
+        return changeStatus(reservationId, ReservationStatus.REJECTED, reason.trim(), now, sendNotice)
     }
 }

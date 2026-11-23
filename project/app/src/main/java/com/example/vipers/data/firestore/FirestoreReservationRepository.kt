@@ -3,7 +3,8 @@
  * The real ReservationRepository: saves and loads reservations in the Firestore "reservations"
  * collection (Repository pattern).
  * Supports atomic reservation transactions with conflict checks (T-03) and saves confirmation
- * notifications (US 01.05.01). Cancelling or rejecting is one transaction too (US 01.07.01).
+ * notifications (US 01.05.01). Cancelling or rejecting is one transaction too (US 01.07.01,
+ * 02.08.01).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  */
 package com.example.vipers.data.firestore
@@ -240,6 +241,16 @@ class FirestoreReservationRepository(
             }
             true
         }.await()
+    }
+
+    override suspend fun rejectTransaction(
+        reservationId: String,
+        reason: String,
+        now: Long,
+        sendNotice: Boolean,
+    ): Boolean {
+        require(Reservation.isValidRejectionReason(reason)) { "A rejection needs a reason" }
+        return changeStatus(reservationId, ReservationStatus.REJECTED, reason.trim(), now, sendNotice)
     }
 }
 

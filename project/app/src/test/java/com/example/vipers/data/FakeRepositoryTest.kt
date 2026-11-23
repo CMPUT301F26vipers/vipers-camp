@@ -1929,4 +1929,78 @@ class FakeRepositoryTest {
             runBlocking { reservationRepo.changeStatus("res-1", ReservationStatus.CONFIRMED) }
         }
     }
+
+    @Test
+    fun rejectTransaction_confirmed_savesRejectedWithTheTrimmedReasonAndTime() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        assertTrue(reservationRepo.rejectTransaction("res-1", "  Forest fire warning  ", 3000))
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals(ReservationStatus.REJECTED, saved.status)
+        assertEquals("Forest fire warning", saved.rejectionReason)
+        assertEquals(3000L, saved.statusChangedAt)
+    }
+
+    @Test
+    fun rejectTransaction_releasesOnlyItsNightsAndKeepsOpenNights() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        reservationRepo.rejectTransaction("res-1", "Forest fire warning", 3000)
+
+        val calendar = pineLake.getAvailability("site-1")
+        assertEquals(listOf("2027-06-03"), calendar.heldNights)
+        assertEquals(listOf("2027-06-01", "2027-06-02", "2027-06-03"), calendar.openNights)
+    }
+
+    @Test
+    fun rejectTransaction_cancelledReservation_returnsFalseAndChangesNothing() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        reservationRepo.changeStatus("res-1", ReservationStatus.CANCELLED, now = 3000)
+        val heldBefore = pineLake.getAvailability("site-1").heldNights
+
+        assertFalse(reservationRepo.rejectTransaction("res-1", "Forest fire warning", 4000))
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals(ReservationStatus.CANCELLED, saved.status)
+        assertEquals(3000L, saved.statusChangedAt)
+        assertNull(saved.rejectionReason)
+        assertEquals(heldBefore, pineLake.getAvailability("site-1").heldNights)
+    }
+
+    @Test
+    fun rejectTransaction_alreadyRejected_returnsFalseAndKeepsTheFirstReason() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        reservationRepo.rejectTransaction("res-1", "Forest fire warning", 3000)
+
+        assertFalse(reservationRepo.rejectTransaction("res-1", "Flooding", 4000))
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals("Forest fire warning", saved.rejectionReason)
+        assertEquals(3000L, saved.statusChangedAt)
+    }
+
+    @Test
+    fun rejectTransaction_unknownReservation_returnsFalse() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        assertFalse(reservationRepo.rejectTransaction("nope", "Forest fire warning", 3000))
+    }
+
+    @Test
+    fun rejectTransaction_blankReason_throwsAndChangesNothing() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { reservationRepo.rejectTransaction("res-1", "   ", 3000) }
+        }
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals(ReservationStatus.CONFIRMED, saved.status)
+        assertNull(saved.rejectionReason)
+        assertEquals(
+            listOf("2027-06-01", "2027-06-02", "2027-06-03"),
+            pineLake.getAvailability("site-1").heldNights,
+        )
+        assertTrue(pineLakeInbox.getNotificationsFor("user-1").isEmpty())
+    }
 }
