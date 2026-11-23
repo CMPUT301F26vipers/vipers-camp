@@ -237,8 +237,11 @@ fun LotteryFormScreen(
         ) {
             when {
                 controller.loading && !editing -> CircularProgressIndicator()
-                controller.error != null && controller.campsite == null && !editing -> Text(controller.error!!)
+                !editing && (controller.loadFailed || (controller.error != null && controller.ownedCampsites.isEmpty())) ->
+                    Text(controller.error ?: "Unable to load campsite availability.")
                 else -> {
+                    val isReadOnly = controller.isReadOnly
+
                     // O10 Header / Status Banner when editing
                     if (editing && controller.loadedLottery != null) {
                         val loaded = controller.loadedLottery!!
@@ -281,15 +284,100 @@ fun LotteryFormScreen(
                                 )
                             }
                         }
+
+                        if (controller.hasIneligibleStoredCampsites) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("ineligible_campsites_banner")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "One or more previously included campsites are no longer eligible and must be removed from this lottery before saving.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = controller.removeIneligibleConfirmed,
+                                            onCheckedChange = { confirmed ->
+                                                controller.onConfirmRemoveIneligibleChange(confirmed)
+                                            },
+                                            enabled = !isReadOnly,
+                                            modifier = Modifier.testTag("checkbox_confirm_remove_ineligible")
+                                        )
+                                        Text(
+                                            text = "Confirm removing unavailable campsite(s)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    controller.campsite?.let { camp ->
-                        Text("Campsite: ${camp.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    // Campsites Multi-Select (O08 / O10, US 02.04.02)
+                    Text("Campsites", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Select one or more campsites:")
+
+                    if (controller.ownedCampsites.isEmpty()) {
+                        Text("No active campsites available.")
+                    } else {
+                        controller.ownedCampsites.forEach { camp ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = camp.id in controller.selectedCampsiteIds,
+                                    onCheckedChange = { checked ->
+                                        controller.toggleCampsite(camp.id, checked)
+                                    },
+                                    enabled = !isReadOnly,
+                                    modifier = Modifier.testTag("campsite_checkbox_${camp.id}")
+                                )
+                                Text(text = camp.name)
+                            }
+                        }
+                    }
+
+                    Text("${controller.selectedCampsiteIds.size} campsite(s) selected")
+                    if (controller.loadingCampsiteCalendars) {
+                        Text("Loading campsite availability...")
+                    }
+                    if (controller.calendarLoadError != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("campsite_calendar_error_banner")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = controller.calendarLoadError!!,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Button(
+                                    onClick = { controller.retryCampsiteCalendarLoad() },
+                                    enabled = !isReadOnly && !controller.loadingCampsiteCalendars,
+                                    modifier = Modifier.testTag("button_retry_campsite_calendar")
+                                ) {
+                                    Text("Retry")
+                                }
+                            }
+                        }
                     }
 
                     HorizontalDivider()
 
-                    val isReadOnly = controller.isReadOnly
                     val loaded = controller.loadedLottery
                     val isRegistrationOpen = editing && loaded != null && loaded.status(System.currentTimeMillis()) == LotteryStatus.OPEN
 
@@ -324,10 +412,34 @@ fun LotteryFormScreen(
 
                     Button(
                         onClick = { controller.loadSelectedRange() },
-                        enabled = !isReadOnly && controller.rangeStart.isNotEmpty() && controller.rangeEnd.isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth()
+                        enabled = !isReadOnly &&
+                            !controller.loadingCampsiteCalendars &&
+                            !controller.hasMissingSelectedCalendars &&
+                            controller.selectedCampsiteIds.isNotEmpty() &&
+                            controller.rangeStart.isNotEmpty() &&
+                            controller.rangeEnd.isNotEmpty(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("button_load_nights")
                     ) {
                         Text("Load nights")
+                    }
+
+                    if (controller.conflictMessage != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("nights_conflict_banner")
+                        ) {
+                            Text(
+                                text = controller.conflictMessage!!,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
 
                     Row(
@@ -338,7 +450,11 @@ fun LotteryFormScreen(
                         Text("Available nights:")
                         Button(
                             onClick = { controller.toggleSelectAll() },
-                            enabled = !isReadOnly && controller.availableNights.isNotEmpty()
+                            enabled = !isReadOnly &&
+                                !controller.loadingCampsiteCalendars &&
+                                !controller.hasMissingSelectedCalendars &&
+                                controller.availableNights.isNotEmpty(),
+                            modifier = Modifier.testTag("button_select_all")
                         ) {
                             Text(
                                 if (controller.availableNights.isNotEmpty() &&
@@ -353,15 +469,20 @@ fun LotteryFormScreen(
                     }
 
                     controller.availableNights.forEach { night ->
+                        val isConflicting = night in controller.conflictingNights
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = night in controller.selectedNights,
                                 onCheckedChange = { checked ->
                                     controller.toggleNight(night, checked)
                                 },
-                                enabled = !isReadOnly
+                                enabled = !isReadOnly,
+                                modifier = Modifier.testTag("night_checkbox_$night")
                             )
-                            Text(text = night)
+                            Text(
+                                text = if (isConflicting) "$night (unavailable)" else night,
+                                color = if (isConflicting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
 
@@ -499,7 +620,10 @@ fun LotteryFormScreen(
                             controller.clearError()
                             controller.saveLottery()
                         },
-                        enabled = !controller.saving && !isReadOnly,
+                        enabled = !controller.saving &&
+                            !isReadOnly &&
+                            !controller.loadingCampsiteCalendars &&
+                            !controller.hasMissingSelectedCalendars,
                         shape = ButtonShape,
                         modifier = Modifier
                             .fillMaxWidth()

@@ -34,7 +34,11 @@ class FirestoreLotteryRepository(
 
     override suspend fun addLottery(lottery: Lottery): String {
         val doc = lotteries.document()
-        doc.set(lottery.copy(id = doc.id).toMap()).await()
+        val normalized = lottery.copy(
+            id = doc.id,
+            campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
+        )
+        doc.set(normalized.toMap()).await()
         return doc.id
     }
 
@@ -97,10 +101,13 @@ class FirestoreLotteryRepository(
                     return@runTransaction UpdateLotteryResult.ReadOnly(blockedReason)
                 }
 
+                val normalizedLottery = lottery.copy(
+                    campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
+                )
                 val currentWaitingCount = stored.waitingUserIds.size
 
                 val validationErrors = validateLottery(
-                    lottery = lottery,
+                    lottery = normalizedLottery,
                     now = now,
                     storedLottery = stored,
                     currentWaitingCount = currentWaitingCount,
@@ -110,7 +117,7 @@ class FirestoreLotteryRepository(
                     return@runTransaction UpdateLotteryResult.Error(validationErrors.first())
                 }
 
-                tx.update(lotteryRef, lottery.toEditableFields())
+                tx.update(lotteryRef, normalizedLottery.toEditableFields())
                 UpdateLotteryResult.Success
             }.await()
         } catch (e: CancellationException) {
@@ -478,11 +485,12 @@ fun Lottery.toMap(): Map<String, Any?> = mapOf(
 )
 
 /**
- * The fields an owner can edit in a lottery (US 02.04.06).
- * Leaving out id, ownerId, campsiteIds, drawnAt, removed, waitingUserIds, entriesVersion,
+ * The fields an owner can edit in a lottery (US 02.04.02, 02.04.06).
+ * Leaving out id, ownerId, drawnAt, removed, waitingUserIds, entriesVersion,
  * and draw metadata preserves their saved values in Firestore.
  */
 fun Lottery.toEditableFields(): Map<String, Any?> = mapOf(
+    "campsiteIds" to campsiteIds.filter { it.isNotBlank() }.distinct(),
     "nightsOffered" to nightsOffered,
     "nightsDescription" to nightsDescription,
     "registrationStart" to registrationStart,

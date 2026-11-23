@@ -116,13 +116,14 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | participantCount | number | total participants in draw |
 | winnerCount | number | total winners in draw |
 
-Owners save changes with `updateLottery(lottery, callerId)` (US 02.04.06). In one transaction, it
-verifies ownership (`callerId` matches `stored.ownerId`), validates edit eligibility (not drawn,
-removed, or closed) and model rules against the current `waitingUserIds` count, and writes only
-`nightsOffered`, `nightsDescription`, `registrationStart`, `registrationEnd`, `bookingStart`,
-`bookingEnd`, `winnersCount`, and `waitlistCapacity`. It never overwrites `ownerId`, `campsiteIds`,
-`drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`, `manifestChunkCount`,
-`participantCount`, or `winnerCount`, preventing concurrent entrants from being reset or lost.
+Owners save changes with `updateLottery(lottery, callerId)` (US 02.04.02, 02.04.06). In one
+transaction, it verifies ownership (`callerId` matches `stored.ownerId`), validates edit eligibility
+(not drawn, removed, or closed) and model rules against the current `waitingUserIds` count, and
+writes only `campsiteIds` (deduplicated), `nightsOffered`, `nightsDescription`, `registrationStart`,
+`registrationEnd`, `bookingStart`, `bookingEnd`, `winnersCount`, and `waitlistCapacity`. It never
+overwrites `ownerId`, `drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`,
+`manifestChunkCount`, `participantCount`, or `winnerCount`, preventing concurrent entrants from being
+reset or lost.
 
 **Starting the draw (US 02.05.01b).** Whenever the app opens, `DrawAndNotifyWorker` calls
 `getLotteriesToDraw(now)` and draws each one. It returns the lotteries where `Lottery.isDueForDraw(now)`

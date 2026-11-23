@@ -51,7 +51,11 @@ class FakeLotteryRepository(
 
     override suspend fun addLottery(lottery: Lottery): String = mutex.withLock {
         val id = "lottery-${nextId++}"
-        lotteries[id] = lottery.copy(id = id)
+        lotteries[id] = lottery.copy(
+            id = id,
+            campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
+        )
+        publish()
         id
     }
 
@@ -81,10 +85,13 @@ class FakeLotteryRepository(
             return@withLock UpdateLotteryResult.ReadOnly(blockedReason)
         }
 
+        val normalizedLottery = lottery.copy(
+            campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
+        )
         val currentWaitingCount = stored.waitingUserIds.size
 
         val validationErrors = validateLottery(
-            lottery = lottery,
+            lottery = normalizedLottery,
             now = now,
             storedLottery = stored,
             currentWaitingCount = currentWaitingCount,
@@ -95,16 +102,18 @@ class FakeLotteryRepository(
         }
 
         val updated = stored.copy(
-            nightsOffered = lottery.nightsOffered,
-            nightsDescription = lottery.nightsDescription,
-            registrationStart = lottery.registrationStart,
-            registrationEnd = lottery.registrationEnd,
-            bookingStart = lottery.bookingStart,
-            bookingEnd = lottery.bookingEnd,
-            winnersCount = lottery.winnersCount,
-            waitlistCapacity = lottery.waitlistCapacity,
+            campsiteIds = normalizedLottery.campsiteIds,
+            nightsOffered = normalizedLottery.nightsOffered,
+            nightsDescription = normalizedLottery.nightsDescription,
+            registrationStart = normalizedLottery.registrationStart,
+            registrationEnd = normalizedLottery.registrationEnd,
+            bookingStart = normalizedLottery.bookingStart,
+            bookingEnd = normalizedLottery.bookingEnd,
+            winnersCount = normalizedLottery.winnersCount,
+            waitlistCapacity = normalizedLottery.waitlistCapacity,
         )
         lotteries[lottery.id] = updated
+        publish()
         UpdateLotteryResult.Success
     }
 

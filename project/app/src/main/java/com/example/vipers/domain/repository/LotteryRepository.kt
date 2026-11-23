@@ -70,12 +70,12 @@ interface LotteryRepository {
     suspend fun closeRegistration(lotteryId: String, now: Long = System.currentTimeMillis()): Boolean
 
     /**
-     * Atomically updates editable fields of an existing [lottery] in a transaction (US 02.04.06).
+     * Atomically updates editable fields of an existing [lottery] in a transaction (US 02.04.02, 02.04.06).
      *
      * In one transaction, reads the latest stored lottery, enforces caller ownership ([callerId]),
-     * checks edit eligibility (not drawn, removed, or closed), validates proposed fields against
-     * the current waiting-list count (preventing capacity from being set below current entrants),
-     * and updates only editable fields while preserving all unedited fields.
+     * checks edit eligibility (not drawn, removed, or closed), validates proposed fields (including
+     * `campsiteIds`) against the current waiting-list count (preventing capacity from being set below
+     * current entrants), and updates only editable fields while preserving all unedited fields.
      *
      * @param lottery Proposed lottery fields to update.
      * @param callerId The device ID of the authenticated user performing the edit.

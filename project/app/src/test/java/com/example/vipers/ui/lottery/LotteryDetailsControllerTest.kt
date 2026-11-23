@@ -16,6 +16,7 @@ import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.UpdateLotteryResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -985,5 +986,54 @@ class LotteryDetailsControllerTest {
         )
         nonJoinedController.fetchData()
         assertFalse(nonJoinedController.canLeave)
+    }
+
+    @Test
+    fun performJoin_whenLargerCampsiteRemovedWhileOpen_recomputesOccupancyAndRejectsJoin() = runTest {
+        val now = System.currentTimeMillis()
+        val smallCamp = Campsite(id = "camp-small", ownerId = "owner-1", maxOccupancy = 2)
+        val largeCamp = Campsite(id = "camp-large", ownerId = "owner-1", maxOccupancy = 4)
+        val multiCampsiteRepo = FakeCampsiteRepository(listOf(smallCamp, largeCamp))
+        val openLottery = Lottery(
+            id = lotteryId,
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-small", "camp-large"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000L,
+            registrationEnd = now + 10_000L,
+            bookingStart = now + 15_000L,
+            bookingEnd = now + 25_000L,
+            winnersCount = 1,
+        )
+        lotteryRepository.addLottery(openLottery)
+
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-entrant",
+            campsiteRepository = multiCampsiteRepo,
+        )
+        controller.fetchData()
+        assertEquals(4, controller.maxOccupancy)
+
+        val updateResult = lotteryRepository.updateLottery(
+            openLottery.copy(campsiteIds = listOf("camp-small")),
+            callerId = "owner-1",
+            now = now,
+        )
+        assertEquals(UpdateLotteryResult.Success, updateResult)
+
+        val joined = controller.performJoin(groupSize = 4, now = now)
+
+        assertFalse(joined)
+        assertFalse(controller.joinSuccess)
+        assertFalse(controller.isJoining)
+        assertFalse(controller.isJoined)
+        assertEquals(2, controller.maxOccupancy)
+        assertEquals(listOf("camp-small"), controller.lottery?.campsiteIds)
+        assertEquals("Group size cannot exceed maximum occupancy of 2", controller.actionError)
+        assertNull(lotteryRepository.getEntry(lotteryId, "user-entrant"))
+        assertTrue(lotteryRepository.getEntries(lotteryId).isEmpty())
     }
 }

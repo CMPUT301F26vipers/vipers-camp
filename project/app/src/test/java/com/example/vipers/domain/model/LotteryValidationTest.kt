@@ -630,4 +630,103 @@ class LotteryValidationTest {
         val unlimitedErrors = validateLottery(unlimited, storedLottery = stored, currentWaitingCount = currentWaitingCount, now = currentTime, zone = edmonton)
         assertTrue(unlimitedErrors.isEmpty())
     }
+
+    @Test
+    fun sharedAvailableNights_intersectsOpenUnheldDatesAcrossSelectedCampsites() {
+        val calendars = mapOf(
+            "camp-1" to AvailabilityCalendar(
+                campsiteId = "camp-1",
+                openNights = listOf("2027-06-01", "2027-06-02", "2027-06-03"),
+                heldNights = listOf("2027-06-02"),
+            ),
+            "camp-2" to AvailabilityCalendar(
+                campsiteId = "camp-2",
+                openNights = listOf("2027-06-01", "2027-06-03", "2027-06-04"),
+                heldNights = listOf("2027-06-03"),
+            ),
+        )
+
+        val shared = sharedAvailableNights(
+            campsiteIds = listOf("camp-1", "camp-2", "camp-1"),
+            calendarsByCampsiteId = calendars,
+            candidateNights = listOf("2027-06-04", "2027-06-03", "2027-06-02", "2027-06-01", "not-a-date"),
+        )
+
+        assertEquals(listOf("2027-06-01"), shared)
+        assertTrue(sharedAvailableNights(emptyList(), calendars, listOf("2027-06-01")).isEmpty())
+    }
+
+    @Test
+    fun validateLottery_withCalendars_checksAllPairsOnCreateAndOnlyNewPairsOnEdit() {
+        val regStart = at("2027-05-01T09:00")
+        val regEnd = at("2027-05-10T17:00")
+        val bookStart = at("2027-06-01T09:00")
+        val bookEnd = at("2027-06-10T17:00")
+        val currentTime = at("2027-05-02T12:00")
+
+        val calA = AvailabilityCalendar(
+            campsiteId = "camp-a",
+            openNights = listOf("2027-06-01", "2027-06-02"),
+            heldNights = listOf("2027-06-01"), // 06-01 became held after creation
+        )
+        val calB = AvailabilityCalendar(
+            campsiteId = "camp-b",
+            openNights = listOf("2027-06-01", "2027-06-02", "2027-06-03"),
+            heldNights = listOf("2027-06-02"), // 06-02 is held on camp-b
+        )
+        val calendars = mapOf("camp-a" to calA, "camp-b" to calB)
+
+        // Create: validates every selected (campsite, night) pair
+        val createProposed = Lottery(
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-a", "camp-b"),
+            nightsOffered = listOf("2027-06-01", "2027-06-02"),
+            registrationStart = regStart,
+            registrationEnd = regEnd,
+            bookingStart = bookStart,
+            bookingEnd = bookEnd,
+        )
+        assertEquals(
+            listOf("2027-06-01", "2027-06-02"),
+            conflictingOfferedNights(createProposed, calendars, storedLottery = null),
+        )
+        assertTrue(
+            validateLottery(createProposed, now = currentTime, zone = edmonton, calendarsByCampsiteId = calendars)
+                .contains("One or more selected nights are no longer available. Please reload the nights."),
+        )
+
+        // Stored lottery covering camp-a and 2027-06-01 (now held on camp-a)
+        val stored = Lottery(
+            id = "lot-1",
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-a"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = regStart - 1000L,
+            registrationEnd = regEnd,
+            bookingStart = bookStart,
+            bookingEnd = bookEnd,
+            winnersCount = 1,
+        )
+
+        // Unrelated edit (winnersCount changed): existing unavailable pair (camp-a, 2027-06-01) preserved
+        val unrelatedEdit = stored.copy(winnersCount = 2)
+        assertTrue(conflictingOfferedNights(unrelatedEdit, calendars, storedLottery = stored).isEmpty())
+        assertTrue(
+            validateLottery(
+                unrelatedEdit,
+                now = currentTime,
+                storedLottery = stored,
+                zone = edmonton,
+                calendarsByCampsiteId = calendars,
+            ).isEmpty(),
+        )
+
+        // Edit adding camp-b validates all proposed nights on newly added camp-b
+        val addSiteB = stored.copy(campsiteIds = listOf("camp-a", "camp-b"), nightsOffered = listOf("2027-06-01", "2027-06-02"))
+        assertEquals(listOf("2027-06-02"), conflictingOfferedNights(addSiteB, calendars, storedLottery = stored))
+
+        // Edit adding 2027-06-03 to retained camp-a validates newly added night against camp-a
+        val addNightOnRetained = stored.copy(nightsOffered = listOf("2027-06-01", "2027-06-03"))
+        assertEquals(listOf("2027-06-03"), conflictingOfferedNights(addNightOnRetained, calendars, storedLottery = stored))
+    }
 }
