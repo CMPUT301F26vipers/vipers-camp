@@ -241,6 +241,14 @@ deterministic notice, leaving `draw_<lotteryId>_<userId>` (`NOT_SELECTED`) intac
 draw record, and preventing original-manifest replays from overwriting the promotion. `batchId` stays
 `null` for draws; it only groups owner broadcasts.
 
+A rejected reservation (US 02.08.01) uses the ID `rejected_<reservationId>`, so the entrant gets one
+per reservation however often it is sent. It is `RESERVATION_REJECTED` from the owner, with
+`campsiteId` and `reservationId` set (a tap opens the reservation), the title "Reservation
+rejected" and the message "<campsite name>: <check-in> to <check-out>. Reason: <reason>".
+`NotificationService.sendReservationRejected(reservation, now)` builds it with
+`Reservation.statusNotice` and saves it, but only for a `REJECTED` reservation with a reason and an
+entrant who hasn't turned notifications off (`optedIn`); it returns whether it saved one.
+
 Users who turned notifications off on Settings (`notificationsEnabled = false`) get none
 (US 01.10.01). Before saving a notification for some users, call
 `NotificationService.optedIn(userIds)`: it returns the ones who still want notifications. A user
