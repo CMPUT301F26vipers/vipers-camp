@@ -13,6 +13,7 @@ import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ImageRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -302,5 +303,166 @@ class AdminControllerTest {
 
         assertEquals(image, viewModel.getImage("img-1"))
         assertNull(viewModel.getImage("non-existent"))
+    }
+
+    @Test
+    fun fetchImages_resolvesCampsiteImageToCurrentCampsiteName() = runBlocking {
+        val campsite = Campsite(id = "camp-1", name = "Sunset Point")
+        val image = ImageAsset(
+            id = "img-1",
+            ownerType = ImageAsset.OWNER_CAMPSITE,
+            ownerId = "camp-1",
+            label = "Old Label"
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(listOf(campsite)),
+            profileRepository = FakeProfileRepository(),
+            imageRepository = FakeImageRepository(listOf(image)),
+        )
+
+        viewModel.fetchImages()
+
+        assertEquals("Sunset Point", viewModel.getImageOwnerName(image))
+        assertEquals("Sunset Point", viewModel.imageOwnerNames[image.id])
+    }
+
+    @Test
+    fun fetchImages_resolvesProfileImageToCurrentUserName() = runBlocking {
+        val profile = UserProfile(id = "user-1", name = "Alice Smith")
+        val image = ImageAsset(
+            id = "img-1",
+            ownerType = ImageAsset.OWNER_PROFILE,
+            ownerId = "user-1",
+            label = "Old Label"
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(listOf(profile)),
+            imageRepository = FakeImageRepository(listOf(image)),
+        )
+
+        viewModel.fetchImages()
+
+        assertEquals("Alice Smith", viewModel.getImageOwnerName(image))
+        assertEquals("Alice Smith", viewModel.imageOwnerNames[image.id])
+    }
+
+    @Test
+    fun fetchImages_outdatedLabelDoesNotOverrideCurrentName() = runBlocking {
+        val campsite = Campsite(id = "camp-1", name = "Current Camp Name")
+        val profile = UserProfile(id = "user-1", name = "Current User Name")
+        val campImage = ImageAsset(
+            id = "img-c",
+            ownerType = ImageAsset.OWNER_CAMPSITE,
+            ownerId = "camp-1",
+            label = "Outdated Camp Label"
+        )
+        val profileImage = ImageAsset(
+            id = "img-p",
+            ownerType = ImageAsset.OWNER_PROFILE,
+            ownerId = "user-1",
+            label = "Outdated Profile Label"
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(listOf(campsite)),
+            profileRepository = FakeProfileRepository(listOf(profile)),
+            imageRepository = FakeImageRepository(listOf(campImage, profileImage)),
+        )
+
+        viewModel.fetchImages()
+
+        assertEquals("Current Camp Name", viewModel.getImageOwnerName(campImage))
+        assertEquals("Current User Name", viewModel.getImageOwnerName(profileImage))
+    }
+
+    @Test
+    fun fetchImages_whenOwnerMissing_fallsBackToImageLabel() = runBlocking {
+        val campImage = ImageAsset(
+            id = "img-c",
+            ownerType = ImageAsset.OWNER_CAMPSITE,
+            ownerId = "missing-camp",
+            label = "Saved Campsite Label"
+        )
+        val profileImage = ImageAsset(
+            id = "img-p",
+            ownerType = ImageAsset.OWNER_PROFILE,
+            ownerId = "missing-user",
+            label = "Saved Profile Label"
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            imageRepository = FakeImageRepository(listOf(campImage, profileImage)),
+        )
+
+        viewModel.fetchImages()
+
+        assertEquals("Saved Campsite Label", viewModel.getImageOwnerName(campImage))
+        assertEquals("Saved Profile Label", viewModel.getImageOwnerName(profileImage))
+    }
+
+    @Test
+    fun fetchImages_whenOwnerMissingAndLabelBlank_usesGenericFallback() = runBlocking {
+        val campImage = ImageAsset(
+            id = "img-c",
+            ownerType = ImageAsset.OWNER_CAMPSITE,
+            ownerId = "missing-camp",
+            label = ""
+        )
+        val profileImage = ImageAsset(
+            id = "img-p",
+            ownerType = ImageAsset.OWNER_PROFILE,
+            ownerId = "missing-user",
+            label = "   "
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            imageRepository = FakeImageRepository(listOf(campImage, profileImage)),
+        )
+
+        viewModel.fetchImages()
+
+        assertEquals("Campsite photo", viewModel.getImageOwnerName(campImage))
+        assertEquals("Profile photo", viewModel.getImageOwnerName(profileImage))
+    }
+
+    @Test
+    fun fetchImages_whenRepositoryLookupFails_handlesGracefullyWithoutFailingImageLoad() = runBlocking {
+        val failingCampsiteRepo = object : CampsiteRepository by FakeCampsiteRepository() {
+            override suspend fun getCampsite(id: String): Campsite? {
+                throw IllegalStateException("Database lookup failure")
+            }
+        }
+        val failingProfileRepo = object : ProfileRepository by FakeProfileRepository() {
+            override suspend fun getProfile(id: String): UserProfile? {
+                throw IllegalStateException("Network timeout")
+            }
+        }
+        val campImage = ImageAsset(
+            id = "img-c",
+            ownerType = ImageAsset.OWNER_CAMPSITE,
+            ownerId = "camp-1",
+            label = "Fallback Camp Label"
+        )
+        val profileImage = ImageAsset(
+            id = "img-p",
+            ownerType = ImageAsset.OWNER_PROFILE,
+            ownerId = "user-1",
+            label = "Fallback Profile Label"
+        )
+        val viewModel = AdminController(
+            campsiteRepository = failingCampsiteRepo,
+            profileRepository = failingProfileRepo,
+            imageRepository = FakeImageRepository(listOf(campImage, profileImage)),
+        )
+
+        viewModel.fetchImages()
+
+        assertFalse(viewModel.imagesLoadFailed)
+        assertNull(viewModel.imagesError)
+        assertEquals(2, viewModel.images.size)
+        assertEquals("Fallback Camp Label", viewModel.getImageOwnerName(campImage))
+        assertEquals("Fallback Profile Label", viewModel.getImageOwnerName(profileImage))
     }
 }

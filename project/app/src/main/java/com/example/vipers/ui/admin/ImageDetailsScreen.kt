@@ -113,9 +113,7 @@ fun ImageDetailsScreen(
                 val typeBg = if (isCampsite) GreenFill else MaterialTheme.colorScheme.secondaryContainer
                 val typeColor = if (isCampsite) Primary else MaterialTheme.colorScheme.onSecondaryContainer
 
-                val displayLabel = image.label.ifBlank {
-                    if (isCampsite) "Campsite photo" else "Profile photo"
-                }
+                val displayLabel = controller.getImageOwnerName(image)
 
                 Column(
                     modifier = Modifier

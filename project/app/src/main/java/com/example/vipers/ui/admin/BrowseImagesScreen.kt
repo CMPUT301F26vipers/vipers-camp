@@ -117,6 +117,7 @@ fun BrowseImagesScreen(
                     items(controller.images, key = { it.id }) { image ->
                         BrowseImageItem(
                             image = image,
+                            ownerName = controller.getImageOwnerName(image),
                             onClick = { onOpenImage(image.id) }
                         )
                     }
@@ -130,6 +131,7 @@ fun BrowseImagesScreen(
 @Composable
 private fun BrowseImageItem(
     image: ImageAsset,
+    ownerName: String,
     onClick: () -> Unit
 ) {
     val isCampsite = image.ownerType == ImageAsset.OWNER_CAMPSITE
@@ -137,9 +139,7 @@ private fun BrowseImageItem(
     val typeBg = if (isCampsite) GreenFill else MaterialTheme.colorScheme.secondaryContainer
     val typeColor = if (isCampsite) Primary else MaterialTheme.colorScheme.onSecondaryContainer
 
-    val displayLabel = image.label.ifBlank {
-        if (isCampsite) "Campsite photo" else "Profile photo"
-    }
+    val displayLabel = ownerName
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -180,7 +180,7 @@ private fun BrowseImageItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                if (image.ownerId.isNotBlank() && image.label != image.ownerId) {
+                if (image.ownerId.isNotBlank() && displayLabel != image.ownerId) {
                     Text(
                         text = image.ownerId,
                         style = MaterialTheme.typography.bodySmall,

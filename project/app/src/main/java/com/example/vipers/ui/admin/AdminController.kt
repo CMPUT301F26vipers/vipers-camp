@@ -44,6 +44,10 @@ class AdminController(
     var images by mutableStateOf<List<ImageAsset>>(emptyList())
         private set
 
+    /** Maps image IDs to their resolved owner or fallback display names. */
+    var imageOwnerNames by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+
     var isImagesLoading by mutableStateOf(false)
         private set
 
@@ -71,6 +75,21 @@ class AdminController(
     /** Returns the image asset with the given [imageId], or null if not found. */
     fun getImage(imageId: String): ImageAsset? {
         return images.firstOrNull { it.id == imageId }
+    }
+
+    /** Returns the resolved owner or fallback name for the given [image]. */
+    fun getImageOwnerName(image: ImageAsset): String {
+        return imageOwnerNames[image.id]
+            ?: image.label.trim().ifBlank { null }
+            ?: genericImageLabel(image.ownerType)
+    }
+
+    /** Returns the resolved owner or fallback name for the image with the given [imageId]. */
+    fun getImageOwnerName(imageId: String): String {
+        val image = getImage(imageId)
+        return imageOwnerNames[imageId]
+            ?: image?.let { getImageOwnerName(it) }
+            ?: "Photo"
     }
 
     /** Loads all campsites that have not been removed, along with owner display names. */
@@ -110,7 +129,40 @@ class AdminController(
 
         try {
             val repo = imageRepository ?: throw IllegalStateException("ImageRepository not configured")
-            images = repo.getAllImages()
+            val loadedImages = repo.getAllImages()
+
+            val resolvedNames = mutableMapOf<String, String>()
+            val ownerNameCache = mutableMapOf<Pair<String, String>, String?>()
+
+            for (image in loadedImages) {
+                val key = Pair(image.ownerType, image.ownerId)
+                val resolvedOwner = ownerNameCache.getOrPut(key) {
+                    try {
+                        when (image.ownerType) {
+                            ImageAsset.OWNER_CAMPSITE -> {
+                                campsiteRepository.getCampsite(image.ownerId)?.name?.trim()?.ifBlank { null }
+                            }
+                            ImageAsset.OWNER_PROFILE -> {
+                                profileRepository.getProfile(image.ownerId)?.name?.trim()?.ifBlank { null }
+                            }
+                            else -> null
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+
+                val finalName = resolvedOwner
+                    ?: image.label.trim().ifBlank { null }
+                    ?: genericImageLabel(image.ownerType)
+
+                resolvedNames[image.id] = finalName
+            }
+
+            imageOwnerNames = resolvedNames
+            images = loadedImages
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -119,6 +171,10 @@ class AdminController(
         } finally {
             isImagesLoading = false
         }
+    }
+
+    private fun genericImageLabel(ownerType: String): String {
+        return if (ownerType == ImageAsset.OWNER_CAMPSITE) "Campsite photo" else "Profile photo"
     }
 
     companion object {
