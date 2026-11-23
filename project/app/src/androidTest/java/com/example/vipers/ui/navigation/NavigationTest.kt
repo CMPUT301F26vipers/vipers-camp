@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.activity.ComponentActivity
@@ -37,7 +38,10 @@ import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.Message
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.ui.messages.messageTime
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -246,6 +250,7 @@ class NavigationTest {
         // Notification Log
         composeRule.onNodeWithText("Notification Log").performClick()
         assertShown("Logs")
+        composeRule.onNodeWithTag("logs_tab_notification_log").assertIsSelected()
         assertShown("Notification Log (03.08.01)")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
@@ -253,7 +258,8 @@ class NavigationTest {
         // Message Log
         composeRule.onNodeWithText("Message Log").performClick()
         assertShown("Logs")
-        assertShown("Message Log (03.12.01)")
+        composeRule.onNodeWithTag("logs_tab_message_log").assertIsSelected()
+        assertShown("No message logs found.")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
     }
@@ -420,6 +426,105 @@ class NavigationTest {
         assertShown("All Profiles")
 
         // Back returns to Admin menu
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+    }
+
+    @Test
+    fun adminCanBrowseMessageLogsAndOpenReadOnlyConversationAndGoBack() {
+        val messages = listOf(
+            Message(
+                id = "m1",
+                reservationId = "res-1",
+                senderId = "entrant-1",
+                text = "Is firewood available?",
+                createdAt = 1000L,
+            ),
+            Message(
+                id = "m2",
+                reservationId = "res-1",
+                senderId = "owner-1",
+                text = "Yes, stacked by the cabin.",
+                createdAt = 2000L,
+            ),
+        )
+        val reservations = listOf(
+            Reservation(
+                id = "res-1",
+                ownerId = "owner-1",
+                userId = "entrant-1",
+                campsiteName = "Pine Ridge Camp",
+            )
+        )
+        val profiles = listOf(
+            UserProfile(id = "test-device", name = "Sam Patel"),
+            UserProfile(id = "owner-1", name = "Owen Owner"),
+            UserProfile(id = "entrant-1", name = "Emma Entrant"),
+        )
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(profiles),
+            campsiteRepository = FakeCampsiteRepository(),
+            lotteryRepository = FakeLotteryRepository(),
+            reservationRepository = FakeReservationRepository(reservations),
+            messageRepository = FakeMessageRepository(messages),
+            notificationRepository = FakeNotificationRepository(),
+            imageRepository = FakeImageRepository(),
+        )
+
+        startApp(isAdmin = true)
+        tapTab(Routes.ADMIN)
+
+        // 1. Verify Notification Log menu item opens LogsScreen with Notification Log tab selected
+        composeRule.onNodeWithText("Notification Log").performClick()
+        assertShown("Logs")
+        composeRule.onNodeWithTag("logs_tab_notification_log").assertIsSelected()
+        assertShown("Notification Log (03.08.01)")
+
+        // Switch to Message Log tab
+        composeRule.onNodeWithTag("logs_tab_message_log").performClick()
+        composeRule.onNodeWithTag("logs_tab_message_log").assertIsSelected()
+
+        // 2. Verify row displays owner, entrant, campsite, and last-message time
+        assertShown("Pine Ridge Camp")
+        assertShown("Owen Owner")
+        assertShown("Emma Entrant")
+        assertShown(messageTime(2000L))
+
+        // Return to Admin home
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Profiles")
+
+        // 3. Navigate from Admin -> Message Log directly
+        composeRule.onNodeWithText("Message Log").performClick()
+        assertShown("Logs")
+        composeRule.onNodeWithTag("logs_tab_message_log").assertIsSelected()
+
+        // 4. Tapping the conversation opens read-only MessageLogConversationScreen
+        composeRule.onNodeWithText("Pine Ridge Camp").performClick()
+        assertShown("Conversation")
+        assertShown("Pine Ridge Camp")
+        composeRule.onAllNodesWithText("Owen Owner", substring = true).onFirst().assertIsDisplayed()
+        composeRule.onAllNodesWithText("Emma Entrant", substring = true).onFirst().assertIsDisplayed()
+
+        // 5. Verify both sides' messages in chronological order
+        assertShown("Is firewood available?")
+        assertShown("Yes, stacked by the cabin.")
+        assertShown("Emma Entrant · ${messageTime(1000L)}")
+        assertShown("Owen Owner · ${messageTime(2000L)}")
+
+        // 6. Verify read-only: no text input or Send button
+        composeRule.onNodeWithTag("message_field").assertDoesNotExist()
+        composeRule.onNodeWithTag("button_send").assertDoesNotExist()
+        composeRule.onNodeWithText("Send").assertDoesNotExist()
+
+        // 7. Verify back navigation returns to LogsScreen
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        assertShown("Logs")
+        assertShown("Pine Ridge Camp")
+
+        // Back from LogsScreen returns to Admin menu
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
     }
