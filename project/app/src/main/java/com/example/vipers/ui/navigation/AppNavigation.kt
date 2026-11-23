@@ -23,7 +23,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
+import com.example.vipers.ui.admin.BrowseImagesScreen
 import com.example.vipers.ui.admin.BrowseProfilesScreen
+import com.example.vipers.ui.admin.ImageDetailsScreen
 import com.example.vipers.ui.admin.ProfileDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
@@ -385,9 +387,22 @@ fun AppNavigation(
                 }
 
                 composable(Routes.ADMIN_IMAGES) {
-                    AdminPlaceholderScreen(
-                        "All Images",
-                        "Browse Images (03.06.01)",
+                    BrowseImagesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenImage = { imageId ->
+                            val route = Routes.ADMIN_IMAGE_DETAILS.replace("{imageId}", imageId)
+                            navController.navigate(route)
+                        }
+                    )
+                }
+
+                composable(
+                    route = Routes.ADMIN_IMAGE_DETAILS,
+                    arguments = listOf(navArgument("imageId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val imageId = backStackEntry.arguments?.getString("imageId") ?: ""
+                    ImageDetailsScreen(
+                        imageId = imageId,
                         onBack = { navController.popBackStack() }
                     )
                 }
