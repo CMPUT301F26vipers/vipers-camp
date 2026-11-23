@@ -47,7 +47,7 @@ class LotteryControllerTest {
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         campsiteRepository = FakeCampsiteRepository()
-        lotteryRepository = FakeLotteryRepository()
+        lotteryRepository = FakeLotteryRepository(campsiteRepository = campsiteRepository)
     }
 
     @After

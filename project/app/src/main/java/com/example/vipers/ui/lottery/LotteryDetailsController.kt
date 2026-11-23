@@ -414,8 +414,9 @@ class LotteryDetailsController(
     }
 
     /**
-     * Resolves the maximum occupancy across all campsites covered by [lottery].
-     * Returns null if any campsite lookup fails or is missing, ensuring incomplete data is not used.
+     * Resolves the maximum occupancy across all active (non-removed) campsites covered by [lottery].
+     * Returns null if any campsite lookup fails or is missing, or if every included campsite is removed,
+     * ensuring incomplete or removed-site data is not used to bypass occupancy limits.
      */
     private suspend fun resolveMaxOccupancy(lottery: Lottery?): Int? {
         val repo = campsiteRepository ?: return null
@@ -426,7 +427,9 @@ class LotteryDetailsController(
         for (cid in ids) {
             try {
                 val campsite = repo.getCampsite(cid) ?: return null
-                occupancies.add(campsite.maxOccupancy)
+                if (!campsite.removed) {
+                    occupancies.add(campsite.maxOccupancy)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

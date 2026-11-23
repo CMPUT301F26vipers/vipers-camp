@@ -1036,4 +1036,83 @@ class LotteryDetailsControllerTest {
         assertNull(lotteryRepository.getEntry(lotteryId, "user-entrant"))
         assertTrue(lotteryRepository.getEntries(lotteryId).isEmpty())
     }
+
+    @Test
+    fun performJoin_whenHighCapacityCampsiteSoftDeleted_excludesRemovedSiteAndAllowsActiveCapacity() = runTest {
+        val now = System.currentTimeMillis()
+        val smallCamp = Campsite(id = "camp-small", ownerId = "owner-1", maxOccupancy = 2)
+        val largeCamp = Campsite(id = "camp-large", ownerId = "owner-1", maxOccupancy = 4)
+        val multiCampsiteRepo = FakeCampsiteRepository(listOf(smallCamp, largeCamp))
+        val openLottery = Lottery(
+            id = lotteryId,
+            ownerId = "owner-1",
+            campsiteIds = listOf("camp-small", "camp-large"),
+            nightsOffered = listOf("2027-06-01"),
+            registrationStart = now - 10_000L,
+            registrationEnd = now + 10_000L,
+            bookingStart = now + 15_000L,
+            bookingEnd = now + 25_000L,
+            winnersCount = 1,
+        )
+        lotteryRepository.addLottery(openLottery)
+
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-entrant",
+            campsiteRepository = multiCampsiteRepo,
+        )
+        controller.fetchData()
+        assertEquals(4, controller.maxOccupancy)
+
+        // Soft-delete the high-capacity campsite while its ID remains on the stored lottery.
+        multiCampsiteRepo.addCampsite(largeCamp.copy(removed = true))
+
+        val largeGroupJoined = controller.performJoin(groupSize = 4, now = now)
+
+        assertFalse(largeGroupJoined)
+        assertFalse(controller.joinSuccess)
+        assertFalse(controller.isJoined)
+        assertEquals(2, controller.maxOccupancy)
+        assertEquals(listOf("camp-small", "camp-large"), controller.lottery?.campsiteIds)
+        assertEquals("Group size cannot exceed maximum occupancy of 2", controller.actionError)
+        assertNull(lotteryRepository.getEntry(lotteryId, "user-entrant"))
+
+        val activeGroupJoined = controller.performJoin(groupSize = 2, now = now)
+
+        assertTrue(activeGroupJoined)
+        assertTrue(controller.joinSuccess)
+        assertTrue(controller.isJoined)
+        assertNull(controller.actionError)
+        assertEquals(2, controller.userEntry?.groupSize)
+        assertEquals(2, lotteryRepository.getEntry(lotteryId, "user-entrant")?.groupSize)
+    }
+
+    @Test
+    fun performJoin_whenAllIncludedCampsitesSoftDeleted_refusesJoin() = runTest {
+        val now = System.currentTimeMillis()
+        val removedCamp = Campsite(id = "camp-1", ownerId = "owner-1", maxOccupancy = 4, removed = true)
+        val removedRepo = FakeCampsiteRepository(listOf(removedCamp))
+        setupOpenLottery()
+
+        val controller = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = profileRepository,
+            lotteryId = lotteryId,
+            currentUserId = "user-entrant",
+            campsiteRepository = removedRepo,
+        )
+        controller.fetchData()
+
+        val joined = controller.performJoin(groupSize = 1, now = now)
+
+        assertFalse(joined)
+        assertFalse(controller.joinSuccess)
+        assertFalse(controller.isJoined)
+        assertNull(controller.maxOccupancy)
+        assertEquals("Campsite occupancy information is unavailable. Please try again.", controller.actionError)
+        assertNull(lotteryRepository.getEntry(lotteryId, "user-entrant"))
+        assertTrue(lotteryRepository.getEntries(lotteryId).isEmpty())
+    }
 }

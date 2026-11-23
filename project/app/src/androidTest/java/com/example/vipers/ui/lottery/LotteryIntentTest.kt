@@ -74,7 +74,7 @@ class LotteryIntentTest {
     fun setUp() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
         campsiteRepository = FakeCampsiteRepository()
-        lotteryRepository = FakeLotteryRepository()
+        lotteryRepository = FakeLotteryRepository(campsiteRepository = campsiteRepository)
 
         app.container = AppContainer(
             deviceId = ownerId,

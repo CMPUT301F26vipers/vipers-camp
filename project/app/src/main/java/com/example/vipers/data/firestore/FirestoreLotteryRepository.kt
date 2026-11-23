@@ -7,6 +7,7 @@
  */
 package com.example.vipers.data.firestore
 
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
@@ -36,6 +37,8 @@ class FirestoreLotteryRepository(
     private val lotteries = db.collection("lotteries")
     private val entries = db.collection("lotteryEntries")
     private val notifications = db.collection("notifications")
+    private val campsites = db.collection("campsites")
+    private val availability = db.collection("availability")
 
     override suspend fun addLottery(lottery: Lottery): String {
         val doc = lotteries.document()
@@ -106,10 +109,43 @@ class FirestoreLotteryRepository(
                     return@runTransaction UpdateLotteryResult.ReadOnly(blockedReason)
                 }
 
-                val normalizedLottery = lottery.copy(
-                    campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
-                )
+                val submittedIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct()
+                val normalizedLottery = lottery.copy(campsiteIds = submittedIds)
                 val currentWaitingCount = stored.waitingUserIds.size
+
+                // Perform all campsite and availability reads before validation/write so Firestore
+                // retries if any referenced document changes concurrently.
+                for (cid in submittedIds) {
+                    val campsiteSnap = tx.get(campsites.document(cid))
+                    if (!campsiteSnap.exists()) {
+                        return@runTransaction UpdateLotteryResult.Error(
+                            "One or more selected campsites are no longer available or you do not own them.",
+                        )
+                    }
+                    val campsite = campsiteSnap.toCampsite()
+                    if (campsite.removed || campsite.ownerId != stored.ownerId) {
+                        return@runTransaction UpdateLotteryResult.Error(
+                            "One or more selected campsites are no longer available or you do not own them.",
+                        )
+                    }
+                }
+
+                val storedIds = stored.campsiteIds.filter { it.isNotBlank() }.toSet()
+                val storedNights = stored.nightsOffered.toSet()
+                val hasAddedNight = normalizedLottery.nightsOffered.any { it !in storedNights }
+                val idsNeedingCalendars = submittedIds.filter { cid -> cid !in storedIds || hasAddedNight }
+                val calendarsByCampsiteId = if (idsNeedingCalendars.isNotEmpty()) {
+                    idsNeedingCalendars.associateWith { cid ->
+                        val calSnap = tx.get(availability.document(cid))
+                        AvailabilityCalendar(
+                            campsiteId = cid,
+                            openNights = calSnap.getStringList("openNights"),
+                            heldNights = calSnap.getStringList("heldNights"),
+                        )
+                    }
+                } else {
+                    null
+                }
 
                 val validationErrors = validateLottery(
                     lottery = normalizedLottery,
@@ -117,6 +153,7 @@ class FirestoreLotteryRepository(
                     storedLottery = stored,
                     currentWaitingCount = currentWaitingCount,
                     zone = zone,
+                    calendarsByCampsiteId = calendarsByCampsiteId,
                 )
                 if (validationErrors.isNotEmpty()) {
                     return@runTransaction UpdateLotteryResult.Error(validationErrors.first())
