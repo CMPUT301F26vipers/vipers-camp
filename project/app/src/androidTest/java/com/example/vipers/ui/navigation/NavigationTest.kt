@@ -31,6 +31,7 @@ import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
@@ -87,6 +88,13 @@ class NavigationTest {
 
     private fun assertShown(text: String) =
         composeRule.onNodeWithText(text, substring = true).assertIsDisplayed()
+
+    // photos are decoded off the main thread, so wait until one is on screen
+    private fun waitForPhoto(description: String) =
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithContentDescription(description, useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
 
     @Test
     fun opensOnHome() {
@@ -325,24 +333,25 @@ class NavigationTest {
 
     @Test
     fun adminCanBrowseUploadedImagesAndOpenEnlargedViewAndGoBack() {
+        val sampleJpeg = FakePhotoReader.SAMPLE_JPEG
         val imageRepo = FakeImageRepository(
             listOf(
-                ImageAsset(
-                    id = "img-1",
-                    data = "campsite-data",
+                ImageAsset.fromJpeg(
+                    jpeg = sampleJpeg,
+                    uploaderId = "test-device",
                     ownerType = ImageAsset.OWNER_CAMPSITE,
                     ownerId = "camp-1",
                     label = "Pine Ridge Camp",
-                    createdAt = 1000L
-                ),
-                ImageAsset(
-                    id = "img-2",
-                    data = "profile-data",
+                    createdAt = 1000L,
+                ).copy(id = "img-1"),
+                ImageAsset.fromJpeg(
+                    jpeg = sampleJpeg,
+                    uploaderId = "test-device",
                     ownerType = ImageAsset.OWNER_PROFILE,
                     ownerId = "user-1",
                     label = "Alice Smith",
-                    createdAt = 2000L
-                )
+                    createdAt = 2000L,
+                ).copy(id = "img-2"),
             )
         )
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
@@ -367,9 +376,21 @@ class NavigationTest {
         assertShown("Campsite")
         assertShown("Profile")
 
+        // Verify images are actually rendered (not just placeholders)
+        waitForPhoto("Pine Ridge Camp")
+        composeRule.onNodeWithContentDescription("Pine Ridge Camp", useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Alice Smith", useUnmergedTree = true)
+            .assertIsDisplayed()
+
         composeRule.onNodeWithText("Pine Ridge Camp").performClick()
         assertShown("Image")
         assertShown("Pine Ridge Camp")
+
+        // Verify enlarged image is rendered
+        waitForPhoto("Pine Ridge Camp")
+        composeRule.onNodeWithContentDescription("Pine Ridge Camp", useUnmergedTree = true)
+            .assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("All Images")
