@@ -79,8 +79,11 @@ save the photo for the new campsite's ID before the campsite itself (US 02.01.02
 made by `Campsite.qrLink()`. Nothing about the QR code is stored: the app draws it from the ID
 each time with ZXing, so it stays the same after edits and each campsite gets its own.
 `Campsite.idFromQrLink(link)` reads the ID back when a code is scanned (US 01.12.01) and returns
-`null` for anything that isn't exactly this format (another app's code, no ID, or extra parts
-after the ID).
+`null` for anything that isn't exactly this format (another app's code, no ID, extra parts
+after the ID, or characters other than letters, digits, `-` and `_`, like `?` or `#`, which would
+break the Campsite Details route). Scanning uses Google's code scanner (`play-services-code-scanner`), which has its
+own camera screen, so the app never asks for camera permission. A scanned ID is loaded with
+`getCampsite` like any other; a removed campsite shows "Campsite not found." on Campsite Details.
 
 ### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
 Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.

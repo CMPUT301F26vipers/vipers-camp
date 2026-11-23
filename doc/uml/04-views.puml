@@ -24,13 +24,16 @@ hide empty members
 class MainActivity <<Activity>> {
   onCreate(savedInstanceState: Bundle?)
   loadDemoData()
+  suspend scanQrCode(): QrScanResult
 }
 
 package "ui.navigation" {
   class AppRoot <<Composable>> {
-    AppRoot(deviceIdentityManager, onLoadDemoData, onAppOpened)
+    AppRoot(deviceIdentityManager, onLoadDemoData, onAppOpened, onScanQr)
   }
-  class AppNavigation <<Composable>>
+  class AppNavigation <<Composable>> {
+    AppNavigation(isAdmin, onLoadDemoData, onScanQr)
+  }
   class BottomBar <<Composable>> {
     BottomBar(currentRoute, isAdmin, onTabClick)
   }
@@ -45,7 +48,9 @@ package "ui.navigation" {
 }
 
 package "Tab screens (own CRC cards)" {
-  class HomeScreen <<Composable>>
+  class HomeScreen <<Composable>> {
+    HomeScreen(controller, onOpenCampsite, onScanQr)
+  }
   class MyReservationsScreen <<Composable>>
   class MyCampsitesScreen <<Composable>>
   class NotificationsScreen <<Composable>>
@@ -103,7 +108,11 @@ package "Controllers (see 03-controllers)" {
   class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class DeviceIdentityManager
   class DrawAndNotifyWorker
+  class QrScanResult <<sealed>>
 }
+
+' Google's code scanner library (play-services-code-scanner), not our code
+class GmsBarcodeScanner <<library>>
 
 MainActivity --> AppRoot : setContent >
 AppRoot ..> DeviceIdentityManager : hasProfile()
@@ -139,7 +148,9 @@ OwnerReservationDetailsScreen ..> OwnerReservationDetailsController
 BrowseCampsitesScreen ..> AdminController
 MessagesScreen ..> MessageController
 
-HomeScreen --> CampsiteDetailsScreen : tap a card
+HomeScreen --> CampsiteDetailsScreen : tap a card or scan its QR code
+MainActivity ..> GmsBarcodeScanner : scanQrCode() (Google code scanner)
+MainActivity ..> QrScanResult
 CampsiteDetailsScreen --> LotteryDetailsScreen : Join
 NotificationsScreen --> ReserveScreen : WON
 NotificationsScreen --> ReservationDetailsScreen : reservation update

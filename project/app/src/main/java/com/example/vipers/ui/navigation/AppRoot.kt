@@ -4,7 +4,7 @@
  * repositories. DeviceIdentityManager checks whether this device has a profile: if not the
  * app opens on Welcome (T-01), otherwise on Home, with no login (US 01.09.01). Each time the app
  * comes to the front it runs onAppOpened, which MainActivity uses to start any draws that are due
- * (US 02.05.01b).
+ * (US 02.05.01b). onScanQr is passed down to Home's Scan QR button (US 01.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.navigation
@@ -36,6 +36,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.vipers.data.device.DeviceIdentityManager
+import com.example.vipers.ui.home.QrScanResult
 import com.example.vipers.ui.profile.WelcomeScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -43,13 +44,14 @@ import kotlinx.coroutines.launch
 /**
  * Shows Welcome or the app's navigation, depending on [DeviceIdentityManager.hasProfile].
  * Also hides the Admin tab unless the profile is an admin. Runs [onAppOpened] each time the app
- * comes to the front.
+ * comes to the front, and passes [onScanQr] on to Home.
  */
 @Composable
 fun AppRoot(
     deviceIdentityManager: DeviceIdentityManager,
     onLoadDemoData: () -> Unit,
     onAppOpened: suspend () -> Unit = {},
+    onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
 ) {
     // null while we check for a profile
     var hasProfile by remember { mutableStateOf<Boolean?>(null) }
@@ -92,7 +94,11 @@ fun AppRoot(
             CircularProgressIndicator()
         }
         hasProfile == false -> WelcomeScreen(onProfileCreated = { hasProfile = true })
-        else -> AppNavigation(isAdmin = isAdmin, onLoadDemoData = onLoadDemoData)
+        else -> AppNavigation(
+            isAdmin = isAdmin,
+            onLoadDemoData = onLoadDemoData,
+            onScanQr = onScanQr,
+        )
     }
 }
 
