@@ -44,6 +44,8 @@ data class MessageLogConversation(
     val entrantName: String,
     val lastMessageTime: Long,
     val messages: List<Message>,
+    val ownerId: String = "",
+    val entrantId: String = "",
 ) {
     /** Alias for [lastMessageTime]. */
     val lastMessageAt: Long
@@ -52,6 +54,15 @@ data class MessageLogConversation(
     /** Alias for [messages]. */
     val thread: List<Message>
         get() = messages
+
+    /** Returns the resolved display name for the sender of [message]. */
+    fun senderName(message: Message): String {
+        return when {
+            ownerId.isNotBlank() && message.senderId == ownerId -> ownerName
+            entrantId.isNotBlank() && message.senderId == entrantId -> entrantName
+            else -> if (message.senderId.isNotBlank()) message.senderId else "Deleted user"
+        }
+    }
 }
 
 /** Loads campsites, user profiles, images, and owner-entrant message logs for admin browsing. */
@@ -395,6 +406,8 @@ class AdminController(
                         entrantName = entrantName,
                         lastMessageTime = lastMessageTime,
                         messages = thread,
+                        ownerId = reservation?.ownerId.orEmpty(),
+                        entrantId = reservation?.userId.orEmpty(),
                     )
                 )
             }

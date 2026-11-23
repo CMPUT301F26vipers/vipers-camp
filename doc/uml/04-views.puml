@@ -146,6 +146,8 @@ MyReservationsScreen ..> ReservationController
 OwnerReservationsScreen ..> ReservationController
 OwnerReservationDetailsScreen ..> OwnerReservationDetailsController
 BrowseCampsitesScreen ..> AdminController
+LogsScreen ..> AdminController
+MessageLogConversationScreen ..> AdminController
 MessagesScreen ..> MessageController
 
 HomeScreen --> CampsiteDetailsScreen : tap a card or scan its QR code
