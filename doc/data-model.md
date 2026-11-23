@@ -41,12 +41,19 @@ Document ID = **device ID**.
 | name | string | required |
 | email | string | optional, `""` if not given |
 | phone | string | optional, `""` if not given |
-| imageId | string? | profile photo, `null` if none |
+| imageId | string? | profile photo: the ID of its `images` document (US 01.08.02), `null` if none |
 | notificationsEnabled | bool | default `true`; the Settings switch (US 01.10.01) |
 | isAdmin | bool | set by hand in the Firebase console |
 | createdAt | number | ms |
 
 - `getAllProfiles()` lists every user profile for the admin profile browser (US 03.05.01).
+- **Profile photo (US 01.08.02):** Change photo on Profile saves the photo straight away, not
+  with the Save button. `ProfileController` saves it as an `images` document with
+  `ownerType = profile`, `ownerId` = the device ID and `label` = the user's name (so admins can
+  find it), then writes its ID into the latest saved profile's `imageId` and deletes the old
+  image. Remove sets `imageId` to `null` and deletes the image. If the profile can't be saved,
+  the new image is deleted again, so no image is left that nothing points to. The label is the
+  name when the photo was saved; it isn't updated if the user changes their name later.
 
 ### `campsites`: `Campsite` (`CampsiteRepository`)
 
@@ -301,7 +308,7 @@ new library.
 | uploaderId | string | device ID of who uploaded it |
 | ownerType | string | `campsite` or `profile` (`ImageAsset.OWNER_CAMPSITE` / `OWNER_PROFILE`) |
 | ownerId | string | the campsite's or profile's ID |
-| label | string | shown in the admin image browser, e.g. the campsite name |
+| label | string | shown in the admin image browser: the campsite name, or the user's name for a profile photo |
 | createdAt | number | ms |
 
 - **Saving a photo:** pick it with the phone's photo picker, then `PhotoReader.readJpeg(uri, ImageAsset.MAX_JPEG_BYTES)`
