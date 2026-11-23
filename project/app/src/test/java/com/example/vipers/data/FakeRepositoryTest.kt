@@ -22,10 +22,13 @@ import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.JoinWaitingListResult
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ReserveResult
 import com.example.vipers.domain.repository.UpdateLotteryResult
+import com.example.vipers.domain.service.NotificationService
 import com.example.vipers.ui.lottery.LotteryDrawer
 import java.util.Random
 import kotlinx.coroutines.CoroutineStart
@@ -329,6 +332,7 @@ class FakeRepositoryTest {
         status: EntryStatus,
         removed: Boolean = false,
         extraEntries: List<LotteryEntry> = emptyList(),
+        notifications: NotificationRepository? = FakeNotificationRepository(),
     ) = FakeLotteryRepository(
         initialLotteries = listOf(
             Lottery(
@@ -354,6 +358,7 @@ class FakeRepositoryTest {
                 status = status,
             ),
         ) + extraEntries,
+        notificationRepository = notifications,
     )
 
     private fun entryFor(userId: String, status: EntryStatus, lotteryId: String = "lottery-1") =
@@ -366,75 +371,135 @@ class FakeRepositoryTest {
             status = status,
         )
 
-    @Test
-    fun declineTransaction_wonEntryWithEmptyPool_setsDeclinedAndReturnsTrue() = runBlocking {
-        val repo = repoWithSamsEntry(EntryStatus.WON)
+    private fun replacementNoticeFor(
+        recipientId: String,
+        lotteryId: String = "lottery-1",
+        promotedAt: Long = declineNow,
+        read: Boolean = false,
+        shownOnDevice: Boolean = false,
+    ) = Notification(
+        id = NotificationService.replacementNoticeId(lotteryId, recipientId),
+        recipientId = recipientId,
+        campsiteId = "camp-1",
+        lotteryId = lotteryId,
+        type = NotificationType.WON,
+        title = "You won the lottery!",
+        message = "Won!",
+        read = read,
+        shownOnDevice = shownOnDevice,
+        createdAt = promotedAt,
+    )
 
-        val result = repo.declineTransaction("lottery-1", "sam", emptyList(), declineNow)
-        assertTrue(result.declined)
-        assertNull(result.promotedUserId)
+    @Test
+    fun declineTransaction_wonEntryWithEmptyPool_setsDeclinedAndReturnsDeclinedNull() = runBlocking {
+        val notifications = FakeNotificationRepository()
+        val repo = repoWithSamsEntry(EntryStatus.WON, notifications = notifications)
+
+        val result = repo.declineTransaction("lottery-1", "sam", null, null, declineNow)
+        assertEquals(DeclineTransactionResult.Declined(null), result)
         val entry = repo.getEntry("lottery-1", "sam")
         assertEquals(EntryStatus.DECLINED, entry?.status)
         assertEquals(4, entry?.groupSize) // only the status changes
         assertEquals(100L, entry?.joinedAt)
-        assertNull(entry?.replacementUserId)
-        assertNull(entry?.replacementPromotedAt)
-        assertFalse(entry?.replacementNotified ?: true)
     }
 
     @Test
-    fun declineTransaction_wonEntryWithLostCandidate_atomicallyDeclinesAndPromotesFirstEligible() = runBlocking {
+    fun declineTransaction_wonEntryWithLostCandidateAndNotice_atomicallyDeclinesPromotesAndPreservesNoticeFlags() = runBlocking {
+        val notifications = FakeNotificationRepository(
+            listOf(replacementNoticeFor("kim", promotedAt = 1_000L, read = true, shownOnDevice = true)),
+        )
         val repo = repoWithSamsEntry(
             EntryStatus.WON,
             extraEntries = listOf(
                 entryFor("jo", EntryStatus.LOST),
                 entryFor("kim", EntryStatus.LOST),
             ),
+            notifications = notifications,
+        )
+        val inboxUpdates = mutableListOf<List<Notification>>()
+        val sub = notifications.listenToInbox(
+            "kim",
+            object : InboxListener {
+                override fun onInboxChanged(items: List<Notification>) {
+                    inboxUpdates.add(items)
+                }
+
+                override fun onInboxError() = Unit
+            },
         )
 
-        val result = repo.declineTransaction("lottery-1", "sam", listOf("kim", "jo"), declineNow)
-        assertTrue(result.declined)
-        assertEquals("kim", result.promotedUserId)
+        val notice = replacementNoticeFor("kim")
+        val result = repo.declineTransaction("lottery-1", "sam", "kim", notice, declineNow)
+        sub.cancel()
+
+        assertEquals(DeclineTransactionResult.Declined("kim"), result)
 
         val sam = repo.getEntry("lottery-1", "sam")!!
         assertEquals(EntryStatus.DECLINED, sam.status)
         assertEquals(4, sam.groupSize)
         assertEquals(100L, sam.joinedAt)
-        assertEquals("kim", sam.replacementUserId)
-        assertEquals(declineNow, sam.replacementPromotedAt)
-        assertFalse(sam.replacementNotified)
 
         val kim = repo.getEntry("lottery-1", "kim")!!
         assertEquals(EntryStatus.WON, kim.status)
         assertEquals(2, kim.groupSize)
         assertEquals(200L, kim.joinedAt)
         assertEquals(EntryStatus.LOST, repo.getEntry("lottery-1", "jo")?.status)
+
+        val kimNotices = notifications.getNotificationsFor("kim")
+        assertEquals(1, kimNotices.size)
+        assertEquals(notice.id, kimNotices[0].id)
+        assertEquals(declineNow, kimNotices[0].createdAt)
+        assertTrue(kimNotices[0].read)
+        assertTrue(kimNotices[0].shownOnDevice)
+        assertEquals(1, inboxUpdates.last().size)
+        assertTrue(inboxUpdates.last()[0].read)
+        assertTrue(inboxUpdates.last()[0].shownOnDevice)
     }
 
     @Test
-    fun declineTransaction_calledTwice_secondReturnsFalseAndPromotesNobodyElse() = runBlocking {
+    fun declineTransaction_optedOutCandidateWithNullNotice_promotesWithoutNotice() = runBlocking {
+        val notifications = FakeNotificationRepository()
+        val repo = repoWithSamsEntry(
+            EntryStatus.WON,
+            extraEntries = listOf(entryFor("kim", EntryStatus.LOST)),
+            notifications = notifications,
+        )
+
+        val result = repo.declineTransaction("lottery-1", "sam", "kim", null, declineNow)
+
+        assertEquals(DeclineTransactionResult.Declined("kim"), result)
+        assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "sam")?.status)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "kim")?.status)
+        assertTrue(notifications.getNotificationsFor("kim").isEmpty())
+    }
+
+    @Test
+    fun declineTransaction_calledTwice_secondReturnsNotDeclinedAndPromotesNobodyElse() = runBlocking {
+        val notifications = FakeNotificationRepository()
         val repo = repoWithSamsEntry(
             EntryStatus.WON,
             extraEntries = listOf(
                 entryFor("jo", EntryStatus.LOST),
                 entryFor("kim", EntryStatus.LOST),
             ),
+            notifications = notifications,
         )
 
-        val first = repo.declineTransaction("lottery-1", "sam", listOf("jo", "kim"), declineNow)
-        val second = repo.declineTransaction("lottery-1", "sam", listOf("kim"), declineNow)
+        val first = repo.declineTransaction("lottery-1", "sam", "jo", replacementNoticeFor("jo"), declineNow)
+        val second = repo.declineTransaction("lottery-1", "sam", "kim", replacementNoticeFor("kim"), declineNow)
 
-        assertTrue(first.declined)
-        assertEquals("jo", first.promotedUserId)
-        assertFalse(second.declined)
-        assertNull(second.promotedUserId)
+        assertEquals(DeclineTransactionResult.Declined("jo"), first)
+        assertEquals(DeclineTransactionResult.NotDeclined, second)
         assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "sam")?.status)
         assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "jo")?.status)
         assertEquals(EntryStatus.LOST, repo.getEntry("lottery-1", "kim")?.status)
+        assertEquals(1, notifications.getNotificationsFor("jo").size)
+        assertTrue(notifications.getNotificationsFor("kim").isEmpty())
     }
 
     @Test
-    fun declineTransaction_twoWinnersCompetingWithSecondCandidate_eachPromotesDistinctWinner() = runBlocking {
+    fun declineTransaction_twoWinnersCompetingForSameCandidate_secondReturnsCandidateStaleWithoutWritingOrNotifying() = runBlocking {
+        val notifications = FakeNotificationRepository()
         val repo = repoWithSamsEntry(
             EntryStatus.WON,
             extraEntries = listOf(
@@ -442,98 +507,220 @@ class FakeRepositoryTest {
                 entryFor("cand-1", EntryStatus.LOST),
                 entryFor("cand-2", EntryStatus.LOST),
             ),
+            notifications = notifications,
         )
-        val candidateOrder = listOf("cand-1", "cand-2")
 
-        val results = listOf(
-            async(Dispatchers.Default) { repo.declineTransaction("lottery-1", "sam", candidateOrder, declineNow) },
-            async(Dispatchers.Default) { repo.declineTransaction("lottery-1", "alex", candidateOrder, declineNow + 1) },
+        val firstAttempt = listOf(
+            async(Dispatchers.Default) {
+                repo.declineTransaction("lottery-1", "sam", "cand-1", replacementNoticeFor("cand-1"), declineNow)
+            },
+            async(Dispatchers.Default) {
+                repo.declineTransaction("lottery-1", "alex", "cand-1", replacementNoticeFor("cand-1"), declineNow + 1)
+            },
         ).awaitAll()
 
-        assertTrue(results.all { it.declined })
-        assertEquals(setOf("cand-1", "cand-2"), results.mapNotNull { it.promotedUserId }.toSet())
-        assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "sam")?.status)
-        assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "alex")?.status)
-        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "cand-1")?.status)
-        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "cand-2")?.status)
-    }
-
-    @Test
-    fun declineTransaction_twoWinnersCompetingForSingleCandidate_secondDeclinesWithEmptyPool() = runBlocking {
-        val repo = repoWithSamsEntry(
-            EntryStatus.WON,
-            extraEntries = listOf(
-                entryFor("alex", EntryStatus.WON),
-                entryFor("cand-1", EntryStatus.LOST),
-            ),
+        assertEquals(
+            setOf(DeclineTransactionResult.Declined("cand-1"), DeclineTransactionResult.CandidateStale),
+            firstAttempt.toSet(),
         )
-        val candidateOrder = listOf("cand-1")
+        assertEquals(1, notifications.getNotificationsFor("cand-1").size)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "cand-1")?.status)
 
-        val first = repo.declineTransaction("lottery-1", "sam", candidateOrder, declineNow)
-        val second = repo.declineTransaction("lottery-1", "alex", candidateOrder, declineNow + 1)
-
-        assertTrue(first.declined)
-        assertEquals("cand-1", first.promotedUserId)
-        assertTrue(second.declined)
-        assertNull(second.promotedUserId)
+        val remainingWinner = if (repo.getEntry("lottery-1", "sam")?.status == EntryStatus.WON) "sam" else "alex"
+        val fallbackResult = repo.declineTransaction(
+            "lottery-1",
+            remainingWinner,
+            "cand-2",
+            replacementNoticeFor("cand-2", promotedAt = declineNow + 2),
+            declineNow + 2,
+        )
+        assertEquals(DeclineTransactionResult.Declined("cand-2"), fallbackResult)
         assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "sam")?.status)
         assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "alex")?.status)
-        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "cand-1")?.status)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "cand-2")?.status)
+        assertEquals(1, notifications.getNotificationsFor("cand-2").size)
     }
 
     @Test
-    fun declineTransaction_staleCandidateInList_skipsToNextEligibleLostCandidate() = runBlocking {
+    fun declineTransaction_staleCandidate_returnsCandidateStaleWithoutWritesOrNotice() = runBlocking {
+        val notifications = FakeNotificationRepository()
         val repo = repoWithSamsEntry(
             EntryStatus.WON,
             extraEntries = listOf(
                 entryFor("already-won", EntryStatus.WON),
                 entryFor("already-reserved", EntryStatus.RESERVED),
                 entryFor("other-lottery", EntryStatus.LOST, lotteryId = "lottery-2"),
-                entryFor("eligible", EntryStatus.LOST),
             ),
+            notifications = notifications,
         )
+        val emissions = mutableListOf<List<LotteryEntry>>()
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            repo.observeEntries("lottery-1").collect { emissions.add(it) }
+        }
+        yield()
 
-        val result = repo.declineTransaction(
-            "lottery-1",
-            "sam",
-            listOf("missing", "already-won", "already-reserved", "other-lottery", "eligible"),
-            declineNow,
-        )
+        for (candidate in listOf("missing", "already-won", "already-reserved", "other-lottery")) {
+            val res = repo.declineTransaction(
+                "lottery-1",
+                "sam",
+                candidate,
+                replacementNoticeFor(candidate),
+                declineNow,
+            )
+            assertEquals(DeclineTransactionResult.CandidateStale, res)
+            assertTrue(notifications.getNotificationsFor(candidate).isEmpty())
+        }
+        yield()
+        collector.cancel()
 
-        assertTrue(result.declined)
-        assertEquals("eligible", result.promotedUserId)
-        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "eligible")?.status)
+        assertEquals(1, emissions.size)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "sam")?.status)
         assertEquals(EntryStatus.RESERVED, repo.getEntry("lottery-1", "already-reserved")?.status)
         assertEquals(EntryStatus.LOST, repo.getEntry("lottery-2", "other-lottery")?.status)
     }
 
     @Test
-    fun declineTransaction_reservedEntry_staysReservedAndReturnsFalse() = runBlocking {
+    fun declineTransaction_mismatchedOrInvalidNotice_throwsAndLeavesEntriesUnchanged() = runBlocking {
+        val notifications = FakeNotificationRepository()
         val repo = repoWithSamsEntry(
-            EntryStatus.RESERVED,
+            EntryStatus.WON,
             extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
+            notifications = notifications,
+        )
+        val valid = replacementNoticeFor("jo")
+        val invalidCases = listOf(
+            null to valid,
+            "jo" to valid.copy(lotteryId = "lottery-2"),
+            "jo" to valid.copy(recipientId = "other"),
+            "jo" to valid.copy(id = "draw_lottery-1_jo"),
+            "jo" to valid.copy(type = NotificationType.NOT_SELECTED),
         )
 
-        val result = repo.declineTransaction("lottery-1", "sam", listOf("jo"), declineNow)
-        assertFalse(result.declined)
-        assertNull(result.promotedUserId)
-        assertEquals(EntryStatus.RESERVED, repo.getEntry("lottery-1", "sam")?.status)
+        for ((candidate, notice) in invalidCases) {
+            val error = runCatching {
+                repo.declineTransaction("lottery-1", "sam", candidate, notice, declineNow)
+            }.exceptionOrNull()
+            assertTrue("Expected IllegalArgumentException but got $error", error is IllegalArgumentException)
+        }
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "sam")?.status)
+        assertEquals(EntryStatus.LOST, repo.getEntry("lottery-1", "jo")?.status)
+        assertTrue(notifications.getNotificationsFor("jo").isEmpty())
+    }
+
+    @Test
+    fun declineTransaction_whenNoticePresentAndNotificationRepositoryMissing_throwsAndLeavesEntriesUnchanged() = runBlocking {
+        val repo = repoWithSamsEntry(
+            EntryStatus.WON,
+            extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
+            notifications = null,
+        )
+        val notice = replacementNoticeFor("jo")
+        val error = runCatching {
+            repo.declineTransaction("lottery-1", "sam", "jo", notice, declineNow)
+        }.exceptionOrNull()
+        assertTrue("Expected IllegalArgumentException but got $error", error is IllegalArgumentException)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "sam")?.status)
         assertEquals(EntryStatus.LOST, repo.getEntry("lottery-1", "jo")?.status)
     }
 
     @Test
-    fun declineTransaction_removedLottery_returnsFalseAndLeavesEntriesUnchanged() = runBlocking {
+    fun declineTransaction_noNoticePathValidWithoutNotificationRepository_forOptOutAndEmptyPool() = runBlocking {
+        val repo = repoWithSamsEntry(
+            EntryStatus.WON,
+            extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
+            notifications = null,
+        )
+        // Opt-out path: candidateUserId present, replacementNotice null
+        val optOutResult = repo.declineTransaction("lottery-1", "sam", "jo", null, declineNow)
+        assertEquals(DeclineTransactionResult.Declined("jo"), optOutResult)
+        assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "sam")?.status)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "jo")?.status)
+
+        // Empty pool path: candidateUserId null, replacementNotice null
+        val freshEmptyPoolRepo = repoWithSamsEntry(
+            EntryStatus.WON,
+            notifications = null,
+        )
+        val emptyPoolResult = freshEmptyPoolRepo.declineTransaction("lottery-1", "sam", null, null, declineNow)
+        assertEquals(DeclineTransactionResult.Declined(null), emptyPoolResult)
+        assertEquals(EntryStatus.DECLINED, freshEmptyPoolRepo.getEntry("lottery-1", "sam")?.status)
+    }
+
+    @Test
+    fun declineTransaction_whenNoticePersistenceFails_leavesWinnerWonCandidateLostAndRetrySucceedsOnce() = runBlocking {
+        val realNotifications = FakeNotificationRepository()
+        var failWrite = true
+        val flakyNotifications = object : NotificationRepository by realNotifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                if (failWrite) throw IllegalStateException("offline")
+                realNotifications.addAll(notifications)
+            }
+        }
+        val repo = repoWithSamsEntry(
+            EntryStatus.WON,
+            extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
+            notifications = flakyNotifications,
+        )
+        val emissions = mutableListOf<List<LotteryEntry>>()
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            repo.observeEntries("lottery-1").collect { emissions.add(it) }
+        }
+        yield()
+
+        val notice = replacementNoticeFor("jo")
+        val error = runCatching {
+            repo.declineTransaction("lottery-1", "sam", "jo", notice, declineNow)
+        }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+        yield()
+        assertEquals(1, emissions.size)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "sam")?.status)
+        assertEquals(EntryStatus.LOST, repo.getEntry("lottery-1", "jo")?.status)
+        assertTrue(realNotifications.getNotificationsFor("jo").isEmpty())
+
+        failWrite = false
+        val retry = repo.declineTransaction("lottery-1", "sam", "jo", notice, declineNow)
+        yield()
+        collector.cancel()
+
+        assertEquals(DeclineTransactionResult.Declined("jo"), retry)
+        assertEquals(2, emissions.size)
+        assertEquals(EntryStatus.DECLINED, repo.getEntry("lottery-1", "sam")?.status)
+        assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "jo")?.status)
+        assertEquals(1, realNotifications.getNotificationsFor("jo").size)
+    }
+
+    @Test
+    fun declineTransaction_reservedEntry_staysReservedAndReturnsNotDeclined() = runBlocking {
+        val notifications = FakeNotificationRepository()
+        val repo = repoWithSamsEntry(
+            EntryStatus.RESERVED,
+            extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
+            notifications = notifications,
+        )
+
+        val result = repo.declineTransaction("lottery-1", "sam", "jo", replacementNoticeFor("jo"), declineNow)
+        assertEquals(DeclineTransactionResult.NotDeclined, result)
+        assertEquals(EntryStatus.RESERVED, repo.getEntry("lottery-1", "sam")?.status)
+        assertEquals(EntryStatus.LOST, repo.getEntry("lottery-1", "jo")?.status)
+        assertTrue(notifications.getNotificationsFor("jo").isEmpty())
+    }
+
+    @Test
+    fun declineTransaction_removedLottery_returnsNotDeclinedAndLeavesEntriesUnchanged() = runBlocking {
+        val notifications = FakeNotificationRepository()
         val repo = repoWithSamsEntry(
             EntryStatus.WON,
             removed = true,
             extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
+            notifications = notifications,
         )
 
-        val result = repo.declineTransaction("lottery-1", "sam", listOf("jo"), declineNow)
-        assertFalse(result.declined)
-        assertNull(result.promotedUserId)
+        val result = repo.declineTransaction("lottery-1", "sam", "jo", replacementNoticeFor("jo"), declineNow)
+        assertEquals(DeclineTransactionResult.NotDeclined, result)
         assertEquals(EntryStatus.WON, repo.getEntry("lottery-1", "sam")?.status)
         assertEquals(EntryStatus.LOST, repo.getEntry("lottery-1", "jo")?.status)
+        assertTrue(notifications.getNotificationsFor("jo").isEmpty())
     }
 
     @Test
@@ -542,7 +729,10 @@ class FakeRepositoryTest {
             EntryStatus.WON,
             extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
         )
-        assertFalse(beforeBooking.declineTransaction("lottery-1", "sam", listOf("jo"), 2_999L).declined)
+        assertEquals(
+            DeclineTransactionResult.NotDeclined,
+            beforeBooking.declineTransaction("lottery-1", "sam", "jo", null, 2_999L),
+        )
         assertEquals(EntryStatus.WON, beforeBooking.getEntry("lottery-1", "sam")?.status)
         assertEquals(EntryStatus.LOST, beforeBooking.getEntry("lottery-1", "jo")?.status)
 
@@ -550,7 +740,10 @@ class FakeRepositoryTest {
             EntryStatus.WON,
             extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
         )
-        assertFalse(afterBooking.declineTransaction("lottery-1", "sam", listOf("jo"), 4_001L).declined)
+        assertEquals(
+            DeclineTransactionResult.NotDeclined,
+            afterBooking.declineTransaction("lottery-1", "sam", "jo", null, 4_001L),
+        )
         assertEquals(EntryStatus.WON, afterBooking.getEntry("lottery-1", "sam")?.status)
         assertEquals(EntryStatus.LOST, afterBooking.getEntry("lottery-1", "jo")?.status)
 
@@ -558,95 +751,29 @@ class FakeRepositoryTest {
             EntryStatus.WON,
             extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
         )
-        assertTrue(atStart.declineTransaction("lottery-1", "sam", listOf("jo"), 3_000L).declined)
+        assertEquals(
+            DeclineTransactionResult.Declined("jo"),
+            atStart.declineTransaction("lottery-1", "sam", "jo", null, 3_000L),
+        )
         assertEquals(EntryStatus.WON, atStart.getEntry("lottery-1", "jo")?.status)
 
         val atEnd = repoWithSamsEntry(
             EntryStatus.WON,
             extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
         )
-        assertTrue(atEnd.declineTransaction("lottery-1", "sam", listOf("jo"), 4_000L).declined)
+        assertEquals(
+            DeclineTransactionResult.Declined("jo"),
+            atEnd.declineTransaction("lottery-1", "sam", "jo", null, 4_000L),
+        )
         assertEquals(EntryStatus.WON, atEnd.getEntry("lottery-1", "jo")?.status)
     }
 
     @Test
-    fun declineTransaction_noEntry_returnsFalseAndAddsNothing() = runBlocking {
+    fun declineTransaction_noEntry_returnsNotDeclinedAndAddsNothing() = runBlocking {
         val repo = repoWithSamsEntry(EntryStatus.WON)
 
-        assertFalse(repo.declineTransaction("lottery-1", "alex", emptyList(), declineNow).declined)
+        assertEquals(DeclineTransactionResult.NotDeclined, repo.declineTransaction("lottery-1", "alex", null, null, declineNow))
         assertNull(repo.getEntry("lottery-1", "alex"))
-    }
-
-    @Test
-    fun markReplacementNotified_matchingDeclinedEntry_setsFlagPublishesOnceAndIsIdempotent() = runBlocking {
-        val repo = repoWithSamsEntry(
-            EntryStatus.WON,
-            extraEntries = listOf(entryFor("jo", EntryStatus.LOST)),
-        )
-        repo.declineTransaction("lottery-1", "sam", listOf("jo"), declineNow)
-
-        val emissions = mutableListOf<List<LotteryEntry>>()
-        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
-            repo.observeEntries("lottery-1").collect { emissions.add(it) }
-        }
-        yield()
-
-        assertTrue(repo.markReplacementNotified("lottery-1", "sam", "jo", declineNow))
-        yield()
-        assertTrue(repo.markReplacementNotified("lottery-1", "sam", "jo", declineNow))
-        yield()
-        collector.cancel()
-
-        // Initial emission + 1 publish for actual write; duplicate ack is a no-op without republishing.
-        assertEquals(2, emissions.size)
-        val sam = repo.getEntry("lottery-1", "sam")!!
-        assertTrue(sam.replacementNotified)
-        assertEquals(EntryStatus.DECLINED, sam.status)
-        assertEquals(4, sam.groupSize)
-        assertEquals(100L, sam.joinedAt)
-        assertEquals("jo", sam.replacementUserId)
-        assertEquals(declineNow, sam.replacementPromotedAt)
-    }
-
-    @Test
-    fun markReplacementNotified_staleRecipientOrTimeOrStatus_preservesNewerFieldsAndDoesNotAcknowledge() = runBlocking {
-        val repo = FakeLotteryRepository(
-            initialLotteries = listOf(openLottery),
-            initialEntries = listOf(
-                LotteryEntry(
-                    id = LotteryEntry.idFor("lottery-1", "sam"),
-                    lotteryId = "lottery-1",
-                    userId = "sam",
-                    groupSize = 7,
-                    joinedAt = 999L,
-                    status = EntryStatus.DECLINED,
-                    replacementUserId = "new-winner",
-                    replacementPromotedAt = 5_000L,
-                    replacementNotified = false,
-                ),
-            ),
-        )
-
-        val emissions = mutableListOf<List<LotteryEntry>>()
-        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
-            repo.observeEntries("lottery-1").collect { emissions.add(it) }
-        }
-        yield()
-
-        assertFalse(repo.markReplacementNotified("lottery-1", "sam", "old-winner", 4_000L))
-        assertFalse(repo.markReplacementNotified("lottery-1", "sam", "new-winner", 4_000L))
-        assertFalse(repo.markReplacementNotified("lottery-1", "sam", "old-winner", 5_000L))
-        yield()
-        collector.cancel()
-
-        assertEquals(1, emissions.size)
-        val stored = repo.getEntry("lottery-1", "sam")!!
-        assertEquals(7, stored.groupSize)
-        assertEquals(999L, stored.joinedAt)
-        assertEquals(EntryStatus.DECLINED, stored.status)
-        assertEquals("new-winner", stored.replacementUserId)
-        assertEquals(5_000L, stored.replacementPromotedAt)
-        assertFalse(stored.replacementNotified)
     }
     
     /** A lottery whose registration is open at [openNow], for the observeEntries tests. */
@@ -717,7 +844,8 @@ class FakeRepositoryTest {
 
     @Test
     fun observeEntries_sendsTheCompletedAtomicDeclineAndPromotionToLiveObserver() = runBlocking {
-        val repo = FakeLotteryRepository(listOf(openLottery))
+        val notifications = FakeNotificationRepository()
+        val repo = FakeLotteryRepository(listOf(openLottery), notificationRepository = notifications)
         repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-1", status = EntryStatus.WON))
         repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "user-2", status = EntryStatus.LOST))
 
@@ -727,16 +855,32 @@ class FakeRepositoryTest {
                 emissions.add(entries.associate { it.userId to it.status })
             }
         }
+        val inboxUpdates = mutableListOf<List<Notification>>()
+        val inboxSub = notifications.listenToInbox(
+            "user-2",
+            object : InboxListener {
+                override fun onInboxChanged(items: List<Notification>) {
+                    inboxUpdates.add(items)
+                }
+
+                override fun onInboxError() = Unit
+            },
+        )
         yield()
 
-        repo.declineTransaction("lottery-1", "user-1", listOf("user-2"), declineNow)
+        val notice = replacementNoticeFor("user-2")
+        val result = repo.declineTransaction("lottery-1", "user-1", "user-2", notice, declineNow)
         yield()
         collector.cancel()
+        inboxSub.cancel()
 
-        // The owner's live Waiting List (02.09.01) sees decline + replacement in one atomic emission.
+        // The owner's live Waiting List (02.09.01) sees decline + replacement in one atomic emission,
+        // and the promoted entrant's live inbox receives the prepared notice on commit.
+        assertEquals(DeclineTransactionResult.Declined("user-2"), result)
         assertEquals(2, emissions.size)
         assertEquals(mapOf("user-1" to EntryStatus.WON, "user-2" to EntryStatus.LOST), emissions[0])
         assertEquals(mapOf("user-1" to EntryStatus.DECLINED, "user-2" to EntryStatus.WON), emissions[1])
+        assertEquals(listOf(notice), inboxUpdates.last())
     }
 
     @Test

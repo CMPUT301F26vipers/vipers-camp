@@ -102,21 +102,21 @@ class NotificationService(
     }
 
     /**
-     * Adds one replacement "You won" notice to [recipientId]'s inbox for [lottery] at promotion
-     * time [promotedAt] (US 01.04.03, T-12). Uses a separate deterministic ID
-     * (`replacement_<lotteryId>_<userId>`) so the original `draw_<lotteryId>_<userId>` record stays
-     * intact and original-draw replays cannot overwrite the win. Saves via
-     * [NotificationRepository.addAll] so retries preserve `read` and `shownOnDevice` flags, and
-     * skips users who turned notifications off ([optedIn], US 01.10.01).
+     * Prepares the replacement "You won" notice for [recipientId] in [lottery] at promotion time
+     * [promotedAt] (US 01.04.03, T-12), or returns null if [recipientId] turned notifications off
+     * ([optedIn], US 01.10.01). Uses the separate deterministic ID
+     * `replacement_<lotteryId>_<recipientId>` and established win wording so the repository can
+     * commit the notice atomically with the decline and promotion without overwriting the original
+     * draw's `draw_<lotteryId>_<recipientId>` record.
      */
-    suspend fun sendReplacementWin(
+    suspend fun prepareReplacementWinNotice(
         lottery: Lottery,
         recipientId: String,
         promotedAt: Long = System.currentTimeMillis(),
-    ) {
-        if (optedIn(listOf(recipientId)).isEmpty()) return
+    ): Notification? {
+        if (optedIn(listOf(recipientId)).isEmpty()) return null
         val where = campsiteNamesFor(lottery)
-        val notice = Notification(
+        return Notification(
             id = replacementNoticeId(lottery.id, recipientId),
             recipientId = recipientId,
             senderId = "system",
@@ -127,8 +127,6 @@ class NotificationService(
             message = wonMessage(where, lottery.bookingEnd),
             createdAt = promotedAt,
         )
-        // addAll (unlike saveNotification) preserves read and shownOnDevice if already written.
-        notificationRepository.addAll(listOf(notice))
     }
 
     /**

@@ -46,8 +46,7 @@ package "domain.repository" {
     suspend joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult
     suspend leaveWaitingList(lotteryId: String, userId: String)
     suspend updateEntry(entry: LotteryEntry)
-    suspend declineTransaction(lotteryId, userId, candidateUserIds, now): DeclineTransactionResult
-    suspend markReplacementNotified(lotteryId, decliningUserId, expectedReplacementUserId, expectedPromotedAt): Boolean
+    suspend declineTransaction(lotteryId, userId, candidateUserId, replacementNotice, now): DeclineTransactionResult
     suspend getEntry(lotteryId: String, userId: String): LotteryEntry?
     suspend getEntries(lotteryId: String): List<LotteryEntry>
     observeEntries(lotteryId: String): Flow<List<LotteryEntry>>
@@ -111,11 +110,10 @@ package "domain.repository" {
     Error(message)
   }
 
-  class DeclineTransactionResult {
-    declined: Boolean
-    promotedUserId: String?
-    declinedEntry: LotteryEntry?
-    lottery: Lottery?
+  abstract class DeclineTransactionResult <<sealed>> {
+    Declined(promotedUserId)
+    CandidateStale
+    NotDeclined
   }
 
   interface ReserveResult <<sealed>> {
@@ -155,6 +153,7 @@ package "data.fake" {
   class FakeLotteryRepository {
     initialLotteries: List<Lottery>
     initialEntries: List<LotteryEntry>
+    notificationRepository: NotificationRepository?
   }
   class FakeReservationRepository {
     campsiteRepository: CampsiteRepository?
@@ -188,10 +187,11 @@ NotificationRepository ..> Subscription : returns
 note top of LotteryRepository
   Firestore transactions: joinWaitingList
   (refuses duplicates, a full list and joins
-  outside registration), declineTransaction,
-  markReplacementNotified and runDrawTransaction
-  (the draw runs once even if several phones
-  start it).
+  outside registration), declineTransaction
+  (declines, promotes replacement, and saves
+  replacement notice atomically), and
+  runDrawTransaction (the draw runs once even
+  if several phones start it).
 end note
 
 note top of ReservationRepository

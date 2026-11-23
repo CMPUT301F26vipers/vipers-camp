@@ -22,11 +22,14 @@ import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReserveResult
 import com.example.vipers.domain.service.NotificationService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
@@ -56,8 +59,8 @@ class LotteryDrawerTest {
 
     @Before
     fun setUp() = runTest {
-        lotteryRepository = FakeLotteryRepository()
         notificationRepository = FakeNotificationRepository()
+        lotteryRepository = FakeLotteryRepository(notificationRepository = notificationRepository)
         campsiteRepository = FakeCampsiteRepository()
         campsiteRepository.addCampsite(Campsite(id = "camp-1", name = "Pine Ridge"))
         campsiteRepository.addCampsite(Campsite(id = "camp-2", name = "Maple Grove"))
@@ -597,7 +600,7 @@ class LotteryDrawerTest {
         )
 
         val result = fixedDrawer.declineAndDrawReplacement(lottery.id, "winner-1", now)
-        assertEquals(ReplacementDrawResult.Declined(expectedWinner, noticeDelivered = true), result)
+        assertEquals(ReplacementDrawResult.Declined(expectedWinner), result)
 
         val entries = lotteryRepository.getEntries(lottery.id).associateBy { it.userId }
         assertEquals(EntryStatus.DECLINED, entries.getValue("winner-1").status)
@@ -626,7 +629,7 @@ class LotteryDrawerTest {
         )
 
         val result = drawer.declineAndDrawReplacement(lottery.id, "winner-1", now)
-        assertEquals(ReplacementDrawResult.Declined("loser-1", noticeDelivered = true), result)
+        assertEquals(ReplacementDrawResult.Declined("loser-1"), result)
 
         val promoted = lotteryRepository.getEntry(lottery.id, "loser-1")!!
         assertTrue(promoted.canReserve(lottery, now))
@@ -703,7 +706,7 @@ class LotteryDrawerTest {
     }
 
     @Test
-    fun declineAndDrawReplacement_optedOutRecipient_promotesAndMarksHandledWithoutSavingNotice() = runBlocking {
+    fun declineAndDrawReplacement_optedOutCandidate_promotesWithoutSavingNotice() = runBlocking {
         profileRepository.saveProfile(UserProfile(id = "loser-1", name = "Riley", notificationsEnabled = false))
         val lottery = createTestLottery(winnersCount = 1)
         lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-1", status = EntryStatus.WON))
@@ -711,33 +714,160 @@ class LotteryDrawerTest {
 
         val result = drawer.declineAndDrawReplacement(lottery.id, "winner-1", now)
 
-        assertEquals(ReplacementDrawResult.Declined("loser-1", noticeDelivered = true), result)
+        assertEquals(ReplacementDrawResult.Declined("loser-1"), result)
+        assertEquals(EntryStatus.DECLINED, lotteryRepository.getEntry(lottery.id, "winner-1")?.status)
         assertEquals(EntryStatus.WON, lotteryRepository.getEntry(lottery.id, "loser-1")?.status)
-        assertTrue(lotteryRepository.getEntry(lottery.id, "winner-1")?.replacementNotified == true)
         assertTrue(notificationRepository.getNotificationsFor("loser-1").isEmpty())
 
-        // Enabling notifications later does not replay an already-handled replacement notice
+        // Enabling notifications afterwards does not retroactively emit a notice or permit a second decline.
         profileRepository.saveProfile(UserProfile(id = "loser-1", name = "Riley", notificationsEnabled = true))
-        assertFalse(drawer.retryPendingReplacementNotice(lottery.id, "winner-1"))
+        assertEquals(ReplacementDrawResult.NotDeclined, drawer.declineAndDrawReplacement(lottery.id, "winner-1", now + 1))
         assertTrue(notificationRepository.getNotificationsFor("loser-1").isEmpty())
     }
 
     @Test
-    fun declineAndDrawReplacement_noticeDeliveryFailsThenRecovers_deliversOnceWithoutSecondSpot() = runBlocking {
+    fun declineAndDrawReplacement_staleFirstCandidate_skipsNoticeForStaleAndPreparesOnlyAttemptedCandidates() = runBlocking {
         val lottery = createTestLottery(winnersCount = 1)
+        val candidates = listOf("cand-a", "cand-b", "cand-c")
         lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-1", status = EntryStatus.WON))
-        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-1", status = EntryStatus.LOST))
-        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-2", status = EntryStatus.LOST))
+        for (id in candidates) {
+            lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = id, status = EntryStatus.LOST))
+        }
+        val expectedOrder = candidates.shuffled(Random(99))
+        val staleFirst = expectedOrder[0]
+        val promotedSecond = expectedOrder[1]
+        val untouchedThird = expectedOrder[2]
 
-        var failSend = true
-        val flakyNotifications = object : NotificationRepository by notificationRepository {
-            override suspend fun addAll(notifications: List<Notification>) {
-                if (failSend) throw IllegalStateException("offline")
-                notificationRepository.addAll(notifications)
+        val queriedProfiles = mutableListOf<String>()
+        val trackingProfiles = object : ProfileRepository by profileRepository {
+            override suspend fun getProfile(id: String): UserProfile? {
+                queriedProfiles.add(id)
+                return profileRepository.getProfile(id)
             }
         }
+        var racedOnce = false
+        val racingLotteries = object : LotteryRepository by lotteryRepository {
+            override suspend fun declineTransaction(
+                lotteryId: String,
+                userId: String,
+                candidateUserId: String?,
+                replacementNotice: Notification?,
+                now: Long,
+            ): DeclineTransactionResult {
+                if (!racedOnce && candidateUserId == staleFirst) {
+                    racedOnce = true
+                    lotteryRepository.updateEntry(
+                        LotteryEntry(lotteryId = lotteryId, userId = staleFirst, status = EntryStatus.WON),
+                    )
+                }
+                return lotteryRepository.declineTransaction(
+                    lotteryId,
+                    userId,
+                    candidateUserId,
+                    replacementNotice,
+                    now,
+                )
+            }
+        }
+        val fixedDrawer = LotteryDrawer(
+            lotteryRepository = racingLotteries,
+            notificationRepository = notificationRepository,
+            campsiteRepository = campsiteRepository,
+            profileRepository = trackingProfiles,
+            random = Random(99),
+        )
+
+        val result = fixedDrawer.declineAndDrawReplacement(lottery.id, "winner-1", now)
+
+        assertEquals(ReplacementDrawResult.Declined(promotedSecond), result)
+        assertEquals(EntryStatus.DECLINED, lotteryRepository.getEntry(lottery.id, "winner-1")?.status)
+        assertEquals(EntryStatus.WON, lotteryRepository.getEntry(lottery.id, promotedSecond)?.status)
+        assertEquals(EntryStatus.LOST, lotteryRepository.getEntry(lottery.id, untouchedThird)?.status)
+        assertTrue(notificationRepository.getNotificationsFor(staleFirst).isEmpty())
+        assertEquals(1, notificationRepository.getNotificationsFor(promotedSecond).size)
+        assertEquals(
+            "replacement_${lottery.id}_$promotedSecond",
+            notificationRepository.getNotificationsFor(promotedSecond).single().id,
+        )
+        assertTrue(notificationRepository.getNotificationsFor(untouchedThird).isEmpty())
+        assertEquals(listOf(staleFirst, promotedSecond), queriedProfiles)
+    }
+
+    @Test
+    fun declineAndDrawReplacement_allCandidatesStaleBeforeTx_commitsDeclineAloneWithNoNotices() = runBlocking {
+        val lottery = createTestLottery(winnersCount = 1)
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-1", status = EntryStatus.WON))
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "cand-1", status = EntryStatus.LOST))
+
+        val racingLotteries = object : LotteryRepository by lotteryRepository {
+            override suspend fun declineTransaction(
+                lotteryId: String,
+                userId: String,
+                candidateUserId: String?,
+                replacementNotice: Notification?,
+                now: Long,
+            ): DeclineTransactionResult {
+                if (candidateUserId == "cand-1") {
+                    lotteryRepository.updateEntry(
+                        LotteryEntry(lotteryId = lotteryId, userId = "cand-1", status = EntryStatus.RESERVED),
+                    )
+                }
+                return lotteryRepository.declineTransaction(
+                    lotteryId,
+                    userId,
+                    candidateUserId,
+                    replacementNotice,
+                    now,
+                )
+            }
+        }
+        val fixedDrawer = LotteryDrawer(
+            lotteryRepository = racingLotteries,
+            notificationRepository = notificationRepository,
+            campsiteRepository = campsiteRepository,
+            profileRepository = profileRepository,
+            random = Random(42),
+        )
+
+        val result = fixedDrawer.declineAndDrawReplacement(lottery.id, "winner-1", now)
+
+        assertEquals(ReplacementDrawResult.Declined(null), result)
+        assertEquals(EntryStatus.DECLINED, lotteryRepository.getEntry(lottery.id, "winner-1")?.status)
+        assertEquals(EntryStatus.RESERVED, lotteryRepository.getEntry(lottery.id, "cand-1")?.status)
+        assertTrue(notificationRepository.getNotificationsFor("cand-1").isEmpty())
+    }
+
+    @Test
+    fun declineAndDrawReplacement_whenNoticePersistenceFails_leavesWinIntactAndRetrySucceedsOnce() = runBlocking {
+        val backingNotifications = FakeNotificationRepository()
+        var failSend = true
+        val flakyNotifications = object : NotificationRepository by backingNotifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                if (failSend) throw IllegalStateException("offline")
+                backingNotifications.addAll(notifications)
+            }
+        }
+        val atomicLotteries = FakeLotteryRepository(notificationRepository = flakyNotifications)
+        val lottery = atomicLotteries.getLottery(
+            atomicLotteries.addLottery(
+                Lottery(
+                    ownerId = "owner-1",
+                    campsiteIds = listOf("camp-1"),
+                    nightsOffered = listOf("2027-06-01", "2027-06-02"),
+                    registrationStart = regStart,
+                    registrationEnd = regEnd,
+                    bookingStart = bookStart,
+                    bookingEnd = bookEnd,
+                    winnersCount = 1,
+                ),
+            ),
+        )!!
+        atomicLotteries.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-1", status = EntryStatus.WON))
+        atomicLotteries.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-1", status = EntryStatus.LOST))
+        atomicLotteries.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-2", status = EntryStatus.LOST))
+
         val firstDrawer = LotteryDrawer(
-            lotteryRepository = lotteryRepository,
+            lotteryRepository = atomicLotteries,
             notificationRepository = flakyNotifications,
             campsiteRepository = campsiteRepository,
             profileRepository = profileRepository,
@@ -745,84 +875,115 @@ class LotteryDrawerTest {
         )
 
         val promotionTime = bookStart + 10_000L
-        val firstResult = firstDrawer.declineAndDrawReplacement(lottery.id, "winner-1", promotionTime)
-        val promotedId = (firstResult as ReplacementDrawResult.Declined).promotedUserId!!
-        assertFalse(firstResult.noticeDelivered)
+        val failure = runCatching {
+            firstDrawer.declineAndDrawReplacement(lottery.id, "winner-1", promotionTime)
+        }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
 
-        // Entry commit survived the notification failure, with persisted recovery fields pending.
-        val declinedEntry = lotteryRepository.getEntry(lottery.id, "winner-1")!!
-        assertEquals(EntryStatus.DECLINED, declinedEntry.status)
-        assertEquals(promotedId, declinedEntry.replacementUserId)
-        assertEquals(promotionTime, declinedEntry.replacementPromotedAt)
-        assertFalse(declinedEntry.replacementNotified)
-        assertEquals(EntryStatus.WON, lotteryRepository.getEntry(lottery.id, promotedId)?.status)
-        assertTrue(notificationRepository.getNotificationsFor(promotedId).isEmpty())
+        // Failed notice persistence rolls back cleanly: original win stays WON and candidates stay LOST.
+        assertEquals(EntryStatus.WON, atomicLotteries.getEntry(lottery.id, "winner-1")?.status)
+        assertEquals(EntryStatus.LOST, atomicLotteries.getEntry(lottery.id, "loser-1")?.status)
+        assertEquals(EntryStatus.LOST, atomicLotteries.getEntry(lottery.id, "loser-2")?.status)
+        assertTrue(backingNotifications.getNotificationsFor("loser-1").isEmpty())
+        assertTrue(backingNotifications.getNotificationsFor("loser-2").isEmpty())
 
-        // Network returns: a fresh drawer recovers using persisted state without drawing a 2nd winner.
+        // Retry succeeds atomically once; a subsequent attempt does not decline or award a second spot.
         failSend = false
-        val recoveryDrawer = LotteryDrawer(
-            lotteryRepository = lotteryRepository,
-            notificationRepository = notificationRepository,
+        val retryDrawer = LotteryDrawer(
+            lotteryRepository = atomicLotteries,
+            notificationRepository = flakyNotifications,
             campsiteRepository = campsiteRepository,
             profileRepository = profileRepository,
             random = Random(123),
         )
-        assertTrue(recoveryDrawer.retryPendingReplacementNotice(lottery.id, "winner-1"))
-        assertFalse(recoveryDrawer.retryPendingReplacementNotice(lottery.id, "winner-1"))
+        val retryResult = retryDrawer.declineAndDrawReplacement(lottery.id, "winner-1", promotionTime)
+        val promotedId = (retryResult as ReplacementDrawResult.Declined).promotedUserId!!
+        assertEquals(ReplacementDrawResult.NotDeclined, retryDrawer.declineAndDrawReplacement(lottery.id, "winner-1", promotionTime + 1))
 
-        val notices = notificationRepository.getNotificationsFor(promotedId)
+        assertEquals(EntryStatus.DECLINED, atomicLotteries.getEntry(lottery.id, "winner-1")?.status)
+        assertEquals(EntryStatus.WON, atomicLotteries.getEntry(lottery.id, promotedId)?.status)
+        val notices = backingNotifications.getNotificationsFor(promotedId)
         assertEquals(1, notices.size)
         assertEquals("replacement_${lottery.id}_$promotedId", notices[0].id)
         assertEquals(promotionTime, notices[0].createdAt)
-        assertTrue(lotteryRepository.getEntry(lottery.id, "winner-1")?.replacementNotified == true)
         val otherLost = if (promotedId == "loser-1") "loser-2" else "loser-1"
-        assertEquals(EntryStatus.LOST, lotteryRepository.getEntry(lottery.id, otherLost)?.status)
+        assertEquals(EntryStatus.LOST, atomicLotteries.getEntry(lottery.id, otherLost)?.status)
+        assertTrue(backingNotifications.getNotificationsFor(otherLost).isEmpty())
     }
 
     @Test
-    fun retryPendingReplacementNotice_noticeAlreadyReadAndShown_preservesFlagsOnRetry() = runBlocking {
+    fun declineAndDrawReplacement_competingDeclinesWithTwoCandidates_promoteDistinctAndNotifyOnceEach() = runBlocking {
+        val lottery = createTestLottery(winnersCount = 2)
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-1", status = EntryStatus.WON))
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-2", status = EntryStatus.WON))
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-1", status = EntryStatus.LOST))
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-2", status = EntryStatus.LOST))
+
+        val drawerA = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, profileRepository, Random(42))
+        val drawerB = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, profileRepository, Random(42))
+
+        val results = listOf(
+            async(Dispatchers.Default) { drawerA.declineAndDrawReplacement(lottery.id, "winner-1", now) },
+            async(Dispatchers.Default) { drawerB.declineAndDrawReplacement(lottery.id, "winner-2", now + 1) },
+        ).awaitAll()
+
+        val promoted = results.map { (it as ReplacementDrawResult.Declined).promotedUserId }.toSet()
+        assertEquals(setOf("loser-1", "loser-2"), promoted)
+        assertEquals(EntryStatus.DECLINED, lotteryRepository.getEntry(lottery.id, "winner-1")?.status)
+        assertEquals(EntryStatus.DECLINED, lotteryRepository.getEntry(lottery.id, "winner-2")?.status)
+        assertEquals(1, notificationRepository.getNotificationsFor("loser-1").size)
+        assertEquals(1, notificationRepository.getNotificationsFor("loser-2").size)
+    }
+
+    @Test
+    fun declineAndDrawReplacement_competingDeclinesWithSingleCandidate_onePromotesOtherDeclinesAlone() = runBlocking {
+        val lottery = createTestLottery(winnersCount = 2)
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-1", status = EntryStatus.WON))
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-2", status = EntryStatus.WON))
+        lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-1", status = EntryStatus.LOST))
+
+        val drawerA = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, profileRepository, Random(42))
+        val drawerB = LotteryDrawer(lotteryRepository, notificationRepository, campsiteRepository, profileRepository, Random(99))
+
+        val results = listOf(
+            async(Dispatchers.Default) { drawerA.declineAndDrawReplacement(lottery.id, "winner-1", now) },
+            async(Dispatchers.Default) { drawerB.declineAndDrawReplacement(lottery.id, "winner-2", now + 1) },
+        ).awaitAll()
+
+        assertEquals(
+            setOf(ReplacementDrawResult.Declined("loser-1"), ReplacementDrawResult.Declined(null)),
+            results.toSet(),
+        )
+        assertEquals(EntryStatus.DECLINED, lotteryRepository.getEntry(lottery.id, "winner-1")?.status)
+        assertEquals(EntryStatus.DECLINED, lotteryRepository.getEntry(lottery.id, "winner-2")?.status)
+        assertEquals(EntryStatus.WON, lotteryRepository.getEntry(lottery.id, "loser-1")?.status)
+        assertEquals(1, notificationRepository.getNotificationsFor("loser-1").size)
+    }
+
+    @Test
+    fun declineAndDrawReplacement_existingDeterministicNoticeAlreadyReadAndShown_preservesFlags() = runBlocking {
         val lottery = createTestLottery(winnersCount = 1)
+        val noticeId = "replacement_${lottery.id}_loser-1"
+        notificationRepository.saveNotification(
+            Notification(
+                id = noticeId,
+                recipientId = "loser-1",
+                campsiteId = "camp-1",
+                lotteryId = lottery.id,
+                type = NotificationType.WON,
+                title = "You won the lottery!",
+                message = "Earlier",
+                read = true,
+                shownOnDevice = true,
+                createdAt = 1_000L,
+            ),
+        )
         lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "winner-1", status = EntryStatus.WON))
         lotteryRepository.seedEntry(LotteryEntry(lotteryId = lottery.id, userId = "loser-1", status = EntryStatus.LOST))
 
-        var failNextAck = true
-        val flakyLotteries = object : LotteryRepository by lotteryRepository {
-            override suspend fun markReplacementNotified(
-                lotteryId: String,
-                decliningUserId: String,
-                expectedReplacementUserId: String,
-                expectedPromotedAt: Long,
-            ): Boolean {
-                if (failNextAck) {
-                    throw IllegalStateException("ack interrupted")
-                }
-                return lotteryRepository.markReplacementNotified(
-                    lotteryId,
-                    decliningUserId,
-                    expectedReplacementUserId,
-                    expectedPromotedAt,
-                )
-            }
-        }
-        val firstDrawer = LotteryDrawer(
-            lotteryRepository = flakyLotteries,
-            notificationRepository = notificationRepository,
-            campsiteRepository = campsiteRepository,
-            profileRepository = profileRepository,
-            random = Random(42),
-        )
-
         val promotionTime = bookStart + 25_000L
-        val res = firstDrawer.declineAndDrawReplacement(lottery.id, "winner-1", promotionTime)
-        assertEquals(ReplacementDrawResult.Declined("loser-1", noticeDelivered = false), res)
-
-        // Simulate user reading and phone showing the already-saved notice before recovery finishes.
-        val noticeId = "replacement_${lottery.id}_loser-1"
-        val existing = notificationRepository.getNotificationsFor("loser-1").single()
-        notificationRepository.saveNotification(existing.copy(read = true, shownOnDevice = true))
-
-        failNextAck = false
-        assertTrue(drawer.retryPendingReplacementNotice(lottery.id, "winner-1"))
+        val res = drawer.declineAndDrawReplacement(lottery.id, "winner-1", promotionTime)
+        assertEquals(ReplacementDrawResult.Declined("loser-1"), res)
 
         val notices = notificationRepository.getNotificationsFor("loser-1")
         assertEquals(1, notices.size)
@@ -830,44 +991,6 @@ class LotteryDrawerTest {
         assertEquals(promotionTime, notices[0].createdAt)
         assertTrue(notices[0].read)
         assertTrue(notices[0].shownOnDevice)
-    }
-
-    @Test
-    fun retryPendingReplacementNotice_staleSnapshotAgainstNewerRecord_preservesNewerFieldsAndCannotAcknowledge() = runBlocking {
-        val lottery = createTestLottery(winnersCount = 1)
-        val newerRecord = LotteryEntry(
-            id = LotteryEntry.idFor(lottery.id, "winner-1"),
-            lotteryId = lottery.id,
-            userId = "winner-1",
-            groupSize = 6,
-            joinedAt = 123_456L,
-            status = EntryStatus.DECLINED,
-            replacementUserId = "loser-new",
-            replacementPromotedAt = bookStart + 90_000L,
-            replacementNotified = false,
-        )
-        lotteryRepository.seedEntry(newerRecord)
-
-        val staleSnapshot = LotteryEntry(
-            id = newerRecord.id,
-            lotteryId = lottery.id,
-            userId = "winner-1",
-            groupSize = 1,
-            joinedAt = 100L,
-            status = EntryStatus.DECLINED,
-            replacementUserId = "loser-old",
-            replacementPromotedAt = bookStart + 10_000L,
-            replacementNotified = false,
-        )
-
-        assertFalse(drawer.retryPendingReplacementNotice(lottery, staleSnapshot))
-
-        val stored = lotteryRepository.getEntry(lottery.id, "winner-1")!!
-        assertEquals(6, stored.groupSize)
-        assertEquals(123_456L, stored.joinedAt)
-        assertEquals("loser-new", stored.replacementUserId)
-        assertEquals(bookStart + 90_000L, stored.replacementPromotedAt)
-        assertFalse(stored.replacementNotified)
     }
 
     @Test

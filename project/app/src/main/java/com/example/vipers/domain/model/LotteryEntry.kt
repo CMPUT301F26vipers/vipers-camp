@@ -16,12 +16,6 @@ package com.example.vipers.domain.model
  * @property groupSize How many people are in the entrant's group.
  * @property joinedAt When they joined, in milliseconds since 1970.
  * @property status Where the entry is in the lottery.
- * @property replacementUserId User ID of the replacement winner promoted when this win was
- *   declined, or null if none was promoted.
- * @property replacementPromotedAt Timestamp in milliseconds since 1970 when the replacement winner
- *   was promoted, or null if none was promoted.
- * @property replacementNotified True once the replacement winner's notification delivery has been
- *   handled (delivered or skipped due to opt-out).
  */
 data class LotteryEntry(
     val id: String = "",
@@ -30,9 +24,6 @@ data class LotteryEntry(
     val groupSize: Int = 1,
     val joinedAt: Long = 0,
     val status: EntryStatus = EntryStatus.WAITING,
-    val replacementUserId: String? = null,
-    val replacementPromotedAt: Long? = null,
-    val replacementNotified: Boolean = false,
 ) {
     /**
      * Tells whether this win can still be used to reserve at time [now] (milliseconds since 1970).

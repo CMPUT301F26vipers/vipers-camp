@@ -85,6 +85,7 @@ class DeclineWinTest {
         runBlocking {
             campsites.saveAvailability(AvailabilityCalendar(campsiteId = "hinton", openNights = nights))
         }
+        notifications = FakeNotificationRepository()
         lotteries = FakeLotteryRepository(
             listOf(lottery),
             listOf(
@@ -96,8 +97,8 @@ class DeclineWinTest {
                     status = status,
                 ),
             ) + extraEntries,
+            notificationRepository = notifications,
         )
-        notifications = FakeNotificationRepository()
         val controller = ReserveController(
             campsiteRepository = campsites,
             lotteryRepository = lotteries,

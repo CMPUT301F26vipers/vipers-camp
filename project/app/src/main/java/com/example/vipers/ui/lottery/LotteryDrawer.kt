@@ -4,8 +4,8 @@
  * Randomly picks the set number of winners from WAITING entries, writes chunked manifests,
  * commits the atomic Phase 1 draw transaction, reconciles entry statuses, and has
  * NotificationService send the idempotent "You won" (US 01.03.01) and "Not selected" (US 01.03.02)
- * notices. Also handles the atomic replacement draw and recoverable replacement "You won" notice
- * when a winner declines (US 01.04.03, T-12).
+ * notices. Also handles the atomic replacement draw and replacement "You won" notice when a
+ * winner declines (US 01.04.03, T-12).
  * DrawAndNotifyWorker starts the draw once registration ends, and the owner's Draw now button
  * starts it through drawNow, which can close registration early (US 02.05.01b).
  * Known issues: Draw transaction not tested against real Firestore yet.
@@ -14,9 +14,9 @@ package com.example.vipers.ui.lottery
 
 import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
-import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
@@ -25,7 +25,6 @@ import com.example.vipers.domain.service.DrawResult
 import com.example.vipers.domain.service.NotificationService
 import java.util.Random
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 
 /** Outcome of a lottery draw or recovery operation. */
 sealed class LotteryDrawResult {
@@ -42,14 +41,10 @@ sealed class LotteryDrawResult {
 /** Outcome of declining a win and drawing a replacement winner (US 01.04.03, T-12). */
 sealed class ReplacementDrawResult {
     /**
-     * The win was declined atomically; [promotedUserId] became WON (or null when no LOST entrant
-     * was eligible). [noticeDelivered] is true if there was no recipient or notice delivery was
-     * handled (including opted-out recipients).
+     * The win was declined atomically; [promotedUserId] became WON (and their prepared notice, if
+     * opted in, was committed in the same transaction), or null when no LOST entrant was eligible.
      */
-    data class Declined(
-        val promotedUserId: String?,
-        val noticeDelivered: Boolean = true,
-    ) : ReplacementDrawResult()
+    data class Declined(val promotedUserId: String?) : ReplacementDrawResult()
 
     /** The entry was no longer eligible to decline, so neither entry changed. */
     object NotDeclined : ReplacementDrawResult()
@@ -237,93 +232,62 @@ class LotteryDrawer(
     }
 
     /**
-     * Atomically declines [decliningUserId]'s win in [lotteryId] at time [now] and promotes one
-     * uniformly chosen [EntryStatus.LOST] entrant from the same lottery (US 01.04.03, T-12).
+     * Atomically declines [decliningUserId]'s win in [lotteryId] at time [now], promotes one
+     * uniformly chosen [EntryStatus.LOST] entrant from the same lottery, and commits their
+     * prepared replacement WON notice (if opted in) in the same transaction (US 01.04.03, T-12).
      *
-     * Candidate shuffling runs outside the retried transaction using [random]. If a replacement is
-     * promoted, delivers their replacement WON notice outside the transaction; if notice delivery
-     * fails, the committed decline and promotion remain intact and the persisted recovery fields on
-     * the declined entry allow [retryPendingReplacementNotice] to finish delivery later without
-     * running another draw.
+     * Eligible LOST entrants are shuffled once outside the transaction using [random]. For each
+     * candidate in that order, [NotificationService.prepareReplacementWinNotice] runs outside the
+     * transaction immediately before attempting the commit; stale candidates write nothing and
+     * advance to the next candidate, while an opted-out candidate (`null` notice) is still promoted.
+     * If the shuffled pool is empty or exhausted, the valid decline commits alone.
      */
     suspend fun declineAndDrawReplacement(
         lotteryId: String,
         decliningUserId: String,
         now: Long = System.currentTimeMillis(),
     ): ReplacementDrawResult {
+        val lottery = lotteryRepository.getLottery(lotteryId)
+            ?: return ReplacementDrawResult.NotDeclined
+        if (lottery.removed) return ReplacementDrawResult.NotDeclined
+
         val candidateUserIds = lotteryRepository.getEntries(lotteryId)
             .filter { it.lotteryId == lotteryId && it.status == EntryStatus.LOST && it.userId != decliningUserId }
             .map { it.userId }
             .distinct()
             .shuffled(random)
 
-        val txResult = lotteryRepository.declineTransaction(
-            lotteryId = lotteryId,
-            userId = decliningUserId,
-            candidateUserIds = candidateUserIds,
-            now = now,
-        )
-        if (!txResult.declined) return ReplacementDrawResult.NotDeclined
-
-        val promotedUserId = txResult.promotedUserId
-            ?: return ReplacementDrawResult.Declined(promotedUserId = null, noticeDelivered = true)
-
-        val lottery = txResult.lottery ?: lotteryRepository.getLottery(lotteryId)
-        val declinedEntry = txResult.declinedEntry
-        if (lottery == null || declinedEntry == null) {
-            return ReplacementDrawResult.Declined(promotedUserId = promotedUserId, noticeDelivered = false)
+        for (candidateId in candidateUserIds) {
+            val notice = notificationService.prepareReplacementWinNotice(lottery, candidateId, now)
+            when (
+                val attempt = lotteryRepository.declineTransaction(
+                    lotteryId = lotteryId,
+                    userId = decliningUserId,
+                    candidateUserId = candidateId,
+                    replacementNotice = notice,
+                    now = now,
+                )
+            ) {
+                is DeclineTransactionResult.Declined ->
+                    return ReplacementDrawResult.Declined(attempt.promotedUserId)
+                DeclineTransactionResult.CandidateStale -> continue
+                DeclineTransactionResult.NotDeclined -> return ReplacementDrawResult.NotDeclined
+            }
         }
 
-        val delivered = deliverReplacementNotice(lottery, declinedEntry)
-        return ReplacementDrawResult.Declined(
-            promotedUserId = promotedUserId,
-            noticeDelivered = delivered,
-        )
-    }
-
-    /**
-     * Retries delivering a pending replacement win notice recorded on [decliningUserId]'s
-     * declined entry in [lotteryId] without drawing another replacement (T-12). Returns true if
-     * a pending notice was delivered (or skipped due to opt-out) and marked handled.
-     */
-    suspend fun retryPendingReplacementNotice(lotteryId: String, decliningUserId: String): Boolean {
-        val lottery = lotteryRepository.getLottery(lotteryId)?.takeIf { !it.removed } ?: return false
-        val declinedEntry = lotteryRepository.getEntry(lotteryId, decliningUserId) ?: return false
-        return retryPendingReplacementNotice(lottery, declinedEntry)
-    }
-
-    /**
-     * Retries delivering a pending replacement win notice using the already loaded [lottery] and
-     * [declinedEntry] without running another draw (T-12).
-     */
-    suspend fun retryPendingReplacementNotice(lottery: Lottery, declinedEntry: LotteryEntry): Boolean {
-        if (
-            lottery.removed ||
-            declinedEntry.status != EntryStatus.DECLINED ||
-            declinedEntry.replacementNotified ||
-            declinedEntry.replacementUserId == null ||
-            declinedEntry.replacementPromotedAt == null
-        ) {
-            return false
-        }
-        return deliverReplacementNotice(lottery, declinedEntry)
-    }
-
-    private suspend fun deliverReplacementNotice(lottery: Lottery, declinedEntry: LotteryEntry): Boolean {
-        val recipientId = declinedEntry.replacementUserId ?: return true
-        val promotedAt = declinedEntry.replacementPromotedAt ?: return false
-        return try {
-            notificationService.sendReplacementWin(lottery, recipientId, promotedAt)
-            lotteryRepository.markReplacementNotified(
-                lotteryId = lottery.id,
-                decliningUserId = declinedEntry.userId,
-                expectedReplacementUserId = recipientId,
-                expectedPromotedAt = promotedAt,
+        return when (
+            val emptyPool = lotteryRepository.declineTransaction(
+                lotteryId = lotteryId,
+                userId = decliningUserId,
+                candidateUserId = null,
+                replacementNotice = null,
+                now = now,
             )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            false
+        ) {
+            is DeclineTransactionResult.Declined ->
+                ReplacementDrawResult.Declined(emptyPool.promotedUserId)
+            DeclineTransactionResult.CandidateStale,
+            DeclineTransactionResult.NotDeclined -> ReplacementDrawResult.NotDeclined
         }
     }
 }

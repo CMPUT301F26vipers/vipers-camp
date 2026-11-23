@@ -7,11 +7,8 @@
  */
 package com.example.vipers.data.firestore
 
-import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
-import com.example.vipers.domain.model.LotteryEntry
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -82,40 +79,5 @@ class LotteryMappingTest {
             ),
             lottery.toEditableFields().keys
         )
-    }
-
-    @Test
-    fun entryToMap_serializesDefaultAndReplacementRecoveryFields() {
-        val plain = LotteryEntry(
-            id = "lot-1_sam",
-            lotteryId = "lot-1",
-            userId = "sam",
-            groupSize = 3,
-            joinedAt = 1_000L,
-            status = EntryStatus.WON,
-        ).toMap()
-
-        assertEquals("WON", plain["status"])
-        assertNull(plain["replacementUserId"])
-        assertNull(plain["replacementPromotedAt"])
-        assertEquals(false, plain["replacementNotified"])
-
-        val declined = LotteryEntry(
-            id = "lot-1_sam",
-            lotteryId = "lot-1",
-            userId = "sam",
-            groupSize = 3,
-            joinedAt = 1_000L,
-            status = EntryStatus.DECLINED,
-            replacementUserId = "jo",
-            replacementPromotedAt = 2_500L,
-            replacementNotified = true,
-        ).toMap()
-
-        assertEquals("DECLINED", declined["status"])
-        assertEquals("jo", declined["replacementUserId"])
-        assertEquals(2_500L, declined["replacementPromotedAt"])
-        assertEquals(true, declined["replacementNotified"])
-        assertFalse(plain["replacementNotified"] as Boolean)
     }
 }

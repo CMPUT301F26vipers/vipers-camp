@@ -166,15 +166,11 @@ class ReserveController(
 
     /**
      * Gets the lottery, the campsite, the user's entry and the campsite's calendar at time [now]
-     * (milliseconds since 1970), retries any pending replacement win notice for a previously
-     * committed decline (T-12), then works out [offerState] and [freeNights]. If a picked night
+     * (milliseconds since 1970), then works out [offerState] and [freeNights]. If a picked night
      * isn't free any more, the pick is cleared. [loadData] runs this in the background; unit tests
      * call it directly and pass their own [now].
      */
-    suspend fun fetchData(now: Long = System.currentTimeMillis()) =
-        loadState(now, retryPendingNotice = true)
-
-    private suspend fun loadState(now: Long, retryPendingNotice: Boolean) {
+    suspend fun fetchData(now: Long = System.currentTimeMillis()) {
         loading = true
         error = null
         try {
@@ -201,18 +197,7 @@ class ReserveController(
                 site = campsiteRepository.getCampsite(chosenId)?.takeIf { !it.removed }
             }
 
-            var loadedEntry = lotteryRepository.getEntry(found.id, userId)
-            if (
-                retryPendingNotice &&
-                loadedEntry != null &&
-                loadedEntry.status == EntryStatus.DECLINED &&
-                loadedEntry.replacementUserId != null &&
-                !loadedEntry.replacementNotified
-            ) {
-                if (lotteryDrawer.retryPendingReplacementNotice(found, loadedEntry)) {
-                    loadedEntry = loadedEntry.copy(replacementNotified = true)
-                }
-            }
+            val loadedEntry = lotteryRepository.getEntry(found.id, userId)
             if (loadedEntry != null && loadedEntry.groupSize > 0) {
                 groupSize = loadedEntry.groupSize
             }
@@ -248,14 +233,14 @@ class ReserveController(
     }
 
     /**
-     * Declines the user's win at time [now] (milliseconds since 1970) and atomically draws one
-     * replacement winner through [LotteryDrawer.declineAndDrawReplacement] (US 01.04.03, T-12).
-     * Checks [LotteryEntry.canDecline] again first, so a win that was reserved or expired since
-     * the screen loaded is left alone, then reloads so [canDecline] becomes false and [offerState]
-     * becomes [OfferState.USED]. A second call while one is saving does nothing. If the atomic
-     * transaction fails, [declineError] says so; if the transaction committed and only notice
-     * delivery failed, the entry stays DECLINED and the next [fetchData] retries delivery.
-     * [declineWin] runs this in the background; unit tests call it directly and pass their own [now].
+     * Declines the user's win at time [now] (milliseconds since 1970) and atomically promotes one
+     * replacement winner and commits their notice through [LotteryDrawer.declineAndDrawReplacement]
+     * (US 01.04.03, T-12). Checks [LotteryEntry.canDecline] again first, so a win that was reserved
+     * or expired since the screen loaded is left alone, then reloads so [canDecline] becomes false
+     * and [offerState] becomes [OfferState.USED]. A second call while one is saving does nothing.
+     * If saving or notice persistence fails, the original win stays intact and [declineError] says
+     * so, allowing retry. [declineWin] runs this in the background; unit tests call it directly
+     * and pass their own [now].
      */
     suspend fun decline(now: Long = System.currentTimeMillis()) {
         val currentLottery = lottery ?: return
@@ -273,7 +258,7 @@ class ReserveController(
         } finally {
             isDeclining = false
         }
-        loadState(now, retryPendingNotice = false)
+        fetchData(now)
     }
 
     /** Sets group size within 1..maxOccupancy (T-03). */

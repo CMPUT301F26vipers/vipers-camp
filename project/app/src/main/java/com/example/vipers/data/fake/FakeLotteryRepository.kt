@@ -9,12 +9,16 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.validateLottery
 import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.UpdateLotteryResult
+import com.example.vipers.domain.service.NotificationService
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +30,7 @@ import kotlinx.coroutines.sync.withLock
 class FakeLotteryRepository(
     initialLotteries: List<Lottery> = emptyList(),
     initialEntries: List<LotteryEntry> = emptyList(),
+    var notificationRepository: NotificationRepository? = null,
 ) : LotteryRepository {
 
     private val mutex = Mutex()
@@ -194,67 +199,58 @@ class FakeLotteryRepository(
     override suspend fun declineTransaction(
         lotteryId: String,
         userId: String,
-        candidateUserIds: List<String>,
+        candidateUserId: String?,
+        replacementNotice: Notification?,
         now: Long,
     ): DeclineTransactionResult = mutex.withLock {
-        val lottery = lotteries[lotteryId] ?: return@withLock DeclineTransactionResult(declined = false)
-        val id = LotteryEntry.idFor(lotteryId, userId)
-        val entry = entries[id] ?: return@withLock DeclineTransactionResult(declined = false)
-        if (entry.lotteryId != lotteryId || !entry.canDecline(lottery, now)) {
-            return@withLock DeclineTransactionResult(declined = false)
-        }
-
-        val promoted = candidateUserIds
-            .distinct()
-            .filter { it != userId }
-            .firstNotNullOfOrNull { candidateId ->
-                val candidate = entries[LotteryEntry.idFor(lotteryId, candidateId)]
-                candidate?.takeIf { it.lotteryId == lotteryId && it.status == EntryStatus.LOST }
+        if (candidateUserId == null) {
+            require(replacementNotice == null) {
+                "replacementNotice must be null when no replacement candidate is specified"
             }
-
-        val updatedDeclined = if (promoted != null) {
-            entries[promoted.id] = promoted.copy(status = EntryStatus.WON)
-            entry.copy(
-                status = EntryStatus.DECLINED,
-                replacementUserId = promoted.userId,
-                replacementPromotedAt = now,
-                replacementNotified = false,
-            )
-        } else {
-            entry.copy(status = EntryStatus.DECLINED)
+        } else if (replacementNotice != null) {
+            require(notificationRepository != null) {
+                "notificationRepository must be configured when replacementNotice is non-null"
+            }
+            require(replacementNotice.id == NotificationService.replacementNoticeId(lotteryId, candidateUserId)) {
+                "replacementNotice id must match replacement_<lotteryId>_<candidateUserId>"
+            }
+            require(replacementNotice.lotteryId == lotteryId) {
+                "replacementNotice lotteryId must match $lotteryId"
+            }
+            require(replacementNotice.recipientId == candidateUserId) {
+                "replacementNotice recipientId must match $candidateUserId"
+            }
+            require(replacementNotice.type == NotificationType.WON) {
+                "replacementNotice type must be WON"
+            }
         }
-        entries[id] = updatedDeclined
-        // Publish once after both updates so live observers see the completed atomic state.
-        publish()
-        DeclineTransactionResult(
-            declined = true,
-            promotedUserId = promoted?.userId,
-            declinedEntry = updatedDeclined,
-            lottery = lottery,
-        )
-    }
 
-    override suspend fun markReplacementNotified(
-        lotteryId: String,
-        decliningUserId: String,
-        expectedReplacementUserId: String,
-        expectedPromotedAt: Long,
-    ): Boolean = mutex.withLock {
-        val id = LotteryEntry.idFor(lotteryId, decliningUserId)
-        val current = entries[id] ?: return@withLock false
-        if (
-            current.lotteryId != lotteryId ||
-            current.status != EntryStatus.DECLINED ||
-            current.replacementUserId != expectedReplacementUserId ||
-            current.replacementPromotedAt != expectedPromotedAt
-        ) {
-            return@withLock false
+        val lottery = lotteries[lotteryId] ?: return@withLock DeclineTransactionResult.NotDeclined
+        val id = LotteryEntry.idFor(lotteryId, userId)
+        val entry = entries[id] ?: return@withLock DeclineTransactionResult.NotDeclined
+        if (entry.lotteryId != lotteryId || !entry.canDecline(lottery, now)) {
+            return@withLock DeclineTransactionResult.NotDeclined
         }
-        if (!current.replacementNotified) {
-            entries[id] = current.copy(replacementNotified = true)
+
+        if (candidateUserId != null) {
+            if (candidateUserId == userId) return@withLock DeclineTransactionResult.CandidateStale
+            val candidate = entries[LotteryEntry.idFor(lotteryId, candidateUserId)]
+            if (candidate == null || candidate.lotteryId != lotteryId || candidate.status != EntryStatus.LOST) {
+                return@withLock DeclineTransactionResult.CandidateStale
+            }
+            // Persist notice before mutating entries so a notification write failure leaves WON/LOST intact.
+            if (replacementNotice != null) {
+                notificationRepository!!.addAll(listOf(replacementNotice))
+            }
+            entries[id] = entry.copy(status = EntryStatus.DECLINED)
+            entries[candidate.id] = candidate.copy(status = EntryStatus.WON)
             publish()
+            return@withLock DeclineTransactionResult.Declined(promotedUserId = candidate.userId)
         }
-        true
+
+        entries[id] = entry.copy(status = EntryStatus.DECLINED)
+        publish()
+        DeclineTransactionResult.Declined(promotedUserId = null)
     }
 
     override suspend fun seedEntry(entry: LotteryEntry): Unit = mutex.withLock {

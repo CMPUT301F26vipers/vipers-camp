@@ -250,7 +250,7 @@ package "services" {
     listenToInbox(userId: String, listener: InboxListener): Subscription
     suspend markRead(id: String)
     suspend sendDrawResults(result: DrawResult, now: Long)
-    suspend sendReplacementWin(lottery: Lottery, recipientId: String, promotedAt: Long)
+    suspend prepareReplacementWinNotice(lottery: Lottery, recipientId: String, promotedAt: Long): Notification?
   }
 
   class LotteryDrawer {
@@ -258,7 +258,6 @@ package "services" {
     suspend drawLottery(lotteryId: String, now: Long): LotteryDrawResult
     suspend drawNow(lotteryId: String, now: Long): LotteryDrawResult
     suspend declineAndDrawReplacement(lotteryId: String, decliningUserId: String, now: Long): ReplacementDrawResult
-    suspend retryPendingReplacementNotice(lottery: Lottery, declinedEntry: LotteryEntry): Boolean
   }
 
   class DrawAndNotifyWorker {
@@ -301,7 +300,7 @@ abstract class LotteryDrawResult <<sealed>> {
 }
 
 abstract class ReplacementDrawResult <<sealed>> {
-  Declined(promotedUserId, noticeDelivered)
+  Declined(promotedUserId)
   NotDeclined
 }
 

@@ -9,6 +9,7 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -43,17 +44,20 @@ sealed class DrawTransactionResult {
     data class Error(val message: String) : DrawTransactionResult()
 }
 
-/** Result of an atomic win-decline and replacement-promotion transaction (US 01.04.03, T-12). */
-data class DeclineTransactionResult(
-    /** True if the declining entry changed from WON to DECLINED in this transaction. */
-    val declined: Boolean,
-    /** User ID of the LOST entrant promoted to WON, or null if none was eligible or decline did not occur. */
-    val promotedUserId: String? = null,
-    /** The committed declined entry, when [declined] is true. */
-    val declinedEntry: LotteryEntry? = null,
-    /** The committed lottery snapshot, when [declined] is true. */
-    val lottery: Lottery? = null,
-)
+/** Result of an atomic win-decline, replacement-promotion, and notice write (US 01.04.03, T-12). */
+sealed interface DeclineTransactionResult {
+    /**
+     * The win changed from WON to DECLINED. [promotedUserId] became WON (and their prepared notice,
+     * if any, was committed in the same transaction), or null if the decline committed alone.
+     */
+    data class Declined(val promotedUserId: String? = null) : DeclineTransactionResult
+
+    /** The selected candidate was no longer LOST in this lottery; nothing was written. */
+    data object CandidateStale : DeclineTransactionResult
+
+    /** The declining entry was no longer eligible to decline; nothing was written. */
+    data object NotDeclined : DeclineTransactionResult
+}
 
 /** Saves and loads [Lottery]s and their [LotteryEntry]s. */
 interface LotteryRepository {
@@ -123,42 +127,25 @@ interface LotteryRepository {
     suspend fun updateEntry(entry: LotteryEntry)
 
     /**
-     * Atomically declines [userId]'s win in [lotteryId] and promotes the first eligible LOST
-     * entrant from [candidateUserIds] in one transaction at time [now] (US 01.04.03, T-12).
+     * Atomically declines [userId]'s win in [lotteryId], promotes [candidateUserId] if still
+     * [EntryStatus.LOST] in [lotteryId], and commits [replacementNotice] (when non-null) in one
+     * transaction at time [now] (US 01.04.03, T-12).
      *
-     * Re-reads the lottery and declining entry, checks [LotteryEntry.canDecline], and reads
-     * candidate entry documents in the supplied order until finding one still [EntryStatus.LOST]
-     * in [lotteryId]. Atomically transitions `WON -> DECLINED` (persisting [LotteryEntry.replacementUserId],
-     * [LotteryEntry.replacementPromotedAt], and `replacementNotified = false` when a recipient is
-     * promoted for post-commit notice recovery) and `LOST -> WON` for the promoted recipient.
-     * When the pool is empty, the valid decline still succeeds with `promotedUserId = null`.
-     * When the decline is stale (missing, not WON, removed lottery, or outside booking), neither
-     * entry changes and `declined = false` is returned.
+     * Re-reads the lottery, the declining entry, [candidateUserId] (when non-null), and any
+     * existing deterministic notification document before writing. Checks [LotteryEntry.canDecline]
+     * for [userId]; if ineligible, writes nothing and returns [DeclineTransactionResult.NotDeclined].
+     * When [candidateUserId] is non-null and no longer [EntryStatus.LOST] in [lotteryId], writes
+     * nothing and returns [DeclineTransactionResult.CandidateStale]. When [candidateUserId] is
+     * null, commits the valid decline alone. Preserves `read` and `shownOnDevice` on any existing
+     * deterministic notice document.
      */
     suspend fun declineTransaction(
         lotteryId: String,
         userId: String,
-        candidateUserIds: List<String>,
+        candidateUserId: String? = null,
+        replacementNotice: Notification? = null,
         now: Long = System.currentTimeMillis(),
     ): DeclineTransactionResult
-
-    /**
-     * Marks replacement-notice delivery as handled (`replacementNotified = true`) on
-     * [decliningUserId]'s declined entry in [lotteryId] only when the stored entry still has
-     * [EntryStatus.DECLINED], [LotteryEntry.replacementUserId] == [expectedReplacementUserId], and
-     * [LotteryEntry.replacementPromotedAt] == [expectedPromotedAt] (T-12).
-     *
-     * Updates only `replacementNotified`, leaving all other fields untouched so a stale
-     * acknowledgment preserves newer fields and cannot acknowledge a different replacement record.
-     * Duplicate acknowledgments when `replacementNotified` is already `true` are idempotent
-     * no-ops returning `true`; missing or mismatched records return `false`.
-     */
-    suspend fun markReplacementNotified(
-        lotteryId: String,
-        decliningUserId: String,
-        expectedReplacementUserId: String,
-        expectedPromotedAt: Long,
-    ): Boolean
 
     /** Directly seeds an entry without transactional lifecycle validation. For tests and SeedLoader only. */
     suspend fun seedEntry(entry: LotteryEntry)
