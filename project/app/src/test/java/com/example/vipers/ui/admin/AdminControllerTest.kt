@@ -20,8 +20,10 @@ import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.MessageRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -854,13 +856,192 @@ class AdminControllerTest {
     }
 
     @Test
-    fun fetchMessageLogs_whenReservationLookupFails_gracefullyRetainsConversation() = runBlocking {
+    fun fetchMessageLogs_unsortedMessages_areDisplayedOldestFirst() = runBlocking {
+        val rawMessages = listOf(
+            Message(id = "m3", reservationId = "res-1", text = "Latest", createdAt = 300L),
+            Message(id = "m1", reservationId = "res-1", text = "Oldest", createdAt = 100L),
+            Message(id = "m2", reservationId = "res-1", text = "Middle", createdAt = 200L),
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(rawMessages),
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        val log = viewModel.messageLogs.single()
+        assertEquals(listOf("m1", "m2", "m3"), log.messages.map { it.id })
+        assertEquals(300L, log.lastMessageTime)
+    }
+
+    @Test
+    fun fetchMessageLogs_unorderedConversations_areSortedNewestFirstWithDeterministicTieBreaker() = runBlocking {
+        val messages = listOf(
+            Message(id = "m1", reservationId = "res-old", text = "1", createdAt = 1000L),
+            Message(id = "m2", reservationId = "res-new", text = "2", createdAt = 5000L),
+            Message(id = "m3", reservationId = "res-tie-2", text = "3", createdAt = 3000L),
+            Message(id = "m4", reservationId = "res-tie-1", text = "4", createdAt = 3000L),
+        )
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = FakeMessageRepository(messages),
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        viewModel.fetchMessageLogs()
+
+        val ids = viewModel.messageLogs.map { it.reservationId }
+        assertEquals(listOf("res-new", "res-tie-1", "res-tie-2", "res-old"), ids)
+    }
+
+    @Test
+    fun fetchMessageLogs_olderConcurrentRequestCannotOverwriteNewerCompletedRequest() = runTest {
+        val slowGate = CompletableDeferred<Unit>()
+        val slowMessage = Message(id = "m1", reservationId = "res-slow", text = "Slow", createdAt = 100L)
+        val fastMessage = Message(id = "m2", reservationId = "res-fast", text = "Fast", createdAt = 200L)
+
+        var callCount = 0
+        val controlledRepo = object : MessageRepository by FakeMessageRepository() {
+            override suspend fun getAllThreads(): List<List<Message>> {
+                callCount++
+                if (callCount == 1) {
+                    slowGate.await()
+                    return listOf(listOf(slowMessage))
+                }
+                return listOf(listOf(fastMessage))
+            }
+        }
+
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = controlledRepo,
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        val job1 = launch(Dispatchers.Unconfined) { viewModel.fetchMessageLogs() }
+        val job2 = launch(Dispatchers.Unconfined) { viewModel.fetchMessageLogs() }
+        job2.join()
+
+        assertEquals(1, viewModel.messageLogs.size)
+        assertEquals("res-fast", viewModel.messageLogs.single().reservationId)
+        assertFalse(viewModel.isMessageLogsLoading)
+
+        slowGate.complete(Unit)
+        job1.join()
+
+        assertEquals(1, viewModel.messageLogs.size)
+        assertEquals("res-fast", viewModel.messageLogs.single().reservationId)
+        assertFalse(viewModel.isMessageLogsLoading)
+        assertFalse(viewModel.messageLogsLoadFailed)
+        assertNull(viewModel.messageLogsError)
+    }
+
+    @Test
+    fun fetchMessageLogs_loadingAndErrorStateBelongsToLatestRequest() = runTest {
+        val slowGate = CompletableDeferred<Unit>()
+        val fastMessage = Message(id = "m1", reservationId = "res-fast", text = "Fast", createdAt = 200L)
+
+        var callCount = 0
+        val controlledRepo = object : MessageRepository by FakeMessageRepository() {
+            override suspend fun getAllThreads(): List<List<Message>> {
+                callCount++
+                if (callCount == 1) {
+                    slowGate.await()
+                    throw IllegalStateException("Slow request failed")
+                }
+                return listOf(listOf(fastMessage))
+            }
+        }
+
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = controlledRepo,
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        val job1 = launch(Dispatchers.Unconfined) { viewModel.fetchMessageLogs() }
+        val job2 = launch(Dispatchers.Unconfined) { viewModel.fetchMessageLogs() }
+        job2.join()
+
+        assertFalse(viewModel.messageLogsLoadFailed)
+        assertNull(viewModel.messageLogsError)
+        assertEquals(1, viewModel.messageLogs.size)
+
+        slowGate.complete(Unit)
+        job1.join()
+
+        assertFalse(viewModel.messageLogsLoadFailed)
+        assertNull(viewModel.messageLogsError)
+        assertFalse(viewModel.isMessageLogsLoading)
+        assertEquals(1, viewModel.messageLogs.size)
+        assertEquals("res-fast", viewModel.messageLogs.single().reservationId)
+    }
+
+    @Test
+    fun fetchMessageLogs_olderRequestCannotClearLoadingStateOfNewerRequest() = runTest {
+        val slowGate1 = CompletableDeferred<Unit>()
+        val slowGate2 = CompletableDeferred<Unit>()
+        val message1 = Message(id = "m1", reservationId = "res-1", text = "M1", createdAt = 100L)
+        val message2 = Message(id = "m2", reservationId = "res-2", text = "M2", createdAt = 200L)
+
+        var callCount = 0
+        val controlledRepo = object : MessageRepository by FakeMessageRepository() {
+            override suspend fun getAllThreads(): List<List<Message>> {
+                callCount++
+                if (callCount == 1) {
+                    slowGate1.await()
+                    return listOf(listOf(message1))
+                } else {
+                    slowGate2.await()
+                    return listOf(listOf(message2))
+                }
+            }
+        }
+
+        val viewModel = AdminController(
+            campsiteRepository = FakeCampsiteRepository(),
+            profileRepository = FakeProfileRepository(),
+            messageRepository = controlledRepo,
+            reservationRepository = FakeReservationRepository(),
+        )
+
+        val job1 = launch(Dispatchers.Unconfined) { viewModel.fetchMessageLogs() }
+        val job2 = launch(Dispatchers.Unconfined) { viewModel.fetchMessageLogs() }
+
+        assertTrue(viewModel.isMessageLogsLoading)
+
+        slowGate1.complete(Unit)
+        job1.join()
+
+        assertTrue(viewModel.isMessageLogsLoading)
+
+        slowGate2.complete(Unit)
+        job2.join()
+
+        assertFalse(viewModel.isMessageLogsLoading)
+        assertEquals(1, viewModel.messageLogs.size)
+        assertEquals("res-2", viewModel.messageLogs.single().reservationId)
+    }
+
+    @Test
+    fun fetchMessageLogs_temporaryReservationLookupFailure_reportedAndSucceedsOnRetry() = runBlocking {
         val messages = listOf(
             Message(id = "m1", reservationId = "res-1", text = "Hello", createdAt = 500L)
         )
-        val failingReservationRepo = object : ReservationRepository by FakeReservationRepository() {
+        val reservation = Reservation(id = "res-1", campsiteName = "Pine Ridge", ownerId = "o1", userId = "u1")
+        var shouldFail = true
+        val fakeReservationRepo = FakeReservationRepository(listOf(reservation))
+        val failingReservationRepo = object : ReservationRepository by fakeReservationRepo {
             override suspend fun getReservation(id: String): Reservation? {
-                throw IllegalStateException("Reservation database failure")
+                if (shouldFail) {
+                    throw IllegalStateException("Reservation database failure")
+                }
+                return fakeReservationRepo.getReservation(id)
             }
         }
         val viewModel = AdminController(
@@ -872,14 +1053,21 @@ class AdminControllerTest {
 
         viewModel.fetchMessageLogs()
 
+        assertTrue(viewModel.messageLogsLoadFailed)
+        assertEquals("Unable to load message logs.", viewModel.messageLogsError)
+        assertFalse(viewModel.isMessageLogsLoading)
+        assertTrue(viewModel.messageLogs.isEmpty())
+
+        // Retry after failure
+        shouldFail = false
+        viewModel.fetchMessageLogs()
+
         assertFalse(viewModel.messageLogsLoadFailed)
         assertNull(viewModel.messageLogsError)
+        assertEquals(1, viewModel.messageLogs.size)
         val log = viewModel.messageLogs.single()
         assertEquals("res-1", log.reservationId)
-        assertEquals("Unknown campsite", log.campsiteName)
-        assertEquals("Deleted user", log.ownerName)
-        assertEquals("Deleted user", log.entrantName)
-        assertEquals(1, log.messages.size)
+        assertEquals("Pine Ridge", log.campsiteName)
     }
 
     @Test

@@ -25,6 +25,7 @@ import com.example.vipers.domain.repository.MessageRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -350,14 +351,19 @@ class AdminController(
 
     /** Loads all owner-entrant message logs in the background. */
     fun loadMessageLogs() {
-        viewModelScope.launch { fetchMessageLogs() }
+        messageLogJob?.cancel()
+        messageLogJob = viewModelScope.launch { fetchMessageLogs() }
     }
+
+    private var messageLogJob: Job? = null
+    private var messageLogRequestId = 0
 
     /**
      * Loads all owner-entrant message logs and resolves their reservation and profile details.
      * Can be called directly from unit tests using runBlocking or runTest.
      */
     suspend fun fetchMessageLogs() {
+        val requestId = ++messageLogRequestId
         isMessageLogsLoading = true
         messageLogsLoadFailed = false
         messageLogsError = null
@@ -381,18 +387,13 @@ class AdminController(
             }
 
             val logs = mutableListOf<MessageLogConversation>()
-            for (thread in threads) {
-                if (thread.isEmpty()) continue
+            for (rawThread in threads) {
+                if (rawThread.isEmpty()) continue
+                val thread = Message.inOrder(rawThread)
                 val reservationId = thread.first().reservationId
                 val lastMessageTime = thread.last().createdAt
 
-                val reservation = try {
-                    reservationRepository?.getReservation(reservationId)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    null
-                }
+                val reservation = reservationRepository?.getReservation(reservationId)
 
                 val ownerName = if (reservation != null) resolveName(reservation.ownerId) else "Deleted user"
                 val entrantName = if (reservation != null) resolveName(reservation.userId) else "Deleted user"
@@ -412,14 +413,25 @@ class AdminController(
                 )
             }
 
-            messageLogs = logs
+            logs.sortWith(
+                compareByDescending<MessageLogConversation> { it.lastMessageTime }
+                    .thenBy { it.reservationId }
+            )
+
+            if (requestId == messageLogRequestId) {
+                messageLogs = logs
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            messageLogsLoadFailed = true
-            messageLogsError = "Unable to load message logs."
+            if (requestId == messageLogRequestId) {
+                messageLogsLoadFailed = true
+                messageLogsError = "Unable to load message logs."
+            }
         } finally {
-            isMessageLogsLoading = false
+            if (requestId == messageLogRequestId) {
+                isMessageLogsLoading = false
+            }
         }
     }
 

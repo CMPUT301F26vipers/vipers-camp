@@ -156,63 +156,82 @@ private fun MessageLogTab(
     controller: AdminController,
     onOpenConversation: (String) -> Unit,
 ) {
-    when {
-        controller.messageLogsLoading && controller.messageLogs.isEmpty() -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center,
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(
+                onClick = { controller.loadMessageLogs() },
+                enabled = !controller.messageLogsLoading,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.testTag("button_refresh"),
             ) {
-                CircularProgressIndicator()
+                Text("Refresh", style = MaterialTheme.typography.labelMedium)
             }
         }
-        controller.messageLogsLoadFailed && controller.messageLogs.isEmpty() -> {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = controller.messageLogError ?: "Unable to load message logs.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { controller.loadMessageLogs() }) {
-                    Text("Retry")
+
+        when {
+            controller.messageLogsLoading && controller.messageLogs.isEmpty() -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
                 }
             }
-        }
-        controller.messageLogs.isEmpty() -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No message logs found.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        else -> {
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag("message_log_list"),
-            ) {
-                items(controller.messageLogs, key = { it.reservationId }) { conversation ->
-                    MessageLogRowItem(
-                        conversation = conversation,
-                        onClick = { onOpenConversation(conversation.reservationId) },
+            controller.messageLogsLoadFailed && controller.messageLogs.isEmpty() -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = controller.messageLogError ?: "Unable to load message logs.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { controller.loadMessageLogs() }) {
+                        Text("Retry")
+                    }
+                }
+            }
+            controller.messageLogs.isEmpty() -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "No message logs found.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            else -> {
+                LazyColumn(
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("message_log_list"),
+                ) {
+                    items(controller.messageLogs, key = { it.reservationId }) { conversation ->
+                        MessageLogRowItem(
+                            conversation = conversation,
+                            onClick = { onOpenConversation(conversation.reservationId) },
+                        )
+                    }
                 }
             }
         }
