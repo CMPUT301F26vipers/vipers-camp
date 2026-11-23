@@ -16,8 +16,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.test.platform.app.InstrumentationRegistry
+import com.example.vipers.AppContainer
+import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -73,14 +78,10 @@ class DeclineWinTest {
     private lateinit var lotteries: FakeLotteryRepository
     private lateinit var notifications: FakeNotificationRepository
 
-    /**
-     * Shows the Reserve screen for Sam's win, whose entry has [status], and waits for it to load.
-     * The controller is built with fake repositories and passed straight to the screen.
-     */
-    private fun openReserve(
+    private fun prepareFakes(
         status: EntryStatus,
         extraEntries: List<LotteryEntry> = emptyList(),
-    ) {
+    ): FakeCampsiteRepository {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         runBlocking {
             campsites.saveAvailability(AvailabilityCalendar(campsiteId = "hinton", openNights = nights))
@@ -99,6 +100,18 @@ class DeclineWinTest {
             ) + extraEntries,
             notificationRepository = notifications,
         )
+        return campsites
+    }
+
+    /**
+     * Shows the Reserve screen for Sam's win, whose entry has [status], and waits for it to load.
+     * The controller is built with fake repositories and passed straight to the screen.
+     */
+    private fun openReserve(
+        status: EntryStatus,
+        extraEntries: List<LotteryEntry> = emptyList(),
+    ) {
+        val campsites = prepareFakes(status, extraEntries)
         val controller = ReserveController(
             campsiteRepository = campsites,
             lotteryRepository = lotteries,
@@ -172,7 +185,7 @@ class DeclineWinTest {
 
     @Test
     fun confirm_withLostEntrant_promotesReplacementAndSendsWonNotice() {
-        openReserve(
+        val campsites = prepareFakes(
             EntryStatus.WON,
             extraEntries = listOf(
                 LotteryEntry(
@@ -184,18 +197,40 @@ class DeclineWinTest {
                 ),
             ),
         )
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        val previousContainer = app.container
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(),
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            messageRepository = FakeMessageRepository(),
+            notificationRepository = notifications,
+            imageRepository = FakeImageRepository(),
+        )
+        try {
+            composeRule.setContent {
+                VipersTheme {
+                    ReserveScreen("lot-summer", "hinton", onBack = {})
+                }
+            }
+            waitForTag("reserve_banner")
 
-        composeRule.onNodeWithTag("reserve_decline").performScrollTo().performClick()
-        composeRule.onNodeWithText("Confirm").performClick()
-        waitForTag("reserve_declined")
+            composeRule.onNodeWithTag("reserve_decline").performScrollTo().performClick()
+            composeRule.onNodeWithText("Confirm").performClick()
+            waitForTag("reserve_declined")
 
-        assertEquals(EntryStatus.DECLINED, samsStatus())
-        runBlocking {
-            assertEquals(EntryStatus.WON, lotteries.getEntry("lot-summer", "user-jo")?.status)
-            val notices = notifications.getNotificationsFor("user-jo")
-            assertEquals(1, notices.size)
-            assertEquals("replacement_lot-summer_user-jo", notices[0].id)
-            assertEquals(NotificationType.WON, notices[0].type)
+            assertEquals(EntryStatus.DECLINED, samsStatus())
+            runBlocking {
+                assertEquals(EntryStatus.WON, lotteries.getEntry("lot-summer", "user-jo")?.status)
+                val notices = app.container.notificationRepository.getNotificationsFor("user-jo")
+                assertEquals(1, notices.size)
+                assertEquals("replacement_lot-summer_user-jo", notices[0].id)
+                assertEquals(NotificationType.WON, notices[0].type)
+            }
+        } finally {
+            app.container = previousContainer
         }
     }
 }
