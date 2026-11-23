@@ -14,6 +14,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.example.vipers.data.fake.FakeImageRepository
+import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
@@ -35,6 +37,8 @@ class SettingsAndPolicyTest {
         val controller = ProfileController(
             FakeProfileRepository(listOf(UserProfile(id = "test-device", name = "Sam Patel"))),
             "test-device",
+            FakeImageRepository(),
+            FakePhotoReader(),
         )
         composeRule.setContent {
             VipersTheme {
