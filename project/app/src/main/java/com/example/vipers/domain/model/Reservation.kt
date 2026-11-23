@@ -63,6 +63,18 @@ data class Reservation(
     }
 
     /**
+     * True if the owner can still reject it: it is Active on [today] ([isActive]), so CONFIRMED
+     * and checking out on or after [today] (US 02.08.01). A check-out that can't be read counts
+     * as not rejectable.
+     */
+    fun canReject(today: LocalDate): Boolean =
+        try {
+            isActive(today)
+        } catch (e: DateTimeParseException) {
+            false
+        }
+
+    /**
      * The nights this reservation holds, from [checkIn] up to the night before [checkOut], as
      * "yyyy-MM-dd" strings. These are the nights a cancel or reject gives back (US 01.07.01).
      */
@@ -141,5 +153,14 @@ data class Reservation(
         this.userId == ownerId -> null
         userId == ownerId -> this.userId
         else -> ownerId
+    }
+
+    companion object {
+
+        /**
+         * True if [reason] can be saved as a [rejectionReason]: it has something other than
+         * spaces and line breaks (US 02.08.01).
+         */
+        fun isValidRejectionReason(reason: String?): Boolean = !reason.isNullOrBlank()
     }
 }
