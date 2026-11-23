@@ -182,6 +182,35 @@ class FakeRepositoryTest {
     }
 
     @Test
+    fun getAllProfiles_returnsSeededAndSavedProfilesWithoutDuplicates() = runBlocking {
+        val seeded1 = UserProfile(id = "user-1", name = "Alice")
+        val seeded2 = UserProfile(id = "user-2", name = "Bob")
+        val repo = FakeProfileRepository(listOf(seeded1, seeded2))
+
+        assertEquals(
+            setOf("user-1", "user-2"),
+            repo.getAllProfiles().map { it.id }.toSet(),
+        )
+
+        val newProfile = UserProfile(id = "user-3", name = "Charlie")
+        repo.saveProfile(newProfile)
+        assertEquals(
+            setOf("user-1", "user-2", "user-3"),
+            repo.getAllProfiles().map { it.id }.toSet(),
+        )
+
+        val updatedProfile = UserProfile(id = "user-1", name = "Alice Updated")
+        repo.saveProfile(updatedProfile)
+        val allProfiles = repo.getAllProfiles()
+        assertEquals(
+            setOf("user-1", "user-2", "user-3"),
+            allProfiles.map { it.id }.toSet(),
+        )
+        assertEquals(3, allProfiles.size)
+        assertEquals("Alice Updated", allProfiles.first { it.id == "user-1" }.name)
+    }
+
+    @Test
     fun seedEntry_twiceForSameUserKeepsOneEntry() = runBlocking {
         val repo = FakeLotteryRepository()
         repo.seedEntry(LotteryEntry(lotteryId = "lottery-1", userId = "me", status = EntryStatus.WAITING))

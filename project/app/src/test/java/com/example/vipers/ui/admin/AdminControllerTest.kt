@@ -1,6 +1,6 @@
 /*
  * AdminControllerTest.kt
- * Unit tests for AdminController (US 03.04.01).
+ * Unit tests for AdminController (US 03.04.01, US 03.05.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
@@ -10,16 +10,21 @@ import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AdminControllerTest {
 
     @Before
@@ -131,5 +136,202 @@ class AdminControllerTest {
 
         assertEquals("Alice Smith", viewModel.getOwnerName("owner1"))
         assertEquals("Deleted user", viewModel.getOwnerName("owner2"))
+    }
+
+    @Test
+    fun fetchProfiles_withProfilesInRepository_loadsAllProfiles() = runTest {
+        val profiles = listOf(
+            UserProfile(id = "user-1", name = "Alice"),
+            UserProfile(id = "user-2", name = "Bob"),
+        )
+        val profileRepo = FakeProfileRepository(initial = profiles)
+        val campsiteRepo = FakeCampsiteRepository()
+        val viewModel = AdminController(campsiteRepo, profileRepo)
+
+        viewModel.fetchProfiles()
+
+        assertEquals(2, viewModel.profiles.size)
+        assertEquals(listOf("user-1", "user-2"), viewModel.profiles.map { it.id })
+        assertFalse(viewModel.profilesLoadFailed)
+        assertFalse(viewModel.isProfilesLoading)
+        assertNull(viewModel.profilesError)
+    }
+
+    @Test
+    fun fetchProfiles_determinesCampsiteOwnershipCorrectly() = runTest {
+        val profiles = listOf(
+            UserProfile(id = "owner-1", name = "Alice"),
+            UserProfile(id = "former-owner", name = "Bob"),
+            UserProfile(id = "entrant-only", name = "Charlie"),
+        )
+        val campsites = listOf(
+            Campsite(id = "c1", ownerId = "owner-1", name = "Camp 1", removed = false),
+            Campsite(id = "c2", ownerId = "former-owner", name = "Camp 2", removed = true),
+        )
+        val profileRepo = FakeProfileRepository(initial = profiles)
+        val campsiteRepo = FakeCampsiteRepository(initial = campsites)
+        val viewModel = AdminController(campsiteRepo, profileRepo)
+
+        viewModel.fetchProfiles()
+
+        assertTrue(viewModel.isCampsiteOwner("owner-1"))
+        assertTrue("owner-1" in viewModel.ownerProfileIds)
+
+        assertFalse(viewModel.isCampsiteOwner("former-owner"))
+        assertFalse("former-owner" in viewModel.ownerProfileIds)
+
+        assertFalse(viewModel.isCampsiteOwner("entrant-only"))
+        assertFalse("entrant-only" in viewModel.ownerProfileIds)
+    }
+
+    @Test
+    fun fetchProfiles_whenProfileRepositoryFails_setsLoadFailedAndError() = runTest {
+        val failingProfileRepo = object : ProfileRepository by FakeProfileRepository() {
+            override suspend fun getAllProfiles(): List<UserProfile> {
+                throw IllegalStateException("Database error")
+            }
+        }
+        val viewModel = AdminController(FakeCampsiteRepository(), failingProfileRepo)
+
+        viewModel.fetchProfiles()
+
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
+        assertTrue(viewModel.profiles.isEmpty())
+        assertTrue(viewModel.ownerProfileIds.isEmpty())
+    }
+
+    @Test
+    fun fetchProfiles_whenCampsiteRepositoryFails_setsLoadFailedAndError() = runTest {
+        val failingCampsiteRepo = object : CampsiteRepository by FakeCampsiteRepository() {
+            override suspend fun getCampsitesByOwner(ownerId: String): List<Campsite> {
+                throw IllegalStateException("Network error")
+            }
+        }
+        val profileRepo = FakeProfileRepository(listOf(UserProfile(id = "u1", name = "Alice")))
+        val viewModel = AdminController(failingCampsiteRepo, profileRepo)
+
+        viewModel.fetchProfiles()
+
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
+    }
+
+    @Test
+    fun loadProfiles_launchesFetchProfilesAndCanRetryAfterFailure() = runTest {
+        val profileRepo = FakeProfileRepository(listOf(UserProfile(id = "u1", name = "Alice")))
+        var shouldFail = true
+        val failingRepo = object : ProfileRepository by profileRepo {
+            override suspend fun getAllProfiles(): List<UserProfile> {
+                if (shouldFail) throw IllegalStateException("Database error")
+                return profileRepo.getAllProfiles()
+            }
+        }
+        val viewModel = AdminController(FakeCampsiteRepository(), failingRepo)
+
+        viewModel.loadProfiles()
+
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
+
+        shouldFail = false
+        viewModel.loadProfiles()
+
+        assertFalse(viewModel.profilesLoadFailed)
+        assertNull(viewModel.profilesError)
+        assertEquals(1, viewModel.profiles.size)
+        assertEquals("Alice", viewModel.profiles[0].name)
+    }
+
+    @Test
+    fun fetchProfiles_keepsLoadingAndErrorStateSeparateFromCampsites() = runTest {
+        val failingCampsiteRepo = object : CampsiteRepository by FakeCampsiteRepository() {
+            override suspend fun getAllCampsites(): List<Campsite> {
+                throw IllegalStateException("Campsite error")
+            }
+        }
+        val profileRepo = FakeProfileRepository(listOf(UserProfile(id = "p1", name = "Alice")))
+        val viewModel = AdminController(failingCampsiteRepo, profileRepo)
+
+        // Campsite loading in init failed
+        assertTrue(viewModel.loadFailed)
+        assertEquals("Unable to load campsites.", viewModel.error)
+
+        // Loading profiles should succeed and have clean profile state
+        viewModel.fetchProfiles()
+
+        assertFalse(viewModel.profilesLoadFailed)
+        assertNull(viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
+        assertEquals(1, viewModel.profiles.size)
+
+        // Campsite state remains intact
+        assertTrue(viewModel.loadFailed)
+        assertEquals("Unable to load campsites.", viewModel.error)
+    }
+
+    @Test
+    fun campsiteLoadingFailure_doesNotAffectProfileLoadingState() = runTest {
+        val failingProfileRepo = object : ProfileRepository by FakeProfileRepository() {
+            override suspend fun getAllProfiles(): List<UserProfile> {
+                throw IllegalStateException("Profile error")
+            }
+        }
+        val campsite = Campsite(id = "c1", name = "Pine Camp")
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val viewModel = AdminController(campsiteRepo, failingProfileRepo)
+
+        // Campsite loaded successfully
+        assertFalse(viewModel.loadFailed)
+        assertFalse(viewModel.isLoading)
+        assertEquals(1, viewModel.campsites.size)
+
+        // Profile loading fails
+        viewModel.fetchProfiles()
+
+        assertTrue(viewModel.profilesLoadFailed)
+        assertEquals("Unable to load profiles.", viewModel.profilesError)
+        assertFalse(viewModel.isProfilesLoading)
+
+        // Campsite state remains unaffected
+        assertFalse(viewModel.loadFailed)
+        assertFalse(viewModel.isLoading)
+        assertEquals(1, viewModel.campsites.size)
+    }
+
+    @Test
+    fun getProfile_returnsProfileWhenFoundAndNullWhenMissing() = runTest {
+        val profiles = listOf(UserProfile(id = "p1", name = "Alice"))
+        val viewModel = AdminController(FakeCampsiteRepository(), FakeProfileRepository(profiles))
+        viewModel.fetchProfiles()
+
+        val found = viewModel.getProfile("p1")
+        assertEquals("Alice", found?.name)
+
+        val missing = viewModel.getProfile("p2")
+        assertNull(missing)
+    }
+
+    @Test
+    fun getCampsitesForOwner_returnsOnlyActiveCampsitesForOwner() = runTest {
+        val campsites = listOf(
+            Campsite(id = "c1", ownerId = "o1", name = "Camp 1", removed = false),
+            Campsite(id = "c2", ownerId = "o1", name = "Camp 2", removed = true),
+            Campsite(id = "c3", ownerId = "o2", name = "Camp 3", removed = false),
+        )
+        val viewModel = AdminController(FakeCampsiteRepository(campsites), FakeProfileRepository())
+
+        val ownedByO1 = viewModel.getCampsitesForOwner("o1")
+        assertEquals(1, ownedByO1.size)
+        assertEquals("Camp 1", ownedByO1[0].name)
+
+        val ownedByO2 = viewModel.getCampsitesForOwner("o2")
+        assertEquals(1, ownedByO2.size)
+        assertEquals("Camp 3", ownedByO2[0].name)
+
+        val ownedByO3 = viewModel.getCampsitesForOwner("o3")
+        assertTrue(ownedByO3.isEmpty())
     }
 }

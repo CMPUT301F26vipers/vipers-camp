@@ -15,6 +15,8 @@ class FakeProfileRepository(initial: List<UserProfile> = emptyList()) : ProfileR
 
     override suspend fun getProfile(id: String): UserProfile? = profiles[id]
 
+    override suspend fun getAllProfiles(): List<UserProfile> = profiles.values.toList()
+
     override suspend fun saveProfile(profile: UserProfile) {
         profiles[profile.id] = profile
     }

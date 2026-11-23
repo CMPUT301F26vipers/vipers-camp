@@ -46,6 +46,8 @@ Document ID = **device ID**.
 | isAdmin | bool | set by hand in the Firebase console |
 | createdAt | number | ms |
 
+- `getAllProfiles()` lists every user profile for the admin profile browser (US 03.05.01).
+
 ### `campsites`: `Campsite` (`CampsiteRepository`)
 
 | Field | Type | Notes |
