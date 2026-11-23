@@ -26,6 +26,9 @@ import com.example.vipers.ui.admin.BrowseCampsitesScreen
 import com.example.vipers.ui.admin.BrowseImagesScreen
 import com.example.vipers.ui.admin.BrowseProfilesScreen
 import com.example.vipers.ui.admin.ImageDetailsScreen
+import com.example.vipers.ui.admin.LogsScreen
+import com.example.vipers.ui.admin.LogsTab
+import com.example.vipers.ui.admin.MessageLogConversationScreen
 import com.example.vipers.ui.admin.ProfileDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
@@ -48,10 +51,6 @@ import com.example.vipers.ui.reservations.ReserveScreen
 import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
 import com.example.vipers.ui.lottery.WaitingListScreen
-
-import androidx.compose.foundation.layout.Column
-import com.example.vipers.ui.common.Placeholder
-import com.example.vipers.ui.common.TopBar
 
 // The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
@@ -408,17 +407,34 @@ fun AppNavigation(
                 }
 
                 composable(Routes.ADMIN_NOTIFICATION_LOG) {
-                    AdminPlaceholderScreen(
-                        "Logs",
-                        "Notification Log (03.08.01)",
-                        onBack = { navController.popBackStack() }
+                    LogsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenConversation = { reservationId ->
+                            val route = Routes.ADMIN_MESSAGE_LOG_CONVERSATION.replace("{reservationId}", reservationId)
+                            navController.navigate(route)
+                        },
+                        initialTab = LogsTab.NOTIFICATION_LOG,
                     )
                 }
 
                 composable(Routes.ADMIN_MESSAGE_LOG) {
-                    AdminPlaceholderScreen(
-                        "Logs",
-                        "Message Log (03.12.01)",
+                    LogsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenConversation = { reservationId ->
+                            val route = Routes.ADMIN_MESSAGE_LOG_CONVERSATION.replace("{reservationId}", reservationId)
+                            navController.navigate(route)
+                        },
+                        initialTab = LogsTab.MESSAGE_LOG,
+                    )
+                }
+
+                composable(
+                    route = Routes.ADMIN_MESSAGE_LOG_CONVERSATION,
+                    arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val reservationId = backStackEntry.arguments?.getString("reservationId") ?: ""
+                    MessageLogConversationScreen(
+                        reservationId = reservationId,
                         onBack = { navController.popBackStack() }
                     )
                 }
@@ -437,20 +453,6 @@ private fun NavHostController.openTab(route: String) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
-    }
-}
-
-
-/** Temporary screen for admin features that are not implemented yet. */
-@Composable
-private fun AdminPlaceholderScreen(
-    title: String,
-    message: String,
-    onBack: () -> Unit
-) {
-    Column {
-        TopBar(title = title, onBack = onBack)
-        Placeholder(message)
     }
 }
 

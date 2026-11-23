@@ -29,6 +29,7 @@ object Routes {
     const val ADMIN_IMAGE_DETAILS = "admin_image/{imageId}"
     const val ADMIN_NOTIFICATION_LOG = "admin_notification_log"
     const val ADMIN_MESSAGE_LOG = "admin_message_log"
+    const val ADMIN_MESSAGE_LOG_CONVERSATION = "admin_message_log/{reservationId}"
 
 
     const val OWNER_RESERVATIONS = "owner_reservations"
