@@ -121,6 +121,17 @@ data class Reservation(
         userId.isNotBlank() && (userId == this.userId || userId == ownerId)
 
     /**
+     * Checks whether an entrant can message the owner about this reservation (US 01.14.01).
+     *
+     * @param entrantId ID of the entrant requesting the conversation.
+     * @return True if [entrantId] identifies this reservation's entrant, the reservation has
+     * not been cancelled, and it has a different owner with a nonblank ID.
+     */
+    fun canMessageOwner(entrantId: String): Boolean =
+        status != ReservationStatus.CANCELLED && entrantId == userId &&
+            !otherSide(entrantId).isNullOrBlank()
+
+    /**
      * The other person in this reservation's conversation (US 02.12.01): the entrant for the
      * owner, and the owner for the entrant. Null if [userId] can't message about it
      * ([canMessage]), or if the owner booked their own campsite, so there is nobody else.

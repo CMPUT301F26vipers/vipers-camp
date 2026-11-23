@@ -68,6 +68,20 @@ interface LotteryRepository {
     suspend fun getLotteriesForCampsite(campsiteId: String): List<Lottery>
 
     /**
+     * Loads the lotteries the app should draw at time [now] (US 02.05.01b): see
+     * [Lottery.isDueForDraw]. The app checks this whenever it's opened.
+     */
+    suspend fun getLotteriesToDraw(now: Long = System.currentTimeMillis()): List<Lottery>
+
+    /**
+     * Closes registration for [lotteryId] at [now] so the owner can draw early (US 02.05.01b). In
+     * one transaction, moves registrationEnd to [now] if registration is still open, so nobody can
+     * join after this. Returns true if registration is closed afterwards, or false if the lottery
+     * is missing or can't be drawn now (see [Lottery.canOwnerDraw]).
+     */
+    suspend fun closeRegistration(lotteryId: String, now: Long = System.currentTimeMillis()): Boolean
+
+    /**
      * Atomically updates editable fields of an existing [lottery] in a transaction (US 02.04.06).
      *
      * In one transaction, reads the latest stored lottery, enforces caller ownership ([callerId]),

@@ -35,6 +35,7 @@ package "app (dependency injection)" {
     notificationRepository: NotificationRepository
     deviceIdentityManager: DeviceIdentityManager
     lotteryDrawer: LotteryDrawer
+    drawAndNotifyWorker: DrawAndNotifyWorker
   }
 }
 
@@ -70,8 +71,18 @@ package "controllers (ViewModels)" {
     onSearchTextChange(text: String)
     applyFilters(...)
     clearFilters()
+    scanMessage: String?
     hasOpenLottery(campsite: Campsite): Boolean
+    onQrScanned(result: QrScanResult): String?
+    clearScanMessage()
     suspend fetchCampsites(now: Long)
+  }
+
+  class QrScanResult <<sealed>> {
+    Scanned(text: String)
+    Cancelled
+    NoCameraPermission
+    Failed
   }
 
   class CampsiteDetailsController <<ViewModel>> {
@@ -109,7 +120,12 @@ package "controllers (ViewModels)" {
     lotteries: List<Lottery>
     entrySummaries: Map<String, String>
     canEdit: Boolean
+    qrMessage: String?
+    qrSaveFailed: Boolean
     suspend fetchData()
+    saveQrCode(openOutput: () -> OutputStream?)
+    suspend writeQrCode(openOutput, write)
+    clearQrMessage()
   }
 
   class AvailabilityController <<ViewModel>> {
@@ -141,10 +157,16 @@ package "controllers (ViewModels)" {
     canLeave: Boolean
     isFull: Boolean
     isOwner: Boolean
+    isDrawing: Boolean
+    drawMessage: String?
+    drawFailed: Boolean
     suspend fetchData()
     suspend performJoin(groupSize: Int, now: Long): Boolean
     suspend performLeave(): Boolean
     suspend drawLottery(): LotteryDrawResult
+    canDraw(now: Long): Boolean
+    drawNow()
+    suspend performDrawNow(now: Long)
   }
 
   class WaitingListController <<ViewModel>> {
@@ -234,12 +256,13 @@ package "services" {
   class LotteryDrawer {
     random: Random
     suspend drawLottery(lotteryId: String, now: Long): LotteryDrawResult
+    suspend drawNow(lotteryId: String, now: Long): LotteryDrawResult
     suspend declineAndDrawReplacement(lotteryId: String, decliningUserId: String, now: Long): ReplacementDrawResult
     suspend retryPendingReplacementNotice(lottery: Lottery, declinedEntry: LotteryEntry): Boolean
   }
 
-  class DrawAndNotifyWorker <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
-    doWork(): Result
+  class DrawAndNotifyWorker {
+    suspend runDueDraws(now: Long): Int
   }
 
   class CsvExporter <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
@@ -295,6 +318,8 @@ DeviceIdentityManager ..> ProfileRepository
 ProfileController ..> ProfileRepository
 CampsiteSearchController ..> CampsiteRepository
 CampsiteSearchController ..> LotteryRepository
+CampsiteSearchController ..> QrScanResult
+CampsiteSearchController ..> Campsite : idFromQrLink()
 CampsiteDetailsController ..> CampsiteRepository
 CampsiteDetailsController ..> LotteryRepository
 MyCampsitesController ..> CampsiteRepository
@@ -335,8 +360,9 @@ LotteryDrawer ..> CampsiteRepository
 LotteryDrawer --> NotificationService : sends results through >
 LotteryDrawer ..> LotteryDrawResult
 LotteryDrawer ..> ReplacementDrawResult
+AppContainer o-- DrawAndNotifyWorker
 DrawAndNotifyWorker ..> LotteryDrawer
-DrawAndNotifyWorker ..> NotificationRepository
+DrawAndNotifyWorker ..> LotteryRepository
 DeletionService ..> ProfileRepository
 DeletionService ..> CampsiteRepository
 DeletionService ..> LotteryRepository

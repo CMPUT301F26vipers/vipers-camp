@@ -21,6 +21,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
@@ -71,6 +72,8 @@ class MessageEntrantTest {
         checkIn = "2099-05-08",
         checkOut = "2099-05-10",
         groupSize = 3,
+        totalPriceCents = 13000,
+        reservationNumber = "R-20417",
     )
 
     // March 2 2027 at 9:14 AM on this phone's clock, as in mockup E17
@@ -179,6 +182,33 @@ class MessageEntrantTest {
         composeRule.onNodeWithText("You ·", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("No messages yet").assertDoesNotExist()
         composeRule.onNodeWithTag("button_send").assertIsNotEnabled()
+    }
+
+    @Test
+    fun entrantStartsThreadFromReservation_thenRepliesInTheSameThread() {
+        startApp(deviceId = "sam")
+        composeRule.onNodeWithTag("tab_${Routes.RESERVATIONS}").performClick()
+        composeRule.onNodeWithTag("my_reservation_row").performClick()
+        composeRule.onNodeWithText("Message Owner").performScrollTo().performClick()
+        composeRule.onNodeWithText("Priya Sharma").assertIsDisplayed()
+        composeRule.onNodeWithText("No messages yet").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("message_field").performTextInput("   ")
+        composeRule.onNodeWithTag("button_send").assertIsNotEnabled()
+        send("Is drinking water available?")
+        composeRule.onNodeWithText("Is drinking water available?").assertIsDisplayed()
+        saved("owner-priya", "Yes, by the cookhouse.")
+        composeRule.onNodeWithText("Yes, by the cookhouse.").assertIsDisplayed()
+        send("Thank you!")
+
+        val notices = runBlocking { notifications.getNotificationsFor("owner-priya") }
+        assertEquals(2, notices.size)
+        assertTrue(notices.all { it.type == NotificationType.NEW_MESSAGE })
+        assertTrue(notices.all { it.reservationId == samsStay.id })
+        assertTrue(notices.any { it.message == "Hinton Ridge Campground: Thank you!" })
+        val thread = runBlocking { messages.getAllThreads() }.single()
+        assertEquals(3, thread.size)
+        assertEquals(2, thread.count { it.senderId == "sam" })
     }
 
     @Test

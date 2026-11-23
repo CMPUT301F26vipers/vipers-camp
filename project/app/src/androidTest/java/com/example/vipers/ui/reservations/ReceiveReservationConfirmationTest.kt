@@ -306,6 +306,7 @@ class ReceiveReservationConfirmationTest {
                 ReservationDetailsScreen(
                     reservationId = "res-202",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }

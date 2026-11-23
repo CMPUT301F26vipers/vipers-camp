@@ -55,7 +55,9 @@ package "domain.model" {
     matchesGuests(minGuests: Int?): Boolean
     isOwnedBy(userId: String): Boolean
     validate(): Map<String, String>
+    qrLink(): String
     {static} dollarsText(amountCents: Long): String
+    {static} idFromQrLink(link: String): String?
   }
 
   class AvailabilityCalendar {
@@ -90,6 +92,8 @@ package "domain.model" {
     --
     status(now: Long): LotteryStatus
     canEntrantJoin(now: Long): Boolean
+    canOwnerDraw(now: Long): Boolean
+    isDueForDraw(now: Long): Boolean
     isBookingOpen(now: Long): Boolean
     isBookingExpired(now: Long): Boolean
     freeNights(calendar: AvailabilityCalendar, today: LocalDate): List<String>

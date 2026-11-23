@@ -24,13 +24,16 @@ hide empty members
 class MainActivity <<Activity>> {
   onCreate(savedInstanceState: Bundle?)
   loadDemoData()
+  suspend scanQrCode(): QrScanResult
 }
 
 package "ui.navigation" {
   class AppRoot <<Composable>> {
-    AppRoot(deviceIdentityManager, onLoadDemoData)
+    AppRoot(deviceIdentityManager, onLoadDemoData, onAppOpened, onScanQr)
   }
-  class AppNavigation <<Composable>>
+  class AppNavigation <<Composable>> {
+    AppNavigation(isAdmin, onLoadDemoData, onScanQr)
+  }
   class BottomBar <<Composable>> {
     BottomBar(currentRoute, isAdmin, onTabClick)
   }
@@ -45,7 +48,9 @@ package "ui.navigation" {
 }
 
 package "Tab screens (own CRC cards)" {
-  class HomeScreen <<Composable>>
+  class HomeScreen <<Composable>> {
+    HomeScreen(controller, onOpenCampsite, onScanQr)
+  }
   class MyReservationsScreen <<Composable>>
   class MyCampsitesScreen <<Composable>>
   class NotificationsScreen <<Composable>>
@@ -102,12 +107,18 @@ package "Controllers (see 03-controllers)" {
   class AdminController <<ViewModel>>
   class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class DeviceIdentityManager
+  class DrawAndNotifyWorker
+  class QrScanResult <<sealed>>
 }
+
+' Google's code scanner library (play-services-code-scanner), not our code
+class GmsBarcodeScanner <<library>>
 
 MainActivity --> AppRoot : setContent >
 AppRoot ..> DeviceIdentityManager : hasProfile()
 AppRoot --> WelcomeScreen : first launch
 AppRoot --> AppNavigation : after a profile exists
+AppRoot ..> DrawAndNotifyWorker : runDueDraws() when the app opens
 AppNavigation --> BottomBar
 AppNavigation ..> Routes
 AppNavigation --> HomeScreen
@@ -137,7 +148,9 @@ OwnerReservationDetailsScreen ..> OwnerReservationDetailsController
 BrowseCampsitesScreen ..> AdminController
 MessagesScreen ..> MessageController
 
-HomeScreen --> CampsiteDetailsScreen : tap a card
+HomeScreen --> CampsiteDetailsScreen : tap a card or scan its QR code
+MainActivity ..> GmsBarcodeScanner : scanQrCode() (Google code scanner)
+MainActivity ..> QrScanResult
 CampsiteDetailsScreen --> LotteryDetailsScreen : Join
 NotificationsScreen --> ReserveScreen : WON
 NotificationsScreen --> ReservationDetailsScreen : reservation update
@@ -175,9 +188,20 @@ note bottom of SentScreen
   It is a placeholder for now.
 end note
 
+note bottom of OwnerCampsiteScreen
+  QR Code opens the Campsite QR Code
+  dialog (O06, US 02.02.01) over this
+  screen; Save keeps it as a PNG.
+end note
+
 note bottom of ReservationConfirmationDialog
   E13 (Reservation Confirmed): a dialog
   shown over ReserveScreen, not its own screen.
+end note
+
+note bottom of LotteryDetailsScreen
+  The owner's Draw Now (US 02.05.01b) draws the lottery any time;
+  while registration is open it asks first, since drawing closes it.
 end note
 
 note bottom of MyReservationsScreen

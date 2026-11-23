@@ -6,8 +6,9 @@
  * NotificationService send the idempotent "You won" (US 01.03.01) and "Not selected" (US 01.03.02)
  * notices. Also handles the atomic replacement draw and recoverable replacement "You won" notice
  * when a winner declines (US 01.04.03, T-12).
- * Known issues: Draw transaction not tested against real Firestore yet. Nothing in the app starts
- * a draw yet; DrawAndNotifyWorker (US 02.05.01b) will.
+ * DrawAndNotifyWorker starts the draw once registration ends, and the owner's Draw now button
+ * starts it through drawNow, which can close registration early (US 02.05.01b).
+ * Known issues: Draw transaction not tested against real Firestore yet.
  */
 package com.example.vipers.ui.lottery
 
@@ -76,6 +77,18 @@ class LotteryDrawer(
     private val notificationService: NotificationService =
         NotificationService(notificationRepository, campsiteRepository, profileRepository),
 ) {
+
+    /**
+     * Runs the draw for [lotteryId] when the owner taps Draw now (US 02.05.01b). If registration
+     * is still open it's closed at [now] first, so nobody can join once the winners are picked.
+     */
+    suspend fun drawNow(lotteryId: String, now: Long = System.currentTimeMillis()): LotteryDrawResult {
+        if (!lotteryRepository.closeRegistration(lotteryId, now)) {
+            return LotteryDrawResult.Error("This lottery can't be drawn now")
+        }
+        // the draw has to run after registration ends, so it runs 1 ms after the new end time
+        return drawLottery(lotteryId, now + 1)
+    }
 
     /**
      * Executes the draw for [lotteryId] at timestamp [now].

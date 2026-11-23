@@ -75,6 +75,16 @@ It throws `NoSuchElementException` if the campsite ID doesn't exist.
 `addCampsite` saves a campsite under its own ID when it has one. The Add Campsite form uses this to
 save the photo for the new campsite's ID before the campsite itself (US 02.01.02b).
 
+**QR code link (US 02.02.01).** A campsite's QR code holds `vipers-camp://campsite/<campsiteId>`,
+made by `Campsite.qrLink()`. Nothing about the QR code is stored: the app draws it from the ID
+each time with ZXing, so it stays the same after edits and each campsite gets its own.
+`Campsite.idFromQrLink(link)` reads the ID back when a code is scanned (US 01.12.01) and returns
+`null` for anything that isn't exactly this format (another app's code, no ID, extra parts
+after the ID, or characters other than letters, digits, `-` and `_`, like `?` or `#`, which would
+break the Campsite Details route). Scanning uses Google's code scanner (`play-services-code-scanner`), which has its
+own camera screen, so the app never asks for camera permission. A scanned ID is loaded with
+`getCampsite` like any other; a removed campsite shows "Campsite not found." on Campsite Details.
+
 ### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
 Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.
 
@@ -111,6 +121,15 @@ removed, or closed) and model rules against the current `waitingUserIds` count, 
 `bookingEnd`, `winnersCount`, and `waitlistCapacity`. It never overwrites `ownerId`, `campsiteIds`,
 `drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`, `manifestChunkCount`,
 `participantCount`, or `winnerCount`, preventing concurrent entrants from being reset or lost.
+
+**Starting the draw (US 02.05.01b).** Whenever the app opens, `DrawAndNotifyWorker` calls
+`getLotteriesToDraw(now)` and draws each one. It returns the lotteries where `Lottery.isDueForDraw(now)`
+is true: registration has ended, `drawnAt` is `null`, not removed, and the booking period hasn't ended.
+Firestore is only asked for `drawnAt == null` and the dates are checked on the phone, so no composite
+index is needed. The owner's Draw now button can also draw while registration is open: it calls
+`closeRegistration(lotteryId, now)` first, which in one transaction sets `registrationEnd` to `now`
+(only if `Lottery.canOwnerDraw(now)`), so nobody can join after the winners are picked. The draw
+transaction still refuses to draw twice, so several phones running the check at once is safe.
 
 ### `lotteryEntries`: `LotteryEntry` (`LotteryRepository`)
 Document ID = **`lotteryId_userId`**, so a user can only have one entry per lottery.

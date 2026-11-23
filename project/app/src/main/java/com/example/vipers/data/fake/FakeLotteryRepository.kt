@@ -109,6 +109,19 @@ class FakeLotteryRepository(
         UpdateLotteryResult.Success
     }
 
+    override suspend fun getLotteriesToDraw(now: Long): List<Lottery> = mutex.withLock {
+        lotteries.values.filter { it.isDueForDraw(now) }
+    }
+
+    override suspend fun closeRegistration(lotteryId: String, now: Long): Boolean = mutex.withLock {
+        val lottery = lotteries[lotteryId] ?: return@withLock false
+        if (!lottery.canOwnerDraw(now)) return@withLock false
+        if (now < lottery.registrationEnd) {
+            lotteries[lotteryId] = lottery.copy(registrationEnd = now)
+        }
+        true
+    }
+
     override suspend fun joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult = mutex.withLock {
         val lottery = lotteries[entry.lotteryId]
             ?: return@withLock JoinWaitingListResult.Error("No lottery with ID ${entry.lotteryId}")
