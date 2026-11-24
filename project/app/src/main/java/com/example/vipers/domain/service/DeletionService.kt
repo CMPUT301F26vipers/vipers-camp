@@ -1,9 +1,9 @@
 /*
  * DeletionService.kt
  * Deletes a user's profile and cleans up everything that points to it (US 01.08.01): their
- * waiting-list entries are marked Removed, their reservations are cancelled (giving the nights
- * back), and the campsites they own are removed, with their photos, the reservations at them and
- * the owner's lotteries for them.
+ * waiting-list entries are marked Removed, their active reservations are cancelled (giving the
+ * nights back; past stays are kept), and the campsites they own are removed, with their photos,
+ * the reservations at them and the owner's lotteries for them.
  * Known issues: these are separate writes, not one transaction, so each part is marked done
  * last (the campsite after its lotteries, the profile after everything): if a step fails the
  * user still has a profile and can try again, and the steps already done are skipped. Removing
@@ -22,6 +22,7 @@ import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
+import java.time.LocalDate
 
 /**
  * Deletes profiles and removes campsites, along with the data that points to them.
@@ -38,12 +39,17 @@ class DeletionService(
 
     /**
      * Deletes the profile of [userId] and its photo (US 01.08.01). First takes them off every
-     * lottery they're still in, cancels their confirmed reservations without a notice, and
-     * removes the campsites they own. Does nothing if they have no profile.
+     * lottery they're still in, cancels their active reservations (not past stays, as of
+     * [today]) without a notice, and removes the campsites they own. Does nothing if they have
+     * no profile.
      *
      * @throws Exception from the repositories if a step fails; the profile is then kept.
      */
-    suspend fun deleteProfile(userId: String, now: Long = System.currentTimeMillis()) {
+    suspend fun deleteProfile(
+        userId: String,
+        now: Long = System.currentTimeMillis(),
+        today: LocalDate = LocalDate.now(),
+    ) {
         val profile = profileRepository.getProfile(userId) ?: return
 
         for (entry in lotteryRepository.getEntriesForUser(userId)) {
@@ -52,7 +58,7 @@ class DeletionService(
             }
         }
         for (reservation in reservationRepository.getReservationsForUser(userId)) {
-            if (reservation.status == ReservationStatus.CONFIRMED) {
+            if (reservation.isActive(today)) {
                 // they're deleting their profile, so there's no one to tell
                 reservationRepository.changeStatus(
                     reservation.id, ReservationStatus.CANCELLED, now = now, sendNotice = false,
@@ -60,21 +66,26 @@ class DeletionService(
             }
         }
         for (campsite in campsiteRepository.getCampsitesByOwner(userId)) {
-            removeCampsite(campsite, now)
+            removeCampsite(campsite, now, today)
         }
 
         profileRepository.deleteProfile(userId, profile.imageId)
     }
 
     /**
-     * Removes [campsite] (US 01.08.01, 03.01.01): cancels the confirmed reservations at it, with a
-     * notice to entrants who get notifications, removes its owner's lotteries once all of their
-     * campsites are gone (taking everyone off them), deletes its photo, and marks it removed.
+     * Removes [campsite] (US 01.08.01, 03.01.01): cancels the active reservations at it (past
+     * stays, as of [today], are kept), with a notice to entrants who get notifications, removes
+     * its owner's lotteries once all of their campsites are gone (taking everyone off them),
+     * deletes its photo, and marks it removed.
      * Lotteries made by another owner that also list it are kept.
      */
-    suspend fun removeCampsite(campsite: Campsite, now: Long = System.currentTimeMillis()) {
+    suspend fun removeCampsite(
+        campsite: Campsite,
+        now: Long = System.currentTimeMillis(),
+        today: LocalDate = LocalDate.now(),
+    ) {
         val active = reservationRepository.getReservationsForOwner(campsite.ownerId).filter {
-            it.campsiteId == campsite.id && it.status == ReservationStatus.CONFIRMED
+            it.campsiteId == campsite.id && it.isActive(today)
         }
         val wantsNotices = notificationService.optedIn(active.map { it.userId }).toSet()
         for (reservation in active) {

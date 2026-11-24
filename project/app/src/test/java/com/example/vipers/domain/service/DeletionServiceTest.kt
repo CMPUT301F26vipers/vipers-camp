@@ -37,10 +37,12 @@ import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
+import java.time.LocalDate
 
 class DeletionServiceTest {
 
     private val now = 1_809_000_000_000 // April 2027
+    private val today = LocalDate.of(2027, 4, 29)
 
     private val images = FakeImageRepository()
     private val profiles = FakeProfileRepository(
@@ -54,7 +56,9 @@ class DeletionServiceTest {
     )
     private val campsites = FakeCampsiteRepository(
         listOf(
-            Campsite(id = "sams-site", ownerId = "sam", name = "Sam's Site", imageId = "site-photo"),
+            Campsite(
+                id = "sams-site", ownerId = "sam", name = "Sam's Site", imageId = "site-photo",
+            ),
             Campsite(id = "sams-lake", ownerId = "sam", name = "Sam's Lake"),
             Campsite(id = "alex-site", ownerId = "alex", name = "Alex's Site"),
         ),
@@ -103,6 +107,8 @@ class DeletionServiceTest {
     private lateinit var kimsBooking: String
     private lateinit var leesBooking: String
     private lateinit var samsOldBooking: String
+    private lateinit var samsPastStay: String
+    private lateinit var kimsPastStay: String
 
     private fun entry(lotteryId: String, userId: String, status: EntryStatus) = LotteryEntry(
         id = LotteryEntry.idFor(lotteryId, userId),
@@ -141,6 +147,15 @@ class DeletionServiceTest {
         samsOldBooking = reservations.addReservation(
             booking("sam", "alex", "alex-site").copy(status = ReservationStatus.CANCELLED),
         )
+        // stays that are over: still CONFIRMED, like every finished stay
+        samsPastStay = reservations.addReservation(
+            booking("sam", "alex", "alex-site")
+                .copy(checkIn = "2027-03-01", checkOut = "2027-03-03"),
+        )
+        kimsPastStay = reservations.addReservation(
+            booking("kim", "sam", "sams-site")
+                .copy(checkIn = "2027-03-01", checkOut = "2027-03-03"),
+        )
         val held = listOf("2027-06-01", "2027-06-02")
         campsites.saveAvailability(AvailabilityCalendar("alex-site", held, held))
         campsites.saveAvailability(AvailabilityCalendar("sams-site", held, held))
@@ -151,7 +166,7 @@ class DeletionServiceTest {
 
     @Test
     fun deleteProfile_deletesTheProfileAndItsPhoto() = runBlocking {
-        service.deleteProfile("sam", now)
+        service.deleteProfile("sam", now, today)
 
         assertNull(profiles.getProfile("sam"))
         assertTrue("sam-photo" in images.deletedIds)
@@ -162,7 +177,7 @@ class DeletionServiceTest {
 
     @Test
     fun deleteProfile_ownersSeeDeletedUserInsteadOfTheName() = runBlocking {
-        service.deleteProfile("sam", now)
+        service.deleteProfile("sam", now, today)
 
         assertEquals("Deleted user", profiles.getDisplayName("sam"))
         assertEquals("Alex Kim", profiles.getDisplayName("alex"))
@@ -170,7 +185,7 @@ class DeletionServiceTest {
 
     @Test
     fun deleteProfile_marksTheirEntriesRemovedAndTakesThemOffTheWaitingList() = runBlocking {
-        service.deleteProfile("sam", now)
+        service.deleteProfile("sam", now, today)
 
         assertEquals(EntryStatus.REMOVED, statusOf("alex-lottery", "sam"))
         assertEquals(listOf("kim"), lotteries.getLottery("alex-lottery")!!.waitingUserIds)
@@ -182,7 +197,7 @@ class DeletionServiceTest {
 
     @Test
     fun deleteProfile_cancelsTheirReservationsAndGivesTheNightsBack() = runBlocking {
-        service.deleteProfile("sam", now)
+        service.deleteProfile("sam", now, today)
 
         val cancelled = reservations.getReservation(samsBooking)!!
         assertEquals(ReservationStatus.CANCELLED, cancelled.status)
@@ -196,7 +211,7 @@ class DeletionServiceTest {
 
     @Test
     fun deleteProfile_removesTheirCampsites() = runBlocking {
-        service.deleteProfile("sam", now)
+        service.deleteProfile("sam", now, today)
 
         assertTrue(campsites.getCampsite("sams-site")!!.removed)
         assertTrue(campsites.getCampsite("sams-lake")!!.removed)
@@ -210,7 +225,7 @@ class DeletionServiceTest {
     @Test
     fun deleteProfile_cancelsReservationsAtTheirCampsitesAndTellsEntrantsWhoWantNotices() =
         runBlocking {
-            service.deleteProfile("sam", now)
+            service.deleteProfile("sam", now, today)
 
             val kims = reservations.getReservation(kimsBooking)!!
             val lees = reservations.getReservation(leesBooking)!!
@@ -226,7 +241,7 @@ class DeletionServiceTest {
     @Test
     fun deleteProfile_takesEveryoneOffTheirLotteriesButKeepsOtherOwnersLotteries() =
         runBlocking {
-            service.deleteProfile("sam", now)
+            service.deleteProfile("sam", now, today)
 
             assertEquals(EntryStatus.REMOVED, statusOf("sams-lottery", "lee"))
             assertEquals(EntryStatus.REMOVED, statusOf("sams-lottery", "kim"))
@@ -255,7 +270,7 @@ class DeletionServiceTest {
         val flakyService = serviceWith(lotteryRepository = flaky)
 
         try {
-            flakyService.deleteProfile("sam", now)
+            flakyService.deleteProfile("sam", now, today)
             fail("expected the failure to be thrown")
         } catch (e: IOException) {
             // expected
@@ -263,7 +278,7 @@ class DeletionServiceTest {
         assertNotNull(profiles.getProfile("sam"))
         assertTrue(images.deletedIds.isEmpty())
 
-        flakyService.deleteProfile("sam", now)
+        flakyService.deleteProfile("sam", now, today)
 
         assertNull(profiles.getProfile("sam"))
         assertEquals(EntryStatus.REMOVED, statusOf("alex-lottery", "sam"))
@@ -272,7 +287,7 @@ class DeletionServiceTest {
 
     @Test
     fun deleteProfile_withNoProfile_changesNothing() = runBlocking {
-        service.deleteProfile("nobody", now)
+        service.deleteProfile("nobody", now, today)
 
         assertEquals(4, profiles.getAllProfiles().size)
         assertTrue(campsites.getCampsitesByOwner("sam").isNotEmpty())
@@ -282,7 +297,7 @@ class DeletionServiceTest {
 
     @Test
     fun removeCampsite_onItsOwn_leavesTheOwnersProfile() = runBlocking {
-        service.removeCampsite(campsites.getCampsite("sams-site")!!, now)
+        service.removeCampsite(campsites.getCampsite("sams-site")!!, now, today)
 
         assertTrue(campsites.getCampsite("sams-site")!!.removed)
         assertNull(images.getImage("site-photo"))
@@ -295,13 +310,13 @@ class DeletionServiceTest {
 
     @Test
     fun removeCampsite_keepsALotteryThatStillHasAnotherCampsite() = runBlocking {
-        service.removeCampsite(campsites.getCampsite("sams-site")!!, now)
+        service.removeCampsite(campsites.getCampsite("sams-site")!!, now, today)
 
         // Sam's Lake is still there, so its lottery stays open
         assertFalse(lotteries.getLottery("sams-two-sites")!!.removed)
         assertEquals(EntryStatus.WAITING, statusOf("sams-two-sites", "kim"))
 
-        service.removeCampsite(campsites.getCampsite("sams-lake")!!, now)
+        service.removeCampsite(campsites.getCampsite("sams-lake")!!, now, today)
 
         assertTrue(lotteries.getLottery("sams-two-sites")!!.removed)
         assertEquals(EntryStatus.REMOVED, statusOf("sams-two-sites", "kim"))
@@ -314,11 +329,26 @@ class DeletionServiceTest {
                 if (id == "kim") throw IOException("offline") else profiles.getProfile(id)
         }
 
-        serviceWith(profileRepository = kimUnreadable).deleteProfile("sam", now)
+        serviceWith(profileRepository = kimUnreadable).deleteProfile("sam", now, today)
 
         assertNull(profiles.getProfile("sam"))
         assertEquals(ReservationStatus.CANCELLED, reservations.getReservation(kimsBooking)!!.status)
         // like every other notice, a profile that can't be read still gets it
         assertEquals(1, notifications.getNotificationsFor("kim").size)
+    }
+
+    @Test
+    fun deleteProfile_keepsPastStaysAsTheyWere() = runBlocking {
+        service.deleteProfile("sam", now, today)
+
+        // Sam's own stay that's over, and a guest's stay at Sam's campsite that's over
+        val samsPast = reservations.getReservation(samsPastStay)!!
+        val kimsPast = reservations.getReservation(kimsPastStay)!!
+        assertEquals(ReservationStatus.CONFIRMED, samsPast.status)
+        assertEquals(ReservationStatus.CONFIRMED, kimsPast.status)
+        assertEquals(0, kimsPast.statusChangedAt)
+        // Kim is only told about the stay that was still coming up
+        val kimsNotices = notifications.getNotificationsFor("kim")
+        assertEquals(listOf("cancelled_$kimsBooking"), kimsNotices.map { it.id })
     }
 }
