@@ -1,8 +1,9 @@
 /*
  * ProfilePhotoControllerTest.kt
  * Unit tests for the profile photo in ProfileController (US 01.08.02): adding, replacing and
- * removing it, deleting the old image, and what happens when a step fails. Uses the fake profile
- * and image repositories and a fake photo reader.
+ * removing it in one write with the new and old image, what happens when a step fails, and the
+ * Settings switch not undoing a photo (or the other way round). Uses the fake profile and image
+ * repositories and a fake photo reader.
  * Known issues: none.
  */
 package com.example.vipers.ui.profile
@@ -12,13 +13,13 @@ import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.UserProfile
-import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.PhotoReader
 import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -45,8 +46,8 @@ class ProfilePhotoControllerTest {
         "Sam Patel", now - 1000,
     ).copy(id = "old-photo")
 
-    private val profiles = FakeProfileRepository(listOf(sam))
     private val images = FakeImageRepository()
+    private val profiles = FakeProfileRepository(listOf(sam), images)
     private val reader = FakePhotoReader()
 
     @Before
@@ -62,9 +63,8 @@ class ProfilePhotoControllerTest {
 
     private fun controller(
         profileRepository: ProfileRepository = profiles,
-        imageRepository: ImageRepository = images,
         photoReader: PhotoReader = reader,
-    ) = ProfileController(profileRepository, "my-phone", imageRepository, photoReader)
+    ) = ProfileController(profileRepository, "my-phone", photoReader)
 
     // Sam with a saved photo, in both repositories
     private suspend fun samWithAPhoto(): ProfileController {
@@ -186,19 +186,24 @@ class ProfilePhotoControllerTest {
 
         controller.changePhoto("content://photos/2", now)
 
-        assertEquals("Couldn't upload the photo. Try again.", controller.photoError)
+        assertEquals("Couldn't save the photo. Try again.", controller.photoError)
         assertEquals("old-photo", controller.imageId)
         assertEquals("old-photo", profiles.getProfile("my-phone")?.imageId)
+        assertEquals(listOf("old-photo"), images.getAllImages().map { it.id })
         assertTrue(images.deletedIds.isEmpty())
         assertFalse(controller.isSavingPhoto)
     }
 
     @Test
-    fun changePhoto_whenTheProfileCantBeSaved_deletesTheNewImageAgain() = runBlocking {
+    fun changePhoto_whenTheWriteFails_keepsTheOldPhotoAndAddsNoImage() = runBlocking {
         images.addImage(oldPhoto)
         val failing = object : ProfileRepository by
-            FakeProfileRepository(listOf(sam.copy(imageId = "old-photo"))) {
-            override suspend fun saveProfile(profile: UserProfile) = throw IOException("offline")
+            FakeProfileRepository(listOf(sam.copy(imageId = "old-photo")), images) {
+            override suspend fun setPhoto(
+                id: String,
+                newImage: ImageAsset?,
+                oldImageId: String?,
+            ): String? = throw IOException("offline")
         }
         val controller = controller(profileRepository = failing)
 
@@ -207,31 +212,43 @@ class ProfilePhotoControllerTest {
         assertEquals("Couldn't save the photo. Try again.", controller.photoError)
         assertEquals("old-photo", controller.imageId)
         assertEquals("old-photo", failing.getProfile("my-phone")?.imageId)
-        // only the old photo is left, so a retry doesn't leave an image nothing points to
+        // the new image was part of the failed write, so only the old photo is there
         assertEquals(listOf("old-photo"), images.getAllImages().map { it.id })
+        assertTrue(images.deletedIds.isEmpty())
         assertFalse(controller.isSavingPhoto)
     }
 
-    @Test
-    fun changePhoto_whenDeletingTheOldImageFails_stillChangesThePhoto() = runBlocking {
-        val cantDelete = object : ImageRepository by images {
-            override suspend fun deleteImage(id: String) = throw IOException("offline")
+    // a profile repository that keeps a list of its setPhoto calls (with the new image's ID)
+    private class PhotoWrites(private val profiles: ProfileRepository) :
+        ProfileRepository by profiles {
+        val calls = mutableListOf<Triple<String, String?, String?>>()
+
+        override suspend fun setPhoto(
+            id: String,
+            newImage: ImageAsset?,
+            oldImageId: String?,
+        ): String? {
+            val newId = profiles.setPhoto(id, newImage, oldImageId)
+            calls.add(Triple(id, newId, oldImageId))
+            return newId
         }
-        images.addImage(oldPhoto)
-        profiles.saveProfile(sam.copy(imageId = "old-photo"))
-        val controller = controller(imageRepository = cantDelete)
-
-        controller.changePhoto("content://photos/2", now)
-
-        assertNull(controller.photoError)
-        val newId = controller.imageId
-        assertNotNull(newId)
-        assertNotEquals("old-photo", newId)
-        assertEquals(newId, profiles.getProfile("my-phone")?.imageId)
-        assertNotNull(images.getImage(newId!!))
-        // the old one is left for an admin to remove
-        assertNotNull(images.getImage("old-photo"))
     }
+
+    @Test
+    fun changePhoto_savesTheImageChangesTheProfileAndDeletesTheOldPhotoInOneWrite() =
+        runBlocking {
+            images.addImage(oldPhoto)
+            profiles.saveProfile(sam.copy(imageId = "old-photo"))
+            val writes = PhotoWrites(profiles)
+            val controller = controller(profileRepository = writes)
+
+            controller.changePhoto("content://photos/2", now)
+
+            assertNull(controller.photoError)
+            assertEquals(listOf(Triple("my-phone", controller.imageId, "old-photo")), writes.calls)
+            assertEquals(listOf(controller.imageId), images.getAllImages().map { it.id })
+            assertEquals(listOf("old-photo"), images.deletedIds)
+        }
 
     // a profile repository whose profile can be made to disappear, e.g. deleted on another phone
     private class VanishingProfiles(private val profiles: ProfileRepository) :
@@ -324,8 +341,12 @@ class ProfilePhotoControllerTest {
     fun deletePhoto_whenTheProfileCantBeSaved_keepsThePhoto() = runBlocking {
         images.addImage(oldPhoto)
         val failing = object : ProfileRepository by
-            FakeProfileRepository(listOf(sam.copy(imageId = "old-photo"))) {
-            override suspend fun saveProfile(profile: UserProfile) = throw IOException("offline")
+            FakeProfileRepository(listOf(sam.copy(imageId = "old-photo")), images) {
+            override suspend fun setPhoto(
+                id: String,
+                newImage: ImageAsset?,
+                oldImageId: String?,
+            ): String? = throw IOException("offline")
         }
         val controller = controller(profileRepository = failing)
 
@@ -337,19 +358,16 @@ class ProfilePhotoControllerTest {
     }
 
     @Test
-    fun deletePhoto_whenDeletingTheImageFails_stillRemovesIt() = runBlocking {
-        val cantDelete = object : ImageRepository by images {
-            override suspend fun deleteImage(id: String) = throw IOException("offline")
-        }
-        images.addImage(oldPhoto)
-        profiles.saveProfile(sam.copy(imageId = "old-photo"))
-        val controller = controller(imageRepository = cantDelete)
+    fun deletePhoto_removesItAndDeletesTheImageInOneWrite() = runBlocking {
+        samWithAPhoto()
+        val writes = PhotoWrites(profiles)
+        val controller = controller(profileRepository = writes)
 
         controller.deletePhoto()
 
         assertNull(controller.photoError)
-        assertNull(controller.imageId)
-        assertNull(profiles.getProfile("my-phone")?.imageId)
+        assertEquals(listOf(Triple("my-phone", null, "old-photo")), writes.calls)
+        assertEquals(listOf("old-photo"), images.deletedIds)
     }
 
     @Test
@@ -374,6 +392,15 @@ class ProfilePhotoControllerTest {
             override suspend fun saveProfile(profile: UserProfile) {
                 saves++
                 profiles.saveProfile(profile)
+            }
+
+            override suspend fun setPhoto(
+                id: String,
+                newImage: ImageAsset?,
+                oldImageId: String?,
+            ): String? {
+                saves++
+                return profiles.setPhoto(id, newImage, oldImageId)
             }
         }
         val controller = controller(profileRepository = counting)
@@ -423,12 +450,15 @@ class ProfilePhotoControllerTest {
     }
 
     @Test
-    fun changePhoto_stoppedWhileSavingTheProfile_stillDeletesTheNewImage() = runBlocking {
+    fun changePhoto_stoppedWhileSaving_rethrowsAndChangesNothing() = runBlocking {
         images.addImage(oldPhoto)
         val stopping = object : ProfileRepository by
-            FakeProfileRepository(listOf(sam.copy(imageId = "old-photo"))) {
-            override suspend fun saveProfile(profile: UserProfile) =
-                throw CancellationException("screen closed")
+            FakeProfileRepository(listOf(sam.copy(imageId = "old-photo")), images) {
+            override suspend fun setPhoto(
+                id: String,
+                newImage: ImageAsset?,
+                oldImageId: String?,
+            ): String? = throw CancellationException("screen closed")
         }
         val controller = controller(profileRepository = stopping)
 
@@ -504,5 +534,60 @@ class ProfilePhotoControllerTest {
         assertEquals("old-photo", profiles.getProfile("my-phone")?.imageId)
         assertEquals("old-photo", controller.imageId)
         assertTrue(images.deletedIds.isEmpty())
+    }
+
+    @Test
+    fun settingsSwitchFlippedWhileAPhotoSaves_keepsBoth() = runBlocking {
+        val readDone = CompletableDeferred<Unit>()
+        var waitAfterRead = false
+        // the photo save reads the profile (notifications on), then waits before it writes
+        val slowRead = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? {
+                val latest = profiles.getProfile(id)
+                if (waitAfterRead) readDone.await()
+                return latest
+            }
+        }
+        val profileScreen = controller(profileRepository = slowRead)
+        // Settings has its own controller
+        val settings = controller()
+        waitAfterRead = true // only once the screen has loaded
+        val photoSave = launch(Dispatchers.Unconfined) {
+            profileScreen.changePhoto("content://photos/1", now)
+        }
+
+        settings.saveNotificationsEnabled(false)
+        readDone.complete(Unit)
+        photoSave.join()
+
+        val saved = profiles.getProfile("my-phone")!!
+        assertFalse(saved.notificationsEnabled)
+        assertNotNull(saved.imageId)
+        assertEquals(profileScreen.imageId, saved.imageId)
+    }
+
+    @Test
+    fun photoSavedWhileTheSettingsSwitchSaves_keepsBoth() = runBlocking {
+        val readDone = CompletableDeferred<Unit>()
+        // Settings reads the profile (no photo yet), then waits before it writes
+        val slowRead = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? {
+                val latest = profiles.getProfile(id)
+                readDone.await()
+                return latest
+            }
+        }
+        val profileScreen = controller()
+        val settings = controller(profileRepository = slowRead)
+        val switchSave = launch(Dispatchers.Unconfined) { settings.saveNotificationsEnabled(false) }
+
+        profileScreen.changePhoto("content://photos/1", now)
+        readDone.complete(Unit)
+        switchSave.join()
+
+        val saved = profiles.getProfile("my-phone")!!
+        assertFalse(saved.notificationsEnabled)
+        assertNotNull(saved.imageId)
+        assertEquals(profileScreen.imageId, saved.imageId)
     }
 }

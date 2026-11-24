@@ -6,15 +6,14 @@
  * is saved as soon as it's picked (US 01.08.02).
  * Known issues: Saving doesn't wait for the server (so it works offline).
  * If Firestore rejects the write, the app still opens Home, and Welcome
- * appears again on the next launch. Saving the Profile form and the Settings switch first reads
- * the latest saved profile (so they don't undo each other's changes). Offline, that read only
- * works if the profile is in Firestore's cache on the phone; if it isn't, saving shows
- * "Couldn't save" instead of saving for later. A replaced or removed photo is deleted after the
- * profile is saved; if that delete fails, or Firestore later rejects the profile write, an unused
- * image stays in the admin image browser until an admin removes it. A photo keeps the name it was
- * saved with as its label there, even if the user changes their name later. Settings has its own
- * controller, so flipping the notifications switch at the exact moment a photo saves could put
- * the old photo back.
+ * appears again on the next launch. Saving the Profile form, the Settings switch and the photo
+ * first reads the latest saved profile. Offline, that read only works if the profile is in
+ * Firestore's cache on the phone; if it isn't, saving shows "Couldn't save" instead of saving
+ * for later. The photo and the switch only write their own field, so they can't undo each other.
+ * A new photo, the profile change and deleting the old photo are one Firestore batch, so the
+ * profile never points to a missing image. The Profile form saves the whole profile onto the
+ * latest copy, so saving it at the exact moment the switch is flipped on Settings (a different
+ * screen) could still undo the switch.
  */
 package com.example.vipers.ui.profile
 
@@ -30,23 +29,20 @@ import com.example.vipers.CampApp
 import com.example.vipers.data.device.DevicePhotoReader
 import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.UserProfile
-import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.PhotoReader
 import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Loads, creates and updates the profile for [deviceId], the current user's ID.
  * Takes the [profileRepository] in its constructor so tests can pass a fake one.
- * [photoReader] shrinks a picked profile photo and [imageRepository] saves it (US 01.08.02).
+ * [photoReader] shrinks a picked profile photo, which the [profileRepository] saves with the
+ * profile (US 01.08.02).
  */
 class ProfileController(
     private val profileRepository: ProfileRepository,
     private val deviceId: String,
-    private val imageRepository: ImageRepository,
     private val photoReader: PhotoReader,
 ) : ViewModel() {
 
@@ -237,8 +233,8 @@ class ProfileController(
 
     /**
      * Saves [enabled] as this user's notification setting in their profile (US 01.10.01). The
-     * switch moves straight away. It reads the latest saved profile first, so edits saved from
-     * another screen are kept. If there is no profile or saving fails, the switch goes back and
+     * switch moves straight away. Only this field is written, so edits saved from another screen
+     * are kept. If there is no profile or saving fails, the switch goes back and
      * [notificationsSaveFailed] is set. Unit tests call it directly.
      */
     suspend fun saveNotificationsEnabled(enabled: Boolean) {
@@ -252,9 +248,9 @@ class ProfileController(
                 notificationsSaveFailed = true
                 return
             }
-            val updated = latest.copy(notificationsEnabled = enabled)
-            profileRepository.saveProfile(updated)
-            profile = updated
+            // only this field, so a photo saved at the same time isn't undone (US 01.08.02)
+            profileRepository.setNotificationsEnabled(deviceId, enabled)
+            profile = latest.copy(notificationsEnabled = enabled)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -286,8 +282,9 @@ class ProfileController(
     /**
      * Shrinks the photo at [uri], saves it as a new image and makes it the profile photo
      * (US 01.08.02). The image is labelled with the user's name so admins can find it in the image
-     * browser (US 03.06.01). The photo it replaces is deleted afterwards. If anything fails,
-     * [photoError] says what and the old photo stays. Unit tests call it directly.
+     * browser (US 03.06.01). The new image, the profile change and deleting the photo it replaces
+     * are one write. If anything fails, [photoError] says what and the old photo stays. Unit tests
+     * call it directly.
      */
     suspend fun changePhoto(uri: String, now: Long = System.currentTimeMillis()) {
         isSavingPhoto = true
@@ -301,7 +298,7 @@ class ProfileController(
                 photoError = "Couldn't use that photo. Try another one."
                 return
             }
-            // the latest copy, so edits saved from Settings or another screen aren't undone
+            // the latest copy, for the user's current name and the photo being replaced
             val latest = profileRepository.getProfile(deviceId)
             if (latest == null) {
                 photoError = "Couldn't save the photo. Try again."
@@ -319,27 +316,10 @@ class ProfileController(
                 photoError = "This photo is too big. Try another one."
                 return
             }
-            val newId = try {
-                imageRepository.addImage(image)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                photoError = "Couldn't upload the photo. Try again."
-                return
-            }
-            val updated = latest.copy(imageId = newId)
-            try {
-                profileRepository.saveProfile(updated)
-            } catch (e: Exception) {
-                // nothing points to the new image, so don't leave it behind (even if the screen
-                // was closed and this was cancelled, which is why it can't be cancelled itself)
-                withContext(NonCancellable) { deletePhotoQuietly(newId) }
-                throw e
-            }
-            profile = updated
+            // saves the image, points the profile at it and deletes the old one, all in one write
+            val newId = profileRepository.setPhoto(deviceId, image, latest.imageId)
+            profile = latest.copy(imageId = newId)
             imageId = newId
-            val oldId = latest.imageId
-            if (oldId != null && oldId != newId) deletePhotoQuietly(oldId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -350,9 +330,9 @@ class ProfileController(
     }
 
     /**
-     * Takes the photo off the profile, so the default avatar shows, then deletes the image
-     * (US 01.08.02). If the profile can't be saved, [photoError] says so and the photo stays.
-     * Unit tests call it directly.
+     * Takes the photo off the profile, so the default avatar shows, and deletes the image in the
+     * same write (US 01.08.02). If that fails, [photoError] says so and the photo stays. Unit
+     * tests call it directly.
      */
     suspend fun deletePhoto() {
         isSavingPhoto = true
@@ -365,10 +345,9 @@ class ProfileController(
             }
             val oldId = latest.imageId
             if (oldId != null) {
-                val updated = latest.copy(imageId = null)
-                profileRepository.saveProfile(updated)
-                profile = updated
-                deletePhotoQuietly(oldId)
+                // takes it off the profile and deletes the image in one write
+                profileRepository.setPhoto(deviceId, null, oldId)
+                profile = latest.copy(imageId = null)
             }
             imageId = null
         } catch (e: CancellationException) {
@@ -377,18 +356,6 @@ class ProfileController(
             photoError = "Couldn't remove the photo. Try again."
         } finally {
             isSavingPhoto = false
-        }
-    }
-
-    // Deletes an image nothing points to any more. A failed delete only leaves an unused image
-    // behind, so the user isn't told.
-    private suspend fun deletePhotoQuietly(id: String) {
-        try {
-            imageRepository.deleteImage(id)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // kept for an admin to remove (US 03.03.01)
         }
     }
 
@@ -428,7 +395,6 @@ class ProfileController(
                 ProfileController(
                     app.container.profileRepository,
                     app.container.deviceId,
-                    app.container.imageRepository,
                     DevicePhotoReader(app),
                 )
             }

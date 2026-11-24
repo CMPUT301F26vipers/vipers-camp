@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
-import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.UserProfile
@@ -27,9 +26,9 @@ class ProfileScreenTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    // the profile photo isn't used here, so it gets a fake image repository and photo reader
+    // the profile photo isn't used here, so it gets a fake photo reader
     private fun profileController(repository: ProfileRepository, deviceId: String) =
-        ProfileController(repository, deviceId, FakeImageRepository(), FakePhotoReader())
+        ProfileController(repository, deviceId, FakePhotoReader())
 
     @Test
     fun profileScreen_displaysExistingInformation() {
