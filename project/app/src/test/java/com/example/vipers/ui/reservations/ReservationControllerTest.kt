@@ -11,6 +11,7 @@ import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -501,5 +502,38 @@ class ReservationControllerTest {
         }
         assertFalse(controller.loadFailed)
         assertFalse(controller.isLoading)
+    }
+
+    @Test
+    fun fetchOwnerReservations_withRepeatGuests_looksEachNameUpOnce() = runBlocking {
+        // counts the name lookups, each of which is a Firestore read in the real app
+        val lookups = mutableListOf<String>()
+        val countingProfiles = object : ProfileRepository by profiles {
+            override suspend fun getDisplayName(id: String): String {
+                lookups.add(id)
+                return profiles.getDisplayName(id)
+            }
+        }
+        val controller = ReservationController(
+            FakeReservationRepository(
+                listOf(
+                    reservation("active"),
+                    pastReservation("april"),
+                    pastReservation("march").copy(checkIn = "2027-03-01", checkOut = "2027-03-03"),
+                    pastReservation("alexs")
+                        .copy(userId = "alex", checkIn = "2027-04-10", checkOut = "2027-04-12"),
+                ),
+            ),
+            countingProfiles,
+            "owner-1",
+        )
+        controller.fetchOwnerReservations(today)
+
+        assertEquals(listOf("alex", "sam"), lookups.sorted())
+        assertEquals(listOf("Sam Patel"), controller.activeRows.map { it.entrantName })
+        assertEquals(
+            listOf("Sam Patel", "Deleted user", "Sam Patel"),
+            controller.pastRows.map { it.entrantName },
+        )
     }
 }

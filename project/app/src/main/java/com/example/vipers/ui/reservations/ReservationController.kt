@@ -114,16 +114,18 @@ class ReservationController(
             val active = reservations
                 .filter { it.isActive(today) }
                 .sortedBy { it.checkIn }
-                .map { toRow(it) }
             val past = reservations
                 .filter { it.isCompleted(today) }
                 .sortedWith(
                     compareByDescending<Reservation> { it.checkOut }.thenByDescending { it.checkIn }
                 )
-                .map { toRow(it) }
 
-            activeRows = active
-            pastRows = past
+            // look each entrant up once, so a repeat guest doesn't cost another read
+            val names = (active + past).map { it.userId }.distinct()
+                .associateWith { profileRepository.getDisplayName(it) }
+
+            activeRows = active.map { toRow(it, names) }
+            pastRows = past.map { toRow(it, names) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -162,10 +164,10 @@ class ReservationController(
             false
         }
 
-    /** The list row for [reservation], with the entrant's current name. */
-    private suspend fun toRow(reservation: Reservation) = ReservationRow(
+    /** The list row for [reservation], with the entrant's current name from [names]. */
+    private fun toRow(reservation: Reservation, names: Map<String, String>) = ReservationRow(
         reservationId = reservation.id,
-        entrantName = profileRepository.getDisplayName(reservation.userId),
+        entrantName = names.getValue(reservation.userId),
         campsiteName = reservation.campsiteName,
         checkIn = reservation.checkIn,
         checkOut = reservation.checkOut,
