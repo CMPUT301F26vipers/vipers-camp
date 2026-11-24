@@ -233,6 +233,11 @@ class FakeLotteryRepository(
         entries.values.filter { it.userId == userId }
     }
 
+    override suspend fun removeLottery(id: String): Unit = mutex.withLock {
+        val lottery = lotteries[id] ?: return@withLock
+        lotteries[id] = lottery.copy(removed = true)
+    }
+
     override suspend fun removeEntry(lotteryId: String, userId: String): Boolean = mutex.withLock {
         val id = LotteryEntry.idFor(lotteryId, userId)
         val entry = entries[id]

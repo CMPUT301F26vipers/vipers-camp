@@ -50,9 +50,12 @@ Document ID = **device ID**.
 - **Deleting a profile (US 01.08.01):** `DeletionService.deleteProfile` first marks the user's
   `WAITING`, `WON` and `LOST` entries `REMOVED` (`removeEntry`), cancels their confirmed
   reservations without a notice (nights go back), and removes their campsites
-  (`removeCampsite`: confirmed reservations there are cancelled with a notice, and entries in
-  the owner's lotteries for it are `REMOVED`). Last, `deleteProfile` deletes the `users`
-  document and its photo in one batch, so a failed step keeps the profile and can be retried.
+  (`removeCampsite`: confirmed reservations there are cancelled, with a notice to whoever
+  `NotificationService.optedIn` keeps; the owner's lotteries for it have their entries
+  `REMOVED` and are marked `removed` once none of their campsites are left; its photo is
+  deleted; and the campsite is marked `removed` last). Last of all, `deleteProfile` deletes the
+  `users` document and its photo in one batch, so a failed step keeps the profile and can be
+  retried.
   Waiting lists and reservations then show "Deleted user" through `getDisplayName`.
 - **Profile photo (US 01.08.02):** Change photo on Profile saves the photo straight away, not
   with the Save button. `ProfileRepository.setPhoto` saves it as an `images` document with

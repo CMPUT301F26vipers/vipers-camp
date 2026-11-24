@@ -55,9 +55,13 @@ class DeleteProfileController(
     var deleteError by mutableStateOf<String?>(null)
         private set
 
+    // true while askToDelete checks for campsites, so a second tap doesn't check again
+    private var isChecking = false
+
     /** Opens the dialog after checking if the user owns campsites. */
     fun askToDelete() {
-        if (isDeleting) return
+        if (isDeleting || isConfirming || isChecking) return
+        isChecking = true
         deleteError = null
         viewModelScope.launch {
             ownsCampsites = try {
@@ -66,6 +70,8 @@ class DeleteProfileController(
                 throw e
             } catch (e: Exception) {
                 null
+            } finally {
+                isChecking = false
             }
             isConfirming = true
         }

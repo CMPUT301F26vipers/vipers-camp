@@ -8,7 +8,9 @@
 package com.example.vipers.ui.profile
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
@@ -16,6 +18,9 @@ import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.service.DeletionService
+import com.example.vipers.domain.service.NotificationService
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -27,6 +32,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
@@ -38,6 +44,7 @@ class DeleteProfileControllerTest {
     private val campsites = FakeCampsiteRepository()
     private val lotteries = FakeLotteryRepository()
     private val reservations = FakeReservationRepository(campsites, lotteries)
+    private val images = FakeImageRepository()
 
     @Before
     fun setUp() {
@@ -54,7 +61,10 @@ class DeleteProfileControllerTest {
         profileRepository: ProfileRepository = profiles,
         campsiteRepository: CampsiteRepository = campsites,
     ) = DeleteProfileController(
-        DeletionService(profileRepository, campsiteRepository, lotteries, reservations),
+        DeletionService(
+            profileRepository, campsiteRepository, lotteries, reservations, images,
+            NotificationService(FakeNotificationRepository(), campsiteRepository, profileRepository),
+        ),
         campsiteRepository,
         "sam",
     )
@@ -137,6 +147,49 @@ class DeleteProfileControllerTest {
             controller.deleteError,
         )
         assertNotNull(profiles.getProfile("sam"))
+    }
+
+    @Test
+    fun askToDelete_tappedTwiceWhileChecking_checksOnce() = runBlocking {
+        val checkDone = CompletableDeferred<Unit>()
+        var checks = 0
+        val slow = object : CampsiteRepository by campsites {
+            override suspend fun getCampsitesByOwner(ownerId: String): List<Campsite> {
+                checks++
+                checkDone.await()
+                return campsites.getCampsitesByOwner(ownerId)
+            }
+        }
+        val controller = controller(campsiteRepository = slow)
+
+        controller.askToDelete()
+        controller.askToDelete()
+        checkDone.complete(Unit)
+
+        assertEquals(1, checks)
+        assertTrue(controller.isConfirming)
+        // and once it's open, another tap doesn't check again
+        controller.askToDelete()
+        assertEquals(1, checks)
+    }
+
+    @Test
+    fun delete_whenStopped_rethrowsTheCancellation() = runBlocking {
+        val stopping = object : ProfileRepository by profiles {
+            override suspend fun deleteProfile(id: String, imageId: String?) =
+                throw CancellationException("screen closed")
+        }
+        val controller = controller(profileRepository = stopping)
+
+        try {
+            controller.delete()
+            fail("expected the cancellation to be rethrown")
+        } catch (e: CancellationException) {
+            // expected
+        }
+        assertNull(controller.deleteError)
+        assertFalse(controller.isDeleting)
+        assertFalse(controller.deleted)
     }
 
     @Test

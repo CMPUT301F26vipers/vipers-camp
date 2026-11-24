@@ -247,6 +247,18 @@ class FakeRepositoryTest {
     }
 
     @Test
+    fun removeLottery_marksItRemovedSoItIsntListedOrDrawn() = runBlocking {
+        val repo = FakeLotteryRepository(listOf(Lottery(id = "l1", campsiteIds = listOf("c1"))))
+
+        repo.removeLottery("l1")
+        repo.removeLottery("missing") // does nothing
+
+        assertTrue(repo.getLottery("l1")!!.removed)
+        assertTrue(repo.getLotteriesForCampsite("c1").isEmpty())
+        assertTrue(repo.getLotteriesToDraw(Long.MAX_VALUE).isEmpty())
+    }
+
+    @Test
     fun removeEntry_marksItRemovedAndTakesAWaitingEntrantOffTheList() = runBlocking {
         val repo = FakeLotteryRepository(
             initialLotteries = listOf(Lottery(id = "l1", waitingUserIds = listOf("sam", "kim"))),

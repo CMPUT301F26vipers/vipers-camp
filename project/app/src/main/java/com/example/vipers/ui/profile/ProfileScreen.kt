@@ -93,7 +93,9 @@ fun ProfileScreen(
                     Text("Retry")
                 }
             } else {
-                PhotoRow(controller)
+                // nothing else can be saved while the profile is being deleted (US 01.08.01)
+                val deleting = deleteController.isDeleting
+                PhotoRow(controller, enabled = !deleting)
 
                 ProfileField(
                     label = "Name",
@@ -122,7 +124,7 @@ fun ProfileScreen(
                     onClick = { controller.saveProfile() },
                     modifier = Modifier.fillMaxWidth(),
                     // a photo change saves the profile too, so Save waits for it
-                    enabled = !controller.isSaving && !controller.isSavingPhoto,
+                    enabled = !controller.isSaving && !controller.isSavingPhoto && !deleting,
                 ) {
                     Text(if (controller.isSaving) "Saving…" else "Save")
                 }
@@ -152,7 +154,12 @@ fun ProfileScreen(
  */
 @Composable
 private fun DeleteProfileRow(controller: DeleteProfileController) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    // centred, like mockup E18
+    Column(
+        Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         if (controller.isDeleting) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -226,10 +233,11 @@ private fun DeleteProfileRow(controller: DeleteProfileController) {
 /**
  * The profile photo row (US 01.08.02, mockup E18): the photo, or a default avatar when there's
  * none, then "Change photo", which opens the phone's photo picker, and "Remove" once there's a
- * photo. The photo is saved as soon as it's picked; errors show underneath.
+ * photo. The photo is saved as soon as it's picked; errors show underneath. The buttons are
+ * off unless [enabled] (e.g. while the profile is being deleted).
  */
 @Composable
-private fun PhotoRow(controller: ProfileController) {
+private fun PhotoRow(controller: ProfileController, enabled: Boolean) {
     val pickPhoto = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
@@ -261,7 +269,7 @@ private fun PhotoRow(controller: ProfileController) {
                             ),
                         )
                     },
-                    enabled = controller.canChangePhoto,
+                    enabled = controller.canChangePhoto && enabled,
                     border = BorderStroke(1.dp, Primary),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
                     modifier = Modifier.testTag("button_change_photo"),
@@ -271,7 +279,7 @@ private fun PhotoRow(controller: ProfileController) {
                 if (controller.imageId != null) {
                     TextButton(
                         onClick = controller::removePhoto,
-                        enabled = controller.canChangePhoto,
+                        enabled = controller.canChangePhoto && enabled,
                         modifier = Modifier.testTag("button_remove_photo"),
                     ) {
                         Text("Remove")

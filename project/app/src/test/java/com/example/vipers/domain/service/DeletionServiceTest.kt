@@ -2,8 +2,9 @@
  * DeletionServiceTest.kt
  * Unit tests for deleting a profile (US 01.08.01): the profile and photo are deleted, the user's
  * entries are marked Removed, their reservations are cancelled with the nights given back, their
- * campsites are removed with the reservations and entries there, owners see "Deleted user", and
- * a failed step keeps the profile so trying again finishes the job. Uses the fake repositories.
+ * campsites are removed with their photos, the reservations there and the owner's lotteries for
+ * them, owners see "Deleted user", and a failed step keeps the profile so trying again finishes
+ * the job. Uses the fake repositories.
  * Known issues: none.
  */
 package com.example.vipers.domain.service
@@ -25,6 +26,7 @@ import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,7 +54,8 @@ class DeletionServiceTest {
     )
     private val campsites = FakeCampsiteRepository(
         listOf(
-            Campsite(id = "sams-site", ownerId = "sam", name = "Sam's Site"),
+            Campsite(id = "sams-site", ownerId = "sam", name = "Sam's Site", imageId = "site-photo"),
+            Campsite(id = "sams-lake", ownerId = "sam", name = "Sam's Lake"),
             Campsite(id = "alex-site", ownerId = "alex", name = "Alex's Site"),
         ),
     )
@@ -61,6 +64,9 @@ class DeletionServiceTest {
             // Sam's own lottery for Sam's campsite
             Lottery(id = "sams-lottery", ownerId = "sam", campsiteIds = listOf("sams-site"),
                 waitingUserIds = listOf("lee")),
+            // Sam's lottery for both of Sam's campsites (US 02.04.02)
+            Lottery(id = "sams-two-sites", ownerId = "sam",
+                campsiteIds = listOf("sams-site", "sams-lake"), waitingUserIds = listOf("kim")),
             // Alex's lottery, which Sam joined
             Lottery(id = "alex-lottery", ownerId = "alex", campsiteIds = listOf("alex-site"),
                 waitingUserIds = listOf("sam", "kim")),
@@ -77,12 +83,21 @@ class DeletionServiceTest {
             entry("alex-lottery", "kim", EntryStatus.WAITING),
             entry("old-lottery", "sam", EntryStatus.DECLINED),
             entry("shared-lottery", "lee", EntryStatus.WAITING),
+            entry("sams-two-sites", "kim", EntryStatus.WAITING),
         ),
     )
     private val notifications = FakeNotificationRepository()
     private val reservations = FakeReservationRepository(campsites, lotteries, notifications)
 
-    private val service = DeletionService(profiles, campsites, lotteries, reservations)
+    private val service = serviceWith()
+
+    private fun serviceWith(
+        profileRepository: ProfileRepository = profiles,
+        lotteryRepository: LotteryRepository = lotteries,
+    ) = DeletionService(
+        profileRepository, campsites, lotteryRepository, reservations, images,
+        NotificationService(notifications, campsites, profileRepository),
+    )
 
     private lateinit var samsBooking: String
     private lateinit var kimsBooking: String
@@ -113,6 +128,12 @@ class DeletionServiceTest {
                 now,
             ).copy(id = "sam-photo"),
         )
+        images.addImage(
+            ImageAsset.fromJpeg(
+                FakePhotoReader.SAMPLE_JPEG, "sam", ImageAsset.OWNER_CAMPSITE, "sams-site",
+                "Sam's Site", now,
+            ).copy(id = "site-photo"),
+        )
         // Sam booked at Alex's campsite; Kim and Lee booked at Sam's
         samsBooking = reservations.addReservation(booking("sam", "alex", "alex-site"))
         kimsBooking = reservations.addReservation(booking("kim", "sam", "sams-site"))
@@ -133,7 +154,7 @@ class DeletionServiceTest {
         service.deleteProfile("sam", now)
 
         assertNull(profiles.getProfile("sam"))
-        assertEquals(listOf("sam-photo"), images.deletedIds)
+        assertTrue("sam-photo" in images.deletedIds)
         assertNull(images.getImage("sam-photo"))
         // everyone else is still there
         assertNotNull(profiles.getProfile("alex"))
@@ -178,9 +199,12 @@ class DeletionServiceTest {
         service.deleteProfile("sam", now)
 
         assertTrue(campsites.getCampsite("sams-site")!!.removed)
+        assertTrue(campsites.getCampsite("sams-lake")!!.removed)
         assertTrue(campsites.getCampsitesByOwner("sam").isEmpty())
         assertEquals(listOf("alex-site"), campsites.getAllCampsites().map { it.id })
         assertFalse(campsites.getCampsite("alex-site")!!.removed)
+        // and their photos
+        assertNull(images.getImage("site-photo"))
     }
 
     @Test
@@ -206,9 +230,14 @@ class DeletionServiceTest {
 
             assertEquals(EntryStatus.REMOVED, statusOf("sams-lottery", "lee"))
             assertEquals(EntryStatus.REMOVED, statusOf("sams-lottery", "kim"))
+            assertEquals(EntryStatus.REMOVED, statusOf("sams-two-sites", "kim"))
             assertTrue(lotteries.getLottery("sams-lottery")!!.waitingUserIds.isEmpty())
+            // removed, so they're never drawn and show as closed
+            assertTrue(lotteries.getLottery("sams-lottery")!!.removed)
+            assertTrue(lotteries.getLottery("sams-two-sites")!!.removed)
             // Alex's lottery still has Alex's own campsite in it
             assertEquals(EntryStatus.WAITING, statusOf("shared-lottery", "lee"))
+            assertFalse(lotteries.getLottery("shared-lottery")!!.removed)
         }
 
     @Test
@@ -223,7 +252,7 @@ class DeletionServiceTest {
                 return lotteries.removeEntry(lotteryId, userId)
             }
         }
-        val flakyService = DeletionService(profiles, campsites, flaky, reservations)
+        val flakyService = serviceWith(lotteryRepository = flaky)
 
         try {
             flakyService.deleteProfile("sam", now)
@@ -246,6 +275,7 @@ class DeletionServiceTest {
         service.deleteProfile("nobody", now)
 
         assertEquals(4, profiles.getAllProfiles().size)
+        assertTrue(campsites.getCampsitesByOwner("sam").isNotEmpty())
         assertEquals(EntryStatus.WAITING, statusOf("alex-lottery", "sam"))
         assertTrue(images.deletedIds.isEmpty())
     }
@@ -255,9 +285,40 @@ class DeletionServiceTest {
         service.removeCampsite(campsites.getCampsite("sams-site")!!, now)
 
         assertTrue(campsites.getCampsite("sams-site")!!.removed)
+        assertNull(images.getImage("site-photo"))
         assertEquals(EntryStatus.REMOVED, statusOf("sams-lottery", "lee"))
+        assertTrue(lotteries.getLottery("sams-lottery")!!.removed)
         assertNotNull(profiles.getProfile("sam"))
         // Sam's own booking at Alex's campsite isn't touched
         assertEquals(ReservationStatus.CONFIRMED, reservations.getReservation(samsBooking)!!.status)
+    }
+
+    @Test
+    fun removeCampsite_keepsALotteryThatStillHasAnotherCampsite() = runBlocking {
+        service.removeCampsite(campsites.getCampsite("sams-site")!!, now)
+
+        // Sam's Lake is still there, so its lottery stays open
+        assertFalse(lotteries.getLottery("sams-two-sites")!!.removed)
+        assertEquals(EntryStatus.WAITING, statusOf("sams-two-sites", "kim"))
+
+        service.removeCampsite(campsites.getCampsite("sams-lake")!!, now)
+
+        assertTrue(lotteries.getLottery("sams-two-sites")!!.removed)
+        assertEquals(EntryStatus.REMOVED, statusOf("sams-two-sites", "kim"))
+    }
+
+    @Test
+    fun deleteProfile_whenAGuestsProfileCantBeRead_stillFinishesAndTellsThem() = runBlocking {
+        val kimUnreadable = object : ProfileRepository by profiles {
+            override suspend fun getProfile(id: String): UserProfile? =
+                if (id == "kim") throw IOException("offline") else profiles.getProfile(id)
+        }
+
+        serviceWith(profileRepository = kimUnreadable).deleteProfile("sam", now)
+
+        assertNull(profiles.getProfile("sam"))
+        assertEquals(ReservationStatus.CANCELLED, reservations.getReservation(kimsBooking)!!.status)
+        // like every other notice, a profile that can't be read still gets it
+        assertEquals(1, notifications.getNotificationsFor("kim").size)
     }
 }

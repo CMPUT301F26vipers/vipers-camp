@@ -406,6 +406,8 @@ DeletionService ..> ProfileRepository
 DeletionService ..> CampsiteRepository
 DeletionService ..> LotteryRepository
 DeletionService ..> ReservationRepository
+DeletionService ..> ImageRepository : campsite photos
+DeletionService ..> NotificationService : optedIn
 
 note top of AppContainer
   <b>Manual dependency injection</b>

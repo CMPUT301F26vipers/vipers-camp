@@ -15,6 +15,7 @@ import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import com.example.vipers.domain.service.DeletionService
+import com.example.vipers.domain.service.NotificationService
 import com.example.vipers.ui.lottery.DrawAndNotifyWorker
 import com.example.vipers.ui.lottery.LotteryDrawer
 
@@ -43,6 +44,8 @@ class AppContainer(
     /** Deletes profiles and removes campsites with everything that points to them (US 01.08.01). */
     val deletionService = DeletionService(
         profileRepository, campsiteRepository, lotteryRepository, reservationRepository,
+        imageRepository,
+        NotificationService(notificationRepository, campsiteRepository, profileRepository),
     )
 
     /** Starts the draws that are due whenever the app is opened (US 02.05.01b). */

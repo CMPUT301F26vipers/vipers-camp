@@ -284,6 +284,12 @@ class FirestoreLotteryRepository(
     override suspend fun getEntriesForUser(userId: String): List<LotteryEntry> =
         entries.whereEqualTo("userId", userId).get().await().documents.map { it.toLotteryEntry() }
 
+    override suspend fun removeLottery(id: String) {
+        val doc = lotteries.document(id)
+        if (!doc.get().await().exists()) return
+        doc.update("removed", true).await()
+    }
+
     override suspend fun removeEntry(lotteryId: String, userId: String): Boolean {
         val lotteryDoc = lotteries.document(lotteryId)
         val entryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))

@@ -55,6 +55,7 @@ package "domain.repository" {
     suspend getEntries(lotteryId: String): List<LotteryEntry>
     suspend getEntriesForUser(userId: String): List<LotteryEntry>
     suspend removeEntry(lotteryId: String, userId: String): Boolean
+    suspend removeLottery(id: String)
     observeEntries(lotteryId: String): Flow<List<LotteryEntry>>
     suspend stageManifestChunks(lotteryId: String, chunks: List<DrawManifestChunk>)
     suspend loadManifestChunks(lotteryId: String, drawId: String): List<DrawManifestChunk>

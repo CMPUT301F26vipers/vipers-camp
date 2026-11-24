@@ -163,6 +163,12 @@ interface LotteryRepository {
      */
     suspend fun removeEntry(lotteryId: String, userId: String): Boolean
 
+    /**
+     * Marks the lottery with this [id] as removed, so it's never drawn and shows as closed
+     * (e.g. when its campsites are removed, US 01.08.01). Does nothing if there is none.
+     */
+    suspend fun removeLottery(id: String)
+
     /** Loads every entry in [lotteryId]. */
     suspend fun getEntries(lotteryId: String): List<LotteryEntry>
 
