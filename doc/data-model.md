@@ -273,6 +273,15 @@ what it was asked to show. Every type is shown.
   `markShownOnDevice` returns `true`, so each inbox item gives at most one phone notification.
   An item that fails is skipped and the rest are still handled; the method doesn't throw for it.
 
+`DrawAndNotifyWorker` (WorkManager) runs this about every 15 minutes, even while the app is closed,
+and once whenever the app opens; `MainActivity` schedules both with
+`DrawAndNotifyWorker.schedule(context)` as unique work (`draw_and_notify_periodic`, kept if it's
+already scheduled, and `draw_and_notify_app_open`, replaced), and both wait for a network
+connection. Each run first starts the draws that are due, then calls `showNewOnDevice` for this
+device's user, so a draw's result is shown in the same run. Each unshown inbox item is shown once
+as a phone notification. Opted-out users get none (their items are marked shown), and when
+permission is refused nothing is shown or marked.
+
 ### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |

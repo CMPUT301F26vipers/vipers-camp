@@ -45,6 +45,9 @@ class AppContainer(
         lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
     )
 
-    /** Starts the draws that are due whenever the app is opened (US 02.05.01b). */
-    val drawAndNotifyWorker = DrawAndNotifyWorker(lotteryRepository, lotteryDrawer)
+    /**
+     * Starts the draws that are due (US 02.05.01b); AppRoot runs it whenever the app comes to the
+     * front, and DrawAndNotifyWorker on each background check.
+     */
+    val dueDraws = DrawAndNotifyWorker.DueDraws(lotteryRepository, lotteryDrawer)
 }

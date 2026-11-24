@@ -196,7 +196,7 @@ class AutoDrawLotteryTest {
                 AppRoot(
                     container.deviceIdentityManager,
                     onLoadDemoData = {},
-                    onAppOpened = { container.drawAndNotifyWorker.runDueDraws() },
+                    onAppOpened = { container.dueDraws.runDueDraws() },
                 )
             }
         }

@@ -2,7 +2,8 @@
  * MainActivity.kt
  * The app's only Activity. It shows Welcome on first launch, or the app's navigation (bottom
  * bar and screens) once this device has a profile. Whenever the app opens it starts the lottery
- * draws that are due (US 02.05.01b). It also runs Google's code scanner for Home's Scan QR button
+ * draws that are due (US 02.05.01b), and it schedules DrawAndNotifyWorker to check about every 15
+ * minutes and once now (T-14). It also runs Google's code scanner for Home's Scan QR button
  * (US 01.12.01).
  * Known issues: if the screen rotates while the scanner is open, the scan is lost and the entrant
  * has to scan again.
@@ -19,6 +20,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.example.vipers.data.seed.SeedLoader
 import com.example.vipers.ui.home.QrScanResult
+import com.example.vipers.ui.lottery.DrawAndNotifyWorker
 import com.example.vipers.ui.navigation.AppRoot
 import com.example.vipers.ui.theme.VipersTheme
 import com.google.mlkit.common.MlKitException
@@ -37,12 +39,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // white clock and battery icons, since every top bar is dark green
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT))
+        DrawAndNotifyWorker.schedule(this)
         setContent {
             VipersTheme {
                 AppRoot(
                     container.deviceIdentityManager,
                     onLoadDemoData = { loadDemoData() },
-                    onAppOpened = { container.drawAndNotifyWorker.runDueDraws() },
+                    onAppOpened = { container.dueDraws.runDueDraws() },
                     onScanQr = { scanQrCode() },
                 )
             }
