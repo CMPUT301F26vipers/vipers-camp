@@ -255,6 +255,19 @@ changed the notification, and `false` if there is no such notification or it was
 when the background check and the app-open check run at the same time only one of them posts it.
 Transactions need a connection, so `markShownOnDevice` fails offline.
 
+`NotificationService.showNewOnDevice(userId, notifier)` decides what to show on the phone and
+returns how many it showed. `DeviceNotifier` (in `domain/service`) is how it posts them without
+Android imports: `canPost()` says whether the app may show system notifications right now, and
+`show(notification)` posts one; the Android version lives in `data/device`. Every type is shown.
+- No profile (or it can't be read): nothing happens.
+- `notificationsEnabled = false` (US 01.10.01): nothing is shown, and every unshown item is marked
+  shown, so turning notifications back on doesn't bring back a pile of old items.
+- `canPost()` is `false` (permission refused): nothing is shown or marked, so the inbox alone is
+  used and the items can still be shown once permission is granted.
+- Otherwise each item from `listUnshownOnDevice`, oldest first, is shown only if
+  `markShownOnDevice` returns `true`, so each inbox item gives at most one phone notification.
+  An item that fails is skipped and the rest are still handled; the method doesn't throw for it.
+
 ### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |
