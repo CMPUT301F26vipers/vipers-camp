@@ -1,11 +1,13 @@
 /*
  * CampApp.kt
- * The Application class: starts once when the app launches and creates the AppContainer.
+ * The Application class: starts once when the app launches and creates the AppContainer and the
+ * phone notification channel (T-14).
  * Known issues: none.
  */
 package com.example.vipers
 
 import android.app.Application
+import com.example.vipers.data.device.AndroidDeviceNotifier
 import com.example.vipers.data.device.DeviceIdentityManager
 import com.example.vipers.data.firestore.FirestoreCampsiteRepository
 import com.example.vipers.data.firestore.FirestoreImageRepository
@@ -32,6 +34,8 @@ class CampApp : Application() {
             messageRepository = FirestoreMessageRepository(),
             notificationRepository = FirestoreNotificationRepository(),
             imageRepository = FirestoreImageRepository(),
+            deviceNotifier = AndroidDeviceNotifier(this),
         )
+        AndroidDeviceNotifier.createChannel(this)
     }
 }

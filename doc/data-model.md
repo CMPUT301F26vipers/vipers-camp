@@ -27,7 +27,7 @@ your story needs a field or method that isn't here.
 | `domain/service/` | Logic shared by several screens, on top of the repositories (e.g. `NotificationService`). No Firebase or Android imports. |
 | `data/firestore/` | `Firestore…Repository`: the real versions, plus `toMap()` / `to…()` mappers. |
 | `data/fake/` | `Fake…Repository`: in-memory versions for unit and intent tests. |
-| `data/device/` | `DeviceIdentityManager`: the device ID is the user's ID. |
+| `data/device/` | `DeviceIdentityManager`: the device ID is the user's ID. `AndroidDeviceNotifier`: posts phone notifications (T-14); `DeviceNotificationLink`: the extras of the Intent a phone notification opens. |
 | `data/seed/` | `SeedLoader`: demo data. |
 | `CampApp.kt` / `AppContainer.kt` | Creates the repositories. Controllers get them with `(application as CampApp).container`. |
 
@@ -258,7 +258,12 @@ Transactions need a connection, so `markShownOnDevice` fails offline.
 `NotificationService.showNewOnDevice(userId, notifier)` decides what to show on the phone and
 returns how many it showed. `DeviceNotifier` (in `domain/service`) is how it posts them without
 Android imports: `canPost()` says whether the app may show system notifications right now, and
-`show(notification)` posts one; the Android version lives in `data/device`. Every type is shown.
+`show(notification)` posts one. The Android version is `AndroidDeviceNotifier` in `data/device`:
+it posts on the "Camp updates" channel (made in `CampApp.onCreate`) with the notification's `id` as
+the tag, so posting it again replaces it, and tapping it opens `MainActivity` with the extras from
+`DeviceNotificationLink`, whose `fromIntent` gets the screen from `Notification.target`, like the
+inbox. `AppContainer.deviceNotifier` holds it; tests get a `FakeDeviceNotifier` that only records
+what it was asked to show. Every type is shown.
 - No profile (or it can't be read): nothing happens.
 - `notificationsEnabled = false` (US 01.10.01): nothing is shown, and every unshown item is marked
   shown, so turning notifications back on doesn't bring back a pile of old items.
