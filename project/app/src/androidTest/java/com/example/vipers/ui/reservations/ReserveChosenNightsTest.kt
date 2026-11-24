@@ -1,9 +1,8 @@
 /*
  * ReserveChosenNightsTest.kt
- * Connected UI intent tests for issue T-03 (US 01.04.01 / 01.05.01): reserving chosen nights as a
- * winning entrant. Tests all 6 acceptance criteria: reservation creation, booking period and
- * unused win checks, max occupancy limits, concurrency conflict calendar refresh, reserved status
- * and night exclusion, and appearance in My Reservations and Owner Active Reservations.
+ * Connected UI intent tests for issue T-03 (US 01.04.01 / 01.05.01) and US 01.04.02: reserving
+ * chosen nights as a winning entrant, including multi-campsite selection, switching, capacity
+ * enforcement, and single-use confirmation.
  * Uses fake repositories, so it runs locally on the emulator without touching remote Firestore.
  * Known issues: none.
  */
@@ -34,6 +33,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
+import com.example.vipers.domain.repository.ReserveResult
 import com.example.vipers.ui.lottery.LotteryDrawer
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
@@ -374,6 +374,95 @@ class ReserveChosenNightsTest {
             val entrantReservations = res.getReservationsForUser("sam")
             assertEquals(1, entrantReservations.size)
             assertEquals(ownerRes.id, entrantReservations.first().id)
+        }
+    }
+
+    @Test
+    fun multiSite_switchAfterPickingNights_oversizedGroupBlocked_confirmsChosenSiteOnce() {
+        val smallJasper = Campsite(
+            id = "jasper",
+            ownerId = "owner-priya",
+            name = "Jasper Pines",
+            address = "Jasper, AB",
+            region = Region.JASPER,
+            maxOccupancy = 2,
+            pricePerNightCents = 6500,
+            rules = "Pack out all trash",
+        )
+        val camps = FakeCampsiteRepository(listOf(hinton, smallJasper)).also {
+            runBlocking {
+                it.saveAvailability(AvailabilityCalendar(campsiteId = "hinton", openNights = nights.take(3)))
+                it.saveAvailability(AvailabilityCalendar(campsiteId = "jasper", openNights = nights.drop(3).take(3)))
+            }
+        }
+        val multiLottery = lottery.copy(campsiteIds = listOf("hinton", "jasper"))
+        val samEntry = samsEntry(EntryStatus.WON, "sam").copy(groupSize = 4)
+        val lots = FakeLotteryRepository(listOf(multiLottery), listOf(samEntry))
+        val res = FakeReservationRepository(campsiteRepository = camps, lotteryRepository = lots)
+        val controller = ReserveController(
+            campsiteRepository = camps,
+            lotteryRepository = lots,
+            userId = "sam",
+            lotteryId = "lot-summer",
+            campsiteId = null,
+            reservationRepository = res,
+            lotteryDrawer = LotteryDrawer(
+                lots,
+                FakeNotificationRepository(),
+                camps,
+                FakeProfileRepository(),
+            ),
+        )
+        composeRule.setContent {
+            VipersTheme {
+                ReserveScreen("lot-summer", null, onBack = {}, controller = controller)
+            }
+        }
+
+        // Select Hinton, pick night 0, then switch to smaller Jasper
+        composeRule.onNodeWithTag("reserve_campsite_option_hinton").performClick()
+        night(0).performClick()
+        composeRule.onNodeWithTag("reserve_total").assertTextEquals("Total $50")
+
+        composeRule.onNodeWithTag("reserve_campsite_option_jasper").performScrollTo().performClick()
+        composeRule.onNodeWithTag("reserve_total").assertTextEquals("Total $0")
+        composeRule.onNodeWithTag("reserve_guests_text").performScrollTo()
+            .assertTextEquals("4 guests (max 2)")
+        composeRule.onNodeWithTag("reserve_guests_over_limit").assertIsDisplayed()
+
+        // Oversized group blocks reservation with clear feedback
+        night(3).performScrollTo().performClick()
+        composeRule.onNodeWithTag("button_reserve").performScrollTo().performClick()
+        composeRule.onNodeWithTag("reserve_error_message").performScrollTo()
+            .assertTextEquals("Group size cannot exceed the maximum occupancy of 2.")
+        composeRule.onNodeWithTag("dialog_reservation_confirmed").assertDoesNotExist()
+
+        // Reduce group size to 2 and confirm for Jasper Pines
+        val decrease = composeRule.onNodeWithTag("reserve_guests_decrease").performScrollTo()
+        decrease.performClick()
+        decrease.performClick()
+        composeRule.onNodeWithTag("reserve_guests_text").assertTextEquals("2 guests (max 2)")
+
+        composeRule.onNodeWithTag("button_reserve").performScrollTo().performClick()
+        composeRule.onNodeWithTag("dialog_reservation_confirmed").assertIsDisplayed()
+        composeRule.onNodeWithTag("confirm_campsite_name").assertTextEquals("Jasper Pines")
+        composeRule.onNodeWithTag("confirm_guests").assertTextEquals("2 guests")
+        composeRule.onNodeWithTag("confirm_total_price").assertTextEquals("$65")
+
+        // One win cannot produce reservations at two campsites
+        runBlocking {
+            val saved = res.getReservationsForUser("sam")
+            assertEquals(1, saved.size)
+            assertEquals("jasper", saved.first().campsiteId)
+            val second = res.createReservation(
+                lotteryId = "lot-summer",
+                campsiteId = "hinton",
+                userId = "sam",
+                nights = listOf(nights[0]),
+                groupSize = 2,
+                now = now,
+            )
+            assertEquals(ReserveResult.NotEligible, second)
         }
     }
 }

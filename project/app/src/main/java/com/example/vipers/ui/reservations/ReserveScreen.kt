@@ -1,12 +1,12 @@
 /*
  * ReserveScreen.kt
- * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details or the win
- * notification when the user won a lottery. It shows the reserve-by date, the campsite, the
- * lottery's nights with the taken ones greyed out, the nightly price times the picked nights and
- * total, the group size selector, the Reserve action button (T-03), the confirmation dialog
- * (01.05.01), and the campsite rules. A winner can decline the win here (US 01.04.03, mockup E12).
- * ReserveController does the work.
- * Known issues: choosing between several campsites (01.04.02) is added by that story.
+ * The Reserve screen (mockup E11, US 01.04.01, US 01.04.02), opened from Campsite Details or the
+ * win notification when the user won a lottery. It shows the reserve-by date, the campsite (or
+ * campsite selector for multi-site lotteries), the lottery's nights with the taken ones greyed
+ * out, the nightly price times the picked nights and total, the group size selector, the Reserve
+ * action button (T-03), the confirmation dialog (01.05.01), and the campsite rules. A winner can
+ * decline the win here (US 01.04.03, mockup E12). ReserveController does the work.
+ * Known issues: none.
  */
 package com.example.vipers.ui.reservations
 
@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.Reservation
@@ -76,14 +77,16 @@ import com.example.vipers.ui.theme.TextMuted
 import java.time.LocalDate
 
 /**
- * The Reserve screen (mockup E11) for the user's win in [lotteryId] at [campsiteId]. Free nights
- * are white, picked ones green and taken or closed ones grey, like the mockup. Tests pass their
- * own [controller] with fake repositories.
+ * The Reserve screen (mockup E11) for the user's win in [lotteryId] with optional [campsiteId]
+ * route hint. Single-site wins show the sole campsite directly; multi-site wins show a campsite
+ * selector first (preselecting a valid [campsiteId] hint if supplied). Free nights are white,
+ * picked ones green and taken or closed ones grey, like the mockup. Tests pass their own
+ * [controller] with fake repositories.
  *
  * @param lotteryId ID of the lottery the user won.
- * @param campsiteId ID of the campsite to reserve, or null for the lottery's first campsite.
+ * @param campsiteId Optional campsite route hint, or null to choose from the lottery's sites.
  * @param onBack Called when pressing back.
- * @param controller ViewModel that loads the win and keeps track of the picked nights.
+ * @param controller ViewModel that loads the win and keeps track of the picked campsite and nights.
  */
 @Composable
 fun ReserveScreen(
@@ -117,7 +120,7 @@ fun ReserveScreen(
                     CircularProgressIndicator()
                 }
             controller.error != null -> Text(controller.error!!, Modifier.padding(16.dp))
-            lottery == null || campsite == null ->
+            lottery == null ->
                 Text("This lottery is no longer available.", Modifier.padding(16.dp))
             else -> Column(
                 modifier = Modifier
@@ -128,103 +131,217 @@ fun ReserveScreen(
                 OfferBanner(controller.offerState, lottery)
 
                 Label("Campsite")
-                // one campsite for now; choosing between several comes with 01.04.02
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(InputHeight)
-                        .background(Surface, InputShape)
-                        .border(1.dp, Border, InputShape)
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Text(campsite.name, modifier = Modifier.testTag("reserve_campsite"))
-                }
-
-                Label("Pick nights")
-                NightGrid(
-                    nights = controller.nights,
-                    freeNights = controller.freeNights,
-                    selectedNights = controller.selectedNights,
-                    canPick = controller.offerState == OfferState.OPEN,
-                    onNightTap = controller::onNightTap,
-                )
-                if (controller.noNightsLeft) {
-                    Text(
-                        "No nights are left at this campsite. You can decline your win so " +
-                            "someone else gets a chance.",
-                        color = TextMuted,
-                        modifier = Modifier.testTag("reserve_no_nights"),
-                    )
-                }
-
-                GuestsSection(
-                    groupSize = controller.groupSize,
-                    maxOccupancy = campsite.maxOccupancy,
-                    canEdit = controller.offerState == OfferState.OPEN,
-                    onDecrease = controller::decrementGroupSize,
-                    onIncrease = controller::incrementGroupSize,
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        controller.nightsTimesPriceText ?: "",
-                        color = TextMuted,
-                        modifier = Modifier.weight(1f).testTag("reserve_nights_price"),
-                    )
-                    Text(
-                        controller.totalText ?: "",
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.testTag("reserve_total"),
-                    )
-                }
-                HorizontalDivider(color = Divider)
-                RulesAndPolicySection(campsite)
-
-                if (controller.reserveError != null) {
-                    Text(
-                        text = controller.reserveError!!,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .testTag("reserve_error_message"),
-                    )
-                }
-
-                Button(
-                    onClick = controller::reserve,
-                    enabled = controller.offerState == OfferState.OPEN && !controller.isReserving,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("button_reserve"),
-                ) {
-                    if (controller.isReserving) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            modifier = Modifier
-                                .size(24.dp)
-                                .testTag("reserve_loading"),
-                            strokeWidth = 2.5.dp,
-                        )
-                    } else {
+                when {
+                    controller.availableCampsites.isEmpty() -> {
                         Text(
-                            "Reserve",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
+                            "No campsites are available for this lottery.",
+                            color = TextMuted,
+                            modifier = Modifier.testTag("reserve_no_campsites"),
+                        )
+                    }
+                    !controller.isMultiSite -> {
+                        val singleSite = campsite ?: controller.availableCampsites.first()
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(InputHeight)
+                                .background(Surface, InputShape)
+                                .border(1.dp, Border, InputShape)
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(singleSite.name, modifier = Modifier.testTag("reserve_campsite"))
+                        }
+                    }
+                    else -> {
+                        CampsiteSelector(
+                            campsites = controller.availableCampsites,
+                            selectedCampsite = campsite,
+                            enabled = !controller.isReserving && !controller.isDeclining,
+                            onSelect = controller::onCampsiteSelect,
                         )
                     }
                 }
 
+                when {
+                    controller.availableCampsites.isEmpty() -> Unit
+                    campsite == null -> {
+                        Text(
+                            "Choose a campsite to view available nights.",
+                            color = TextMuted,
+                            modifier = Modifier.testTag("reserve_choose_campsite_prompt"),
+                        )
+                    }
+                    else -> {
+                    Label("Pick nights")
+                    when {
+                        controller.loadingAvailability -> Box(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.testTag("reserve_availability_loading"),
+                            )
+                        }
+                        controller.availabilityError != null -> Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = controller.availabilityError!!,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.testTag("reserve_availability_error"),
+                            )
+                            OutlinedButton(
+                                onClick = controller::retryAvailability,
+                                enabled = !controller.isReserving && !controller.isDeclining,
+                                modifier = Modifier.testTag("reserve_availability_retry"),
+                            ) {
+                                Text("Retry")
+                            }
+                        }
+                        else -> {
+                            NightGrid(
+                                nights = controller.nights,
+                                freeNights = controller.freeNights,
+                                selectedNights = controller.selectedNights,
+                                canPick = controller.offerState == OfferState.OPEN &&
+                                    !controller.isReserving &&
+                                    !controller.isDeclining,
+                                onNightTap = controller::onNightTap,
+                            )
+                            if (controller.noNightsLeft) {
+                                val noNightsText = if (controller.isMultiSite) {
+                                    "No nights are left at this campsite. Choose another campsite " +
+                                        "or decline your win so someone else gets a chance."
+                                } else {
+                                    "No nights are left at this campsite. You can decline your " +
+                                        "win so someone else gets a chance."
+                                }
+                                Text(
+                                    noNightsText,
+                                    color = TextMuted,
+                                    modifier = Modifier.testTag("reserve_no_nights"),
+                                )
+                            }
+                        }
+                    }
+
+                    GuestsSection(
+                        groupSize = controller.groupSize,
+                        maxOccupancy = campsite.maxOccupancy,
+                        canEdit = controller.offerState == OfferState.OPEN &&
+                            !controller.isReserving &&
+                            !controller.isDeclining,
+                        onDecrease = controller::decrementGroupSize,
+                        onIncrease = controller::incrementGroupSize,
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            controller.nightsTimesPriceText ?: "",
+                            color = TextMuted,
+                            modifier = Modifier.weight(1f).testTag("reserve_nights_price"),
+                        )
+                        Text(
+                            controller.totalText ?: "",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.testTag("reserve_total"),
+                        )
+                    }
+                    HorizontalDivider(color = Divider)
+                    RulesAndPolicySection(campsite)
+
+                    if (controller.reserveError != null) {
+                        Text(
+                            text = controller.reserveError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .testTag("reserve_error_message"),
+                        )
+                    }
+
+                    Button(
+                        onClick = controller::reserve,
+                        enabled = controller.offerState == OfferState.OPEN &&
+                            !controller.loadingAvailability &&
+                            controller.availabilityError == null &&
+                            !controller.isReserving &&
+                            !controller.isDeclining,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("button_reserve"),
+                    ) {
+                        if (controller.isReserving) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .testTag("reserve_loading"),
+                                strokeWidth = 2.5.dp,
+                            )
+                        } else {
+                            Text(
+                                "Reserve",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                }
+            }
+
                 DeclineSection(controller)
+            }
+        }
+    }
+}
+
+/**
+ * Selectable list of campsites in a multi-site lottery (mockup E11, US 01.04.02).
+ */
+@Composable
+private fun CampsiteSelector(
+    campsites: List<Campsite>,
+    selectedCampsite: Campsite?,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("reserve_campsite_selector"),
+    ) {
+        for (site in campsites) {
+            val selected = site.id == selectedCampsite?.id
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(InputHeight)
+                    .background(if (selected) GreenFill else Surface, InputShape)
+                    .border(
+                        if (selected) BorderStroke(1.5.dp, Primary) else BorderStroke(1.dp, Border),
+                        InputShape,
+                    )
+                    .clickable(enabled = enabled) { onSelect(site.id) }
+                    .padding(horizontal = 14.dp)
+                    .semantics { stateDescription = if (selected) "Selected" else "Unselected" }
+                    .testTag("reserve_campsite_option_${site.id}"),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    text = site.name,
+                    color = if (selected) Primary else TextMain,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                )
             }
         }
     }
@@ -242,7 +359,7 @@ private fun DeclineSection(controller: ReserveController) {
     when {
         controller.canDecline -> OutlinedButton(
             onClick = { showDialog = true },
-            enabled = !controller.isDeclining,
+            enabled = !controller.isDeclining && !controller.isReserving,
             shape = ButtonShape,
             border = BorderStroke(1.5.dp, Error),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Error),
@@ -487,6 +604,14 @@ private fun GuestsSection(
                     )
                 }
             }
+        }
+        if (groupSize > maxOccupancy) {
+            Text(
+                text = "Exceeds maximum occupancy of $maxOccupancy for this campsite.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("reserve_guests_over_limit"),
+            )
         }
     }
 }

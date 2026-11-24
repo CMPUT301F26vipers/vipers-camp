@@ -1,9 +1,10 @@
 /*
  * DeclineWinTest.kt
- * Intent tests for US 01.04.03: a winner declines their win from the Reserve screen (mockups E11
- * and E12). Cancel in the dialog changes nothing, Confirm marks the entry DECLINED and replaces the
- * button, and a reserved win shows no Decline button. Uses the fake repositories, so it doesn't
- * touch Firestore.
+ * Intent tests for US 01.04.03 and US 01.04.02: a winner declines their win from the Reserve
+ * screen (mockups E11 and E12), including before selecting a campsite in a multi-site lottery.
+ * Cancel in the dialog changes nothing, Confirm marks the entry DECLINED and replaces the button,
+ * and a reserved win shows no Decline button. Uses the fake repositories, so it doesn't touch
+ * Firestore.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -231,6 +232,145 @@ class DeclineWinTest {
             }
         } finally {
             app.container = previousContainer
+        }
+    }
+
+    @Test
+    fun multiSite_declineBeforeSelectingCampsite_declinesAndPromotesReplacement() {
+        val jasper = Campsite(
+            id = "jasper",
+            ownerId = "owner-priya",
+            name = "Jasper Pines",
+            address = "Jasper, AB",
+            region = Region.JASPER,
+            maxOccupancy = 6,
+            pricePerNightCents = 6500,
+        )
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper))
+        runBlocking {
+            campsites.saveAvailability(AvailabilityCalendar(campsiteId = "hinton", openNights = nights))
+            campsites.saveAvailability(AvailabilityCalendar(campsiteId = "jasper", openNights = nights))
+        }
+        notifications = FakeNotificationRepository()
+        val multiLottery = lottery.copy(campsiteIds = listOf("hinton", "jasper"))
+        lotteries = FakeLotteryRepository(
+            listOf(multiLottery),
+            listOf(
+                LotteryEntry(
+                    id = LotteryEntry.idFor("lot-summer", "test-device"),
+                    lotteryId = "lot-summer",
+                    userId = "test-device",
+                    groupSize = 4,
+                    status = EntryStatus.WON,
+                ),
+                LotteryEntry(
+                    id = LotteryEntry.idFor("lot-summer", "user-jo"),
+                    lotteryId = "lot-summer",
+                    userId = "user-jo",
+                    groupSize = 2,
+                    status = EntryStatus.LOST,
+                ),
+            ),
+            notificationRepository = notifications,
+        )
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            userId = "test-device",
+            lotteryId = "lot-summer",
+            campsiteId = null,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            lotteryDrawer = LotteryDrawer(
+                lotteries,
+                notifications,
+                campsites,
+                FakeProfileRepository(),
+                Random(42),
+            ),
+        )
+        composeRule.setContent {
+            VipersTheme {
+                ReserveScreen("lot-summer", null, onBack = {}, controller = controller)
+            }
+        }
+        waitForTag("reserve_choose_campsite_prompt")
+
+        composeRule.onNodeWithTag("reserve_decline").performScrollTo().performClick()
+        composeRule.onNodeWithText("Confirm").performClick()
+        waitForTag("reserve_declined")
+
+        assertEquals(EntryStatus.DECLINED, samsStatus())
+        runBlocking {
+            assertEquals(EntryStatus.WON, lotteries.getEntry("lot-summer", "user-jo")?.status)
+            val notices = notifications.getNotificationsFor("user-jo")
+            assertEquals(1, notices.size)
+            assertEquals("replacement_lot-summer_user-jo", notices[0].id)
+            assertEquals(NotificationType.WON, notices[0].type)
+        }
+    }
+
+    @Test
+    fun multiSite_zeroActiveCampsites_showsNoCampsitesMessageAndAllowsDecline() {
+        val removedHinton = hinton.copy(removed = true)
+        val campsites = FakeCampsiteRepository(listOf(removedHinton))
+        notifications = FakeNotificationRepository()
+        val multiLottery = lottery.copy(campsiteIds = listOf("hinton", "missing-site"))
+        lotteries = FakeLotteryRepository(
+            listOf(multiLottery),
+            listOf(
+                LotteryEntry(
+                    id = LotteryEntry.idFor("lot-summer", "test-device"),
+                    lotteryId = "lot-summer",
+                    userId = "test-device",
+                    groupSize = 4,
+                    status = EntryStatus.WON,
+                ),
+                LotteryEntry(
+                    id = LotteryEntry.idFor("lot-summer", "user-jo"),
+                    lotteryId = "lot-summer",
+                    userId = "user-jo",
+                    groupSize = 2,
+                    status = EntryStatus.LOST,
+                ),
+            ),
+            notificationRepository = notifications,
+        )
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            userId = "test-device",
+            lotteryId = "lot-summer",
+            campsiteId = null,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            lotteryDrawer = LotteryDrawer(
+                lotteries,
+                notifications,
+                campsites,
+                FakeProfileRepository(),
+                Random(42),
+            ),
+        )
+        composeRule.setContent {
+            VipersTheme {
+                ReserveScreen("lot-summer", null, onBack = {}, controller = controller)
+            }
+        }
+        waitForTag("reserve_no_campsites")
+
+        composeRule.onNodeWithTag("reserve_no_campsites")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("No campsites are available for this lottery.")
+            .assertIsDisplayed()
+        assertEquals(0, composeRule.onAllNodesWithTag("reserve_choose_campsite_prompt").fetchSemanticsNodes().size)
+        assertEquals(0, composeRule.onAllNodesWithTag("button_reserve").fetchSemanticsNodes().size)
+
+        composeRule.onNodeWithTag("reserve_decline").performScrollTo().performClick()
+        composeRule.onNodeWithText("Confirm").performClick()
+        waitForTag("reserve_declined")
+
+        assertEquals(EntryStatus.DECLINED, samsStatus())
+        runBlocking {
+            assertEquals(EntryStatus.WON, lotteries.getEntry("lot-summer", "user-jo")?.status)
         }
     }
 }

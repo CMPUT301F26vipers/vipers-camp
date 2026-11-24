@@ -1,14 +1,15 @@
 /*
  * ReserveController.kt
- * The controller (a ViewModel) behind the Reserve screen (mockup E11, US 01.04.01). It loads the
- * won lottery, the campsite and its calendar, works out which of the lottery's nights are still
- * free, lets the winner pick nights in a row, select their group size, reserve the nights (T-03),
+ * The controller (a ViewModel) behind the Reserve screen (mockup E11, US 01.04.01, US 01.04.02).
+ * It loads the won lottery, its active campsites and the chosen campsite's calendar, works out
+ * which of the lottery's nights are still free, lets the winner choose among campsites in a
+ * multi-site lottery, pick nights in a row, select their group size, reserve the nights (T-03),
  * and adds up the total. The winner can also decline the win and draw a replacement winner
  * through LotteryDrawer (US 01.04.03, T-12).
  * This is the "Load the Reserve screen", "Reserve" and "Decline a win" parts of the
  * ReservationController CRC card; it is its own class because ReservationController already runs
  * the owner's reservation list (02.07.01).
- * Known issues: choosing between several campsites (01.04.02) is added by that story.
+ * Known issues: none.
  */
 package com.example.vipers.ui.reservations
 
@@ -31,10 +32,12 @@ import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import com.example.vipers.domain.repository.ReserveResult
 import com.example.vipers.ui.lottery.LotteryDrawer
+import com.example.vipers.ui.lottery.ReplacementDrawResult
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Where the user's win stands on the Reserve screen (US 01.04.01). */
@@ -56,8 +59,9 @@ enum class OfferState {
 }
 
 /**
- * Loads the Reserve screen for [userId]'s win in the lottery [lotteryId] at the campsite
- * [campsiteId] (or the lottery's first campsite when it's null or not in the lottery),
+ * Loads the Reserve screen for [userId]'s win in the lottery [lotteryId] with optional route hint
+ * [campsiteId] (preselecting a valid site in multi-site lotteries; when absent or invalid, the
+ * winner chooses a site first, while single-site lotteries auto-select the sole active site),
  * handles reserving the chosen nights (T-03), and declines a win through [lotteryDrawer]
  * (US 01.04.03, T-12).
  * Takes the repositories and drawer in its constructor so tests can pass fake ones.
@@ -76,7 +80,15 @@ class ReserveController(
     var lottery by mutableStateOf<Lottery?>(null)
         private set
 
-    /** The campsite being reserved, or null if it wasn't found or was removed. */
+    /** Distinct active campsites covered by [lottery], in stored order (US 01.04.02). */
+    var availableCampsites by mutableStateOf(emptyList<Campsite>())
+        private set
+
+    /** True when the lottery covers more than one active campsite (US 01.04.02). */
+    val isMultiSite: Boolean
+        get() = availableCampsites.size > 1
+
+    /** The campsite being reserved, or null until chosen or if none are available. */
     var campsite by mutableStateOf<Campsite?>(null)
         private set
 
@@ -102,6 +114,14 @@ class ReserveController(
 
     /** True while the screen is loading. */
     var loading by mutableStateOf(true)
+        private set
+
+    /** True while the selected campsite's availability calendar is loading (US 01.04.02). */
+    var loadingAvailability by mutableStateOf(false)
+        private set
+
+    /** Fixed error message when loading the selected campsite's calendar fails (US 01.04.02). */
+    var availabilityError by mutableStateOf<String?>(null)
         private set
 
     /** True while the reservation request is being processed. */
@@ -142,11 +162,20 @@ class ReserveController(
     var declineError by mutableStateOf<String?>(null)
         private set
 
-    /** True if the winner can pick nights now, but none are left to pick. */
-    val noNightsLeft: Boolean
-        get() = offerState == OfferState.OPEN && freeNights.isEmpty()
+    private var availabilityJob: Job? = null
+    private var selectionGeneration = 0L
+    private var initialSelectionDone = false
+    private var groupSizeInitialized = false
 
-    /** The price line, e.g. "2 nights × $50", or null until the campsite loads. */
+    /** True if the winner can pick nights now at a chosen campsite, but none are left to pick. */
+    val noNightsLeft: Boolean
+        get() = offerState == OfferState.OPEN &&
+            campsite != null &&
+            !loadingAvailability &&
+            availabilityError == null &&
+            freeNights.isEmpty()
+
+    /** The price line, e.g. "2 nights × $50", or null until a campsite is selected. */
     val nightsTimesPriceText: String?
         get() {
             val site = campsite ?: return null
@@ -155,7 +184,7 @@ class ReserveController(
             return "$count $word × $${site.priceInDollars()}"
         }
 
-    /** The total for the picked nights, e.g. "Total $100", or null until the campsite loads. */
+    /** The total for the picked nights, e.g. "Total $100", or null until a campsite is selected. */
     val totalText: String?
         get() = campsite?.let { "Total ${it.totalPriceText(selectedNights.size)}" }
 
@@ -165,58 +194,76 @@ class ReserveController(
     }
 
     /**
-     * Gets the lottery, the campsite, the user's entry and the campsite's calendar at time [now]
-     * (milliseconds since 1970), then works out [offerState] and [freeNights]. If a picked night
-     * isn't free any more, the pick is cleared. [loadData] runs this in the background; unit tests
-     * call it directly and pass their own [now].
+     * Gets the lottery, its distinct active campsites, the user's entry and the chosen campsite's
+     * calendar at time [now] (milliseconds since 1970), then works out [offerState] and
+     * [freeNights]. Preserves the current campsite on refresh if it remains active; otherwise
+     * auto-selects the sole active campsite or preselects a valid route hint. [loadData] runs this
+     * in the background; unit tests call it directly and pass their own [now].
      */
     suspend fun fetchData(now: Long = System.currentTimeMillis()) {
+        availabilityJob?.cancel()
+        availabilityJob = null
+        val generation = ++selectionGeneration
         loading = true
+        loadingAvailability = false
         error = null
+        availabilityError = null
         try {
             // a removed lottery counts as not found
             val found = lotteryRepository.getLottery(lotteryId)?.takeIf { !it.removed }
             if (found == null) {
                 lottery = null
+                availableCampsites = emptyList()
                 campsite = null
                 nights = emptyList()
                 freeNights = emptyList()
+                selectedNights = emptyList()
                 offerState = OfferState.NO_WIN
                 entry = null
                 canDecline = false
                 return
             }
 
-            // only a campsite this lottery covers can be reserved with its win
-            var chosenId = found.campsiteIds.firstOrNull()
-            if (campsiteId != null && campsiteId in found.campsiteIds) {
-                chosenId = campsiteId
+            // Load distinct active campsites in stored order, skipping missing and removed sites.
+            val sites = found.campsiteIds
+                .distinct()
+                .mapNotNull { id ->
+                    campsiteRepository.getCampsite(id)?.takeIf { !it.removed }
+                }
+
+            val previousId = campsite?.id
+            val chosenSite: Campsite? = when {
+                sites.isEmpty() -> null
+                sites.size == 1 -> sites.first()
+                previousId != null -> sites.firstOrNull { it.id == previousId }
+                !initialSelectionDone && campsiteId != null -> sites.firstOrNull { it.id == campsiteId }
+                else -> null
             }
-            var site: Campsite? = null
-            if (chosenId != null) {
-                site = campsiteRepository.getCampsite(chosenId)?.takeIf { !it.removed }
-            }
+            initialSelectionDone = true
 
             val loadedEntry = lotteryRepository.getEntry(found.id, userId)
-            if (loadedEntry != null && loadedEntry.groupSize > 0) {
+            if (!groupSizeInitialized && loadedEntry != null && loadedEntry.groupSize > 0) {
                 groupSize = loadedEntry.groupSize
+                groupSizeInitialized = true
             }
-            // the day of "now" on this phone's clock, to leave out nights that are already past
-            val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
-            var free = emptyList<String>()
-            if (site != null) {
-                free = found.freeNights(campsiteRepository.getAvailability(site.id), today)
+            if (previousId != chosenSite?.id) {
+                selectedNights = emptyList()
             }
 
             lottery = found
-            campsite = site
+            availableCampsites = sites
+            campsite = chosenSite
             nights = found.nightsOffered.distinct().sorted()
-            freeNights = free
             entry = loadedEntry
             offerState = stateOf(loadedEntry, found, now)
             canDecline = loadedEntry?.canDecline(found, now) == true
-            // if a picked night was taken in the meantime, the rest may not be in a row any more
-            if (selectedNights.any { it !in free }) selectedNights = emptyList()
+
+            if (chosenSite == null) {
+                freeNights = emptyList()
+                selectedNights = emptyList()
+                return
+            }
+            loadAvailabilityFor(chosenSite, found, now, generation)
         } catch (e: CancellationException) {
             // the load was stopped on purpose (the controller is gone), so it didn't fail
             throw e
@@ -224,6 +271,77 @@ class ReserveController(
             error = "Unable to load your win."
         } finally {
             loading = false
+        }
+    }
+
+    /** Selects [selectedCampsiteId] in the background (US 01.04.02). */
+    fun onCampsiteSelect(selectedCampsiteId: String) {
+        if (isReserving || isDeclining) return
+        if (campsite?.id == selectedCampsiteId && !loadingAvailability && availabilityError == null) {
+            return
+        }
+        availabilityJob?.cancel()
+        availabilityJob = viewModelScope.launch { selectCampsite(selectedCampsiteId) }
+    }
+
+    /** Retries loading the selected campsite's availability calendar (US 01.04.02). */
+    fun retryAvailability() {
+        campsite?.id?.let { onCampsiteSelect(it) }
+    }
+
+    /**
+     * Switches to [selectedCampsiteId] and loads its free nights at time [now] (US 01.04.02).
+     * On a real switch, clears picked nights, stale availability, and campsite-specific errors
+     * while preserving [groupSize]. Stale responses from superseded selections are ignored.
+     */
+    suspend fun selectCampsite(
+        selectedCampsiteId: String,
+        now: Long = System.currentTimeMillis(),
+    ) {
+        val currentLottery = lottery ?: return
+        if (isReserving || isDeclining) return
+        val target = availableCampsites.firstOrNull { it.id == selectedCampsiteId } ?: return
+        val isSwitch = campsite?.id != target.id
+        if (!isSwitch && !loadingAvailability && availabilityError == null) return
+
+        val generation = ++selectionGeneration
+        if (isSwitch) {
+            campsite = target
+            selectedNights = emptyList()
+            freeNights = emptyList()
+            reserveError = null
+        }
+        loadAvailabilityFor(target, currentLottery, now, generation)
+    }
+
+    private suspend fun loadAvailabilityFor(
+        site: Campsite,
+        currentLottery: Lottery,
+        now: Long,
+        generation: Long,
+    ) {
+        loadingAvailability = true
+        availabilityError = null
+        try {
+            // the day of "now" on this phone's clock, to leave out nights that are already past
+            val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
+            val calendar = campsiteRepository.getAvailability(site.id)
+            if (generation != selectionGeneration || campsite?.id != site.id) return
+            val free = currentLottery.freeNights(calendar, today)
+            freeNights = free
+            // if a picked night was taken in the meantime, the rest may not be in a row any more
+            if (selectedNights.any { it !in free }) selectedNights = emptyList()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (generation != selectionGeneration || campsite?.id != site.id) return
+            freeNights = emptyList()
+            selectedNights = emptyList()
+            availabilityError = "Unable to load campsite availability. Please try again."
+        } finally {
+            if (generation == selectionGeneration) {
+                loadingAvailability = false
+            }
         }
     }
 
@@ -245,24 +363,42 @@ class ReserveController(
     suspend fun decline(now: Long = System.currentTimeMillis()) {
         val currentLottery = lottery ?: return
         val currentEntry = entry ?: return
-        if (isDeclining || !currentEntry.canDecline(currentLottery, now)) return
+        if (isDeclining || isReserving || !currentEntry.canDecline(currentLottery, now)) return
+        val wasLoadingAvailability = loadingAvailability
+        availabilityJob?.cancel()
+        availabilityJob = null
+        selectionGeneration++
+        loadingAvailability = false
         isDeclining = true
         declineError = null
         try {
-            lotteryDrawer.declineAndDrawReplacement(currentLottery.id, userId, now)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            declineError = "Unable to decline your win. Please try again."
-            return
+            val drawResult = try {
+                lotteryDrawer.declineAndDrawReplacement(currentLottery.id, userId, now)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (wasLoadingAvailability && campsite != null) {
+                    availabilityError = "Unable to load campsite availability. Please try again."
+                }
+                declineError = "Unable to decline your win. Please try again."
+                return
+            }
+            fetchData(now)
+            if (error != null && drawResult is ReplacementDrawResult.Declined) {
+                // Decline already committed; ensure the local offer stays unusable if refresh fails.
+                entry = currentEntry.copy(status = EntryStatus.DECLINED)
+                offerState = OfferState.USED
+                canDecline = false
+                selectedNights = emptyList()
+            }
         } finally {
             isDeclining = false
         }
-        fetchData(now)
     }
 
     /** Sets group size within 1..maxOccupancy (T-03). */
     fun onGroupSizeChange(newSize: Int) {
+        if (isReserving || isDeclining) return
         val max = campsite?.maxOccupancy ?: 1
         if (newSize in 1..max) {
             groupSize = newSize
@@ -271,6 +407,7 @@ class ReserveController(
 
     /** Increments group size by 1 up to campsite.maxOccupancy (T-03). */
     fun incrementGroupSize() {
+        if (isReserving || isDeclining) return
         val max = campsite?.maxOccupancy ?: 1
         if (groupSize < max) {
             groupSize++
@@ -279,6 +416,7 @@ class ReserveController(
 
     /** Decrements group size by 1 down to 1 (T-03). */
     fun decrementGroupSize() {
+        if (isReserving || isDeclining) return
         if (groupSize > 1) {
             groupSize--
         }
@@ -300,16 +438,15 @@ class ReserveController(
     }
 
     /**
-     * Reserves the picked nights for [groupSize] at time [now] (T-03).
-     * Enforces that the winner has an unused win during the booking period,
-     * groupSize <= maxOccupancy, and selected nights are not already held.
-     * If another winner reserved any of the same nights first, fails with a clear message
-     * and refreshes the calendar so the taken nights are greyed out (AC 4).
+     * Reserves the picked nights at the chosen [campsite] for [groupSize] at time [now] (T-03).
+     * Enforces that the winner has an unused win during the booking period, a campsite is chosen
+     * and its availability is loaded, groupSize <= maxOccupancy, and selected nights are not
+     * already held. If another winner reserved any of the same nights first, fails with a clear
+     * message and refreshes the calendar so the taken nights are greyed out (AC 4).
      */
     suspend fun reserveNights(now: Long = System.currentTimeMillis()): ReserveResult {
-        val site = campsite ?: run {
-            reserveError = "Campsite is not available."
-            return ReserveResult.Error(reserveError!!)
+        if (isReserving || isDeclining) {
+            return ReserveResult.Error("A request is already in progress.")
         }
         val lot = lottery ?: run {
             reserveError = "Lottery is not available."
@@ -319,15 +456,30 @@ class ReserveController(
             reserveError = "Only winners with an open booking period can reserve."
             return ReserveResult.NotEligible
         }
-        if (selectedNights.isEmpty()) {
-            reserveError = "Please pick at least one night."
+        val site = campsite ?: run {
+            reserveError = if (isMultiSite) "Please choose a campsite." else "Campsite is not available."
+            return ReserveResult.Error(reserveError!!)
+        }
+        if (loadingAvailability) {
+            reserveError = "Campsite availability is still loading."
+            return ReserveResult.Error(reserveError!!)
+        }
+        if (availabilityError != null) {
+            reserveError = availabilityError
             return ReserveResult.Error(reserveError!!)
         }
         if (groupSize > site.maxOccupancy) {
             reserveError = "Group size cannot exceed the maximum occupancy of ${site.maxOccupancy}."
             return ReserveResult.CapacityExceeded
         }
+        if (selectedNights.isEmpty()) {
+            reserveError = "Please pick at least one night."
+            return ReserveResult.Error(reserveError!!)
+        }
 
+        availabilityJob?.cancel()
+        availabilityJob = null
+        selectionGeneration++
         isReserving = true
         reserveError = null
         try {
@@ -382,7 +534,16 @@ class ReserveController(
      * while the offer isn't [OfferState.OPEN], do nothing.
      */
     fun onNightTap(night: String) {
-        if (offerState != OfferState.OPEN || night !in freeNights) return
+        if (
+            offerState != OfferState.OPEN ||
+            isReserving ||
+            isDeclining ||
+            loadingAvailability ||
+            availabilityError != null ||
+            night !in freeNights
+        ) {
+            return
+        }
         val picked = selectedNights
         if (picked.isEmpty()) {
             selectedNights = listOf(night)
