@@ -246,6 +246,15 @@ that user's notifications, newest first, straight away and on every change, unti
 the device, so no composite index is needed. `Subscription` keeps Firestore's
 `ListenerRegistration` out of `domain/`.
 
+Phone notifications (T-14) use two methods. `listUnshownOnDevice(recipientId)` returns that user's
+notifications whose `shownOnDevice` is `false`, oldest first by `createdAt`. Firestore is only asked
+for `recipientId ==` and `shownOnDevice == false` (equality filters only) and sorts on the device,
+so no composite index is needed. `markShownOnDevice(notificationId)` sets `shownOnDevice` to `true`
+in one transaction, only if it is still `false`, and writes no other field. It returns `true` if it
+changed the notification, and `false` if there is no such notification or it was already shown, so
+when the background check and the app-open check run at the same time only one of them posts it.
+Transactions need a connection, so `markShownOnDevice` fails offline.
+
 ### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |
