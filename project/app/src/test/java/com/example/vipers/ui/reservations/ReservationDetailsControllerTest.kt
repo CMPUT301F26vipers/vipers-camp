@@ -2,7 +2,8 @@
  * ReservationDetailsControllerTest.kt
  * Unit tests for ReservationDetailsController (US 01.05.01), using fake repositories.
  * Checks loading the entrant's reservation details, handling missing or unauthorized records,
- * repository failure error states, and cancelling before check-in (US 01.07.01).
+ * repository failure error states, cancelling before check-in (US 01.07.01), and showing a
+ * reservation the owner rejected (US 02.08.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -202,6 +203,23 @@ class ReservationDetailsControllerTest {
             controller.cancelError,
         )
         assertFalse(controller.cancelling)
+    }
+
+    @Test
+    fun fetchData_withRejectedReservation_showsRejectedWithTheReasonAndCantBeCancelled() = runBlocking {
+        val rejected = reservation.copy(
+            status = ReservationStatus.REJECTED,
+            statusChangedAt = 4000,
+            rejectionReason = "Forest fire warning",
+        )
+        val controller = controllerFor("res-101", "sam", rejected)
+        controller.fetchData()
+
+        assertEquals(ReservationStatus.REJECTED, controller.reservation?.status)
+        assertEquals("Forest fire warning", controller.reservation?.rejectionReason)
+        assertFalse(controller.canCancel(beforeCheckIn))
+        assertFalse(controller.performCancel(now = 5000, today = beforeCheckIn))
+        assertEquals(ReservationStatus.REJECTED, controller.reservation?.status)
     }
 
     @Test

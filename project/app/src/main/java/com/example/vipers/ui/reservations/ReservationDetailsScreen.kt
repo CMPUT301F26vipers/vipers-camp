@@ -3,7 +3,8 @@
  * The entrant's view of their reservation (US 01.05.01): shows the reservation number,
  * campsite name, stay dates, group size, total price, and status. Before check-in the entrant
  * can cancel it after confirming in a dialog (US 01.07.01, mockups E15 and E16).
- * Message Owner opens this reservation's conversation (US 01.14.01).
+ * Message Owner opens this reservation's conversation (US 01.14.01). A reservation the owner
+ * rejected shows its status in red and the owner's reason (US 02.08.01, mockup E15c).
  * Known issues: the "Cancelled on …" banner from mockup E15b comes with US 01.07.02.
  */
 package com.example.vipers.ui.reservations
@@ -39,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -152,6 +154,8 @@ private fun ReservationContent(
     onCancelClick: () -> Unit,
 ) {
     val confirmed = reservation.status == ReservationStatus.CONFIRMED
+    val rejected = reservation.status == ReservationStatus.REJECTED
+    val reason = reservation.rejectionReason?.takeIf { rejected && it.isNotBlank() }
     Column(
         modifier = Modifier
             .verticalScroll(rememberScrollState())
@@ -227,8 +231,17 @@ private fun ReservationContent(
                     value = reservation.status.name.lowercase()
                         .replaceFirstChar { it.uppercase() },
                     tag = "detail_status",
-                    isLast = true,
+                    valueColor = if (rejected) Error else Color.Unspecified,
+                    isLast = reason == null,
                 )
+                if (reason != null) {
+                    ReservationDetailRow(
+                        label = "Reason",
+                        value = reason,
+                        tag = "detail_rejection_reason",
+                        isLast = true,
+                    )
+                }
             }
         }
 
@@ -344,6 +357,7 @@ private fun ReservationDetailRow(
     value: String,
     tag: String,
     isBold: Boolean = false,
+    valueColor: Color = Color.Unspecified,
     isLast: Boolean = false,
 ) {
     Row(
@@ -362,6 +376,7 @@ private fun ReservationDetailRow(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            color = valueColor,
             modifier = Modifier.testTag(tag),
         )
     }
