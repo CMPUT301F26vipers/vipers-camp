@@ -26,6 +26,7 @@ package "domain.repository" {
     suspend saveProfile(profile: UserProfile)
     suspend setNotificationsEnabled(id: String, enabled: Boolean)
     suspend setPhoto(id: String, newImage: ImageAsset?, oldImageId: String?): String?
+    suspend deleteProfile(id: String, imageId: String?)
     suspend getDisplayName(id: String): String
   }
 
@@ -33,6 +34,7 @@ package "domain.repository" {
     suspend addCampsite(campsite: Campsite): String
     suspend getCampsite(id: String): Campsite?
     suspend updateCampsite(campsite: Campsite)
+    suspend removeCampsite(id: String)
     suspend getCampsitesByOwner(ownerId: String): List<Campsite>
     suspend getAllCampsites(): List<Campsite>
     suspend getAvailability(campsiteId: String): AvailabilityCalendar
@@ -51,6 +53,9 @@ package "domain.repository" {
     suspend declineTransaction(lotteryId, userId, candidateUserId, replacementNotice, now): DeclineTransactionResult
     suspend getEntry(lotteryId: String, userId: String): LotteryEntry?
     suspend getEntries(lotteryId: String): List<LotteryEntry>
+    suspend getEntriesForUser(userId: String): List<LotteryEntry>
+    suspend removeEntry(lotteryId: String, userId: String): Boolean
+    suspend removeLottery(id: String)
     observeEntries(lotteryId: String): Flow<List<LotteryEntry>>
     suspend stageManifestChunks(lotteryId: String, chunks: List<DrawManifestChunk>)
     suspend loadManifestChunks(lotteryId: String, drawId: String): List<DrawManifestChunk>

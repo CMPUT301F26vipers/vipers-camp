@@ -221,6 +221,73 @@ class FakeRepositoryTest {
     }
 
     @Test
+    fun deleteProfile_deletesItAndItsPhoto() = runBlocking {
+        val images = FakeImageRepository()
+        val repo = FakeProfileRepository(
+            listOf(UserProfile(id = "user-1", name = "Sam", imageId = "photo-1")), images,
+        )
+
+        repo.deleteProfile("user-1", "photo-1")
+
+        assertNull(repo.getProfile("user-1"))
+        assertEquals("Deleted user", repo.getDisplayName("user-1"))
+        assertEquals(listOf("photo-1"), images.deletedIds)
+    }
+
+    @Test
+    fun removeCampsite_hidesItButKeepsItSaved() = runBlocking {
+        val repo = FakeCampsiteRepository(listOf(Campsite(id = "c1", ownerId = "sam")))
+
+        repo.removeCampsite("c1")
+        repo.removeCampsite("missing") // does nothing
+
+        assertTrue(repo.getCampsite("c1")!!.removed)
+        assertTrue(repo.getCampsitesByOwner("sam").isEmpty())
+        assertTrue(repo.getAllCampsites().isEmpty())
+    }
+
+    @Test
+    fun removeLottery_marksItRemovedSoItIsntListedOrDrawn() = runBlocking {
+        val repo = FakeLotteryRepository(listOf(Lottery(id = "l1", campsiteIds = listOf("c1"))))
+
+        repo.removeLottery("l1")
+        repo.removeLottery("missing") // does nothing
+
+        assertTrue(repo.getLottery("l1")!!.removed)
+        assertTrue(repo.getLotteriesForCampsite("c1").isEmpty())
+        assertTrue(repo.getLotteriesToDraw(Long.MAX_VALUE).isEmpty())
+    }
+
+    @Test
+    fun removeEntry_marksItRemovedAndTakesAWaitingEntrantOffTheList() = runBlocking {
+        val repo = FakeLotteryRepository(
+            initialLotteries = listOf(Lottery(id = "l1", waitingUserIds = listOf("sam", "kim"))),
+            initialEntries = listOf(
+                LotteryEntry(
+                    id = LotteryEntry.idFor("l1", "sam"), lotteryId = "l1", userId = "sam",
+                ),
+                LotteryEntry(
+                    id = LotteryEntry.idFor("l2", "sam"), lotteryId = "l2", userId = "sam",
+                    status = EntryStatus.LOST,
+                ),
+            ),
+        )
+
+        assertEquals(2, repo.getEntriesForUser("sam").size)
+        assertTrue(repo.removeEntry("l1", "sam"))
+        assertTrue(repo.removeEntry("l2", "sam"))
+
+        assertEquals(EntryStatus.REMOVED, repo.getEntry("l1", "sam")?.status)
+        assertEquals(EntryStatus.REMOVED, repo.getEntry("l2", "sam")?.status)
+        val lottery = repo.getLottery("l1")!!
+        assertEquals(listOf("kim"), lottery.waitingUserIds)
+        assertEquals(1, lottery.entriesVersion)
+        // already removed, or not there
+        assertFalse(repo.removeEntry("l1", "sam"))
+        assertFalse(repo.removeEntry("l1", "nobody"))
+    }
+
+    @Test
     fun setNotificationsEnabled_changesOnlyThatField() = runBlocking {
         val sam = UserProfile(id = "user-1", name = "Sam", imageId = "photo-1")
         val repo = FakeProfileRepository(listOf(sam))

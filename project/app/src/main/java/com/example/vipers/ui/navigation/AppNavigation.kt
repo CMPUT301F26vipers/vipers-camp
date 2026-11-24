@@ -59,13 +59,15 @@ private val tabRoutes = listOf(
 
 /**
  * The whole app's navigation. [isAdmin] shows the Admin tab, [onLoadDemoData] is called
- * by the button on Settings, and [onScanQr] opens the QR scanner from Home.
+ * by the button on Settings, [onScanQr] opens the QR scanner from Home, and [onProfileDeleted]
+ * is called once the user deletes their profile on Profile (US 01.08.01).
  */
 @Composable
 fun AppNavigation(
     isAdmin: Boolean,
     onLoadDemoData: () -> Unit,
     onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
+    onProfileDeleted: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -322,6 +324,7 @@ fun AppNavigation(
                 ProfileScreen(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenPolicy = { navController.navigate(Routes.POLICY) },
+                    onProfileDeleted = onProfileDeleted,
                 )
             }
             composable(Routes.SETTINGS) {
