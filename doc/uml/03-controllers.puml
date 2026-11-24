@@ -316,8 +316,7 @@ AppContainer --> ReservationRepository
 AppContainer --> NotificationRepository
 
 DeviceIdentityManager ..> ProfileRepository
-ProfileController ..> ProfileRepository
-ProfileController ..> ImageRepository : profile photo
+ProfileController ..> ProfileRepository : profile and photo
 CampsiteSearchController ..> CampsiteRepository
 CampsiteSearchController ..> LotteryRepository
 CampsiteSearchController ..> QrScanResult

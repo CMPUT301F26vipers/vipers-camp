@@ -48,12 +48,15 @@ Document ID = **device ID**.
 
 - `getAllProfiles()` lists every user profile for the admin profile browser (US 03.05.01).
 - **Profile photo (US 01.08.02):** Change photo on Profile saves the photo straight away, not
-  with the Save button. `ProfileController` saves it as an `images` document with
+  with the Save button. `ProfileRepository.setPhoto` saves it as an `images` document with
   `ownerType = profile`, `ownerId` = the device ID and `label` = the user's name (so admins can
-  find it), then writes its ID into the latest saved profile's `imageId` and deletes the old
-  image. Remove sets `imageId` to `null` and deletes the image. If the profile can't be saved,
-  the new image is deleted again, so no image is left that nothing points to. The label is the
-  name when the photo was saved; it isn't updated if the user changes their name later.
+  find it), changes only the profile's `imageId`, and deletes the old image, all in one
+  Firestore batch. If any part is rejected nothing changes, so the profile never points to a
+  missing or deleted image. Remove does the same with no new image and `imageId = null`. The
+  label is the name when the photo was saved; the admin image browser shows the user's current
+  name and only uses the label if the profile can't be found.
+- `setNotificationsEnabled` (the Settings switch) and `setPhoto` each change only their own
+  field, so flipping the switch while a photo saves can't undo either one.
 
 ### `campsites`: `Campsite` (`CampsiteRepository`)
 
@@ -319,7 +322,8 @@ new library.
 - **Showing a photo:** use `SavedPhoto(imageId, ...)` from `ui/common/Photo.kt`. It loads the image
   through the app's `ImageRepository`, caches it, and shows a placeholder while there's none.
 - **Replacing or removing a photo:** save the new `imageId` (or `null`) first, then
-  `deleteImage(oldId)`. An image never changes once saved; a new photo gets a new ID.
+  `deleteImage(oldId)`. Profile photos use `ProfileRepository.setPhoto` instead, which does it
+  all in one batch. An image never changes once saved; a new photo gets a new ID.
 - `getAllImages()` lists every image, newest first, for the admin image browser (US 03.06.01).
 
 ## Adding to a repository

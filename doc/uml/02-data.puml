@@ -24,6 +24,8 @@ package "domain.repository" {
   interface ProfileRepository {
     suspend getProfile(id: String): UserProfile?
     suspend saveProfile(profile: UserProfile)
+    suspend setNotificationsEnabled(id: String, enabled: Boolean)
+    suspend setPhoto(id: String, newImage: ImageAsset?, oldImageId: String?): String?
     suspend getDisplayName(id: String): String
   }
 
@@ -81,8 +83,9 @@ package "domain.repository" {
     suspend getAllThreads()
   }
 
-  interface ImageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
-    suspend uploadImage(...): ImageAsset
+  interface ImageRepository {
+    suspend addImage(image: ImageAsset): String
+    suspend getImage(id: String): ImageAsset?
     suspend getAllImages(): List<ImageAsset>
     suspend deleteImage(id: String)
   }
@@ -140,6 +143,7 @@ package "data.firestore" {
 package "data.fake" {
   class FakeProfileRepository {
     initial: List<UserProfile>
+    images: ImageRepository?
   }
   class FakeCampsiteRepository {
     initial: List<Campsite>
@@ -159,6 +163,7 @@ package "data.fake" {
 }
 
 FirestoreProfileRepository ..|> ProfileRepository
+FakeProfileRepository ..> ImageRepository : saves and deletes photos
 FirestoreCampsiteRepository ..|> CampsiteRepository
 FirestoreLotteryRepository ..|> LotteryRepository
 FirestoreReservationRepository ..|> ReservationRepository
