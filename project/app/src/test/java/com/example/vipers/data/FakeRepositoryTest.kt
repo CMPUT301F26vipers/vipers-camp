@@ -6,13 +6,16 @@
 package com.example.vipers.data
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
+import com.example.vipers.domain.model.ImageAsset
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Notification
@@ -30,6 +33,7 @@ import com.example.vipers.domain.repository.ReserveResult
 import com.example.vipers.domain.repository.UpdateLotteryResult
 import com.example.vipers.domain.service.NotificationService
 import com.example.vipers.ui.lottery.LotteryDrawer
+import java.io.IOException
 import java.util.Random
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -214,6 +218,77 @@ class FakeRepositoryTest {
         )
         assertEquals(3, allProfiles.size)
         assertEquals("Alice Updated", allProfiles.first { it.id == "user-1" }.name)
+    }
+
+    @Test
+    fun setNotificationsEnabled_changesOnlyThatField() = runBlocking {
+        val sam = UserProfile(id = "user-1", name = "Sam", imageId = "photo-1")
+        val repo = FakeProfileRepository(listOf(sam))
+
+        repo.setNotificationsEnabled("user-1", false)
+
+        assertEquals(sam.copy(notificationsEnabled = false), repo.getProfile("user-1"))
+    }
+
+    private val samsPhoto = ImageAsset.fromJpeg(
+        FakePhotoReader.SAMPLE_JPEG, "user-1", ImageAsset.OWNER_PROFILE, "user-1", "Sam", 0,
+    )
+
+    @Test
+    fun setPhoto_savesTheImageChangesOnlyThePhotoAndDeletesTheOldImage() = runBlocking {
+        val images = FakeImageRepository()
+        val sam = UserProfile(id = "user-1", name = "Sam", imageId = "old-photo")
+        val repo = FakeProfileRepository(listOf(sam), images)
+
+        val newId = repo.setPhoto("user-1", samsPhoto, "old-photo")
+
+        assertNotNull(newId)
+        assertEquals(sam.copy(imageId = newId), repo.getProfile("user-1"))
+        assertEquals(samsPhoto.copy(id = newId!!), images.getImage(newId))
+        assertEquals(listOf("old-photo"), images.deletedIds)
+    }
+
+    @Test
+    fun setPhoto_toNoPhoto_clearsItAndReturnsNull() = runBlocking {
+        val images = FakeImageRepository()
+        val sam = UserProfile(id = "user-1", name = "Sam", imageId = "old")
+        val repo = FakeProfileRepository(listOf(sam), images)
+
+        assertNull(repo.setPhoto("user-1", null, "old"))
+
+        assertNull(repo.getProfile("user-1")?.imageId)
+        assertEquals(listOf("old"), images.deletedIds)
+        assertTrue(images.getAllImages().isEmpty())
+    }
+
+    @Test
+    fun setPhoto_whenTheUploadFails_changesNothing() {
+        val images = FakeImageRepository(failAdds = true)
+        val sam = UserProfile(id = "user-1", name = "Sam", imageId = "old-photo")
+        val repo = FakeProfileRepository(listOf(sam), images)
+
+        assertThrows(IOException::class.java) {
+            runBlocking { repo.setPhoto("user-1", samsPhoto, "old-photo") }
+        }
+
+        assertEquals(sam, runBlocking { repo.getProfile("user-1") })
+        assertTrue(images.deletedIds.isEmpty())
+    }
+
+    @Test
+    fun setPhotoAndSetNotificationsEnabled_withNoProfile_throwAndChangeNothing() {
+        val images = FakeImageRepository()
+        val repo = FakeProfileRepository(images = images)
+
+        assertThrows(NoSuchElementException::class.java) {
+            runBlocking { repo.setPhoto("gone", samsPhoto, "old-photo") }
+        }
+        assertTrue(runBlocking { images.getAllImages() }.isEmpty())
+        assertThrows(NoSuchElementException::class.java) {
+            runBlocking { repo.setNotificationsEnabled("gone", false) }
+        }
+        assertTrue(images.deletedIds.isEmpty())
+        assertTrue(runBlocking { repo.getAllProfiles() }.isEmpty())
     }
 
     @Test

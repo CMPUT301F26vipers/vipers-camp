@@ -54,10 +54,19 @@ package "controllers (ViewModels)" {
     phone: String
     errors: Map<String, String>
     canContinue: Boolean
+    imageId: String?
+    isSavingPhoto: Boolean
+    photoError: String?
+    canChangePhoto: Boolean
     loadProfile()
     createProfile()
     saveProfile()
     suspend save(profile: UserProfile)
+    choosePhoto(uri: String)
+    removePhoto()
+    clearPhotoError()
+    suspend changePhoto(uri: String, now: Long)
+    suspend deletePhoto()
   }
 
   class CampsiteSearchController <<ViewModel>> {
@@ -296,7 +305,7 @@ package "repositories (see 02-data)" {
   interface ReservationRepository
   interface NotificationRepository
   interface MessageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
-  interface ImageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  interface ImageRepository
 }
 
 enum OfferState {
@@ -328,7 +337,7 @@ AppContainer --> ReservationRepository
 AppContainer --> NotificationRepository
 
 DeviceIdentityManager ..> ProfileRepository
-ProfileController ..> ProfileRepository
+ProfileController ..> ProfileRepository : profile and photo
 CampsiteSearchController ..> CampsiteRepository
 CampsiteSearchController ..> LotteryRepository
 CampsiteSearchController ..> QrScanResult
