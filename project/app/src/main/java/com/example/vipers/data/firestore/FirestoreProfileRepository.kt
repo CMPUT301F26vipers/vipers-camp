@@ -61,6 +61,14 @@ class FirestoreProfileRepository(
         batch.commit()
         return newId
     }
+
+    override suspend fun deleteProfile(id: String, imageId: String?) {
+        // One batch, so the photo isn't left behind. Not awaited, like setPhoto.
+        val batch = db.batch()
+        batch.delete(collection.document(id))
+        if (imageId != null) batch.delete(db.collection("images").document(imageId))
+        batch.commit()
+    }
 }
 
 /** Turns a profile into the fields saved in its Firestore document. */

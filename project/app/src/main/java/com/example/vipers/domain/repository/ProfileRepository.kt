@@ -1,7 +1,7 @@
 /*
  * ProfileRepository.kt
  * What the app can do with user profiles, without saying how they are stored (Repository pattern).
- * Known issues: deleting profiles (admin story) is added by the story that needs it.
+ * Known issues: none.
  */
 package com.example.vipers.domain.repository
 
@@ -33,6 +33,12 @@ interface ProfileRepository {
      * @throws IllegalArgumentException if [newImage] is too big ([ImageAsset.isSmallEnough]).
      */
     suspend fun setPhoto(id: String, newImage: ImageAsset?, oldImageId: String?): String?
+
+    /**
+     * Deletes the profile with this [id] and its photo [imageId], if given, in one write
+     * (US 01.08.01). Afterwards [getDisplayName] gives "Deleted user" for this [id].
+     */
+    suspend fun deleteProfile(id: String, imageId: String?)
 
     /** Returns all user profiles. */
     suspend fun getAllProfiles(): List<UserProfile>

@@ -44,6 +44,11 @@ class FakeProfileRepository(
         return newId
     }
 
+    override suspend fun deleteProfile(id: String, imageId: String?) {
+        profiles.remove(id)
+        if (imageId != null) images?.deleteImage(imageId)
+    }
+
     // Firestore drops an update to a profile that doesn't exist; the fake throws so tests notice
     private fun profileFor(id: String): UserProfile =
         profiles[id] ?: throw NoSuchElementException("No profile with ID $id")
