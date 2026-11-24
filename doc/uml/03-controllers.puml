@@ -69,6 +69,18 @@ package "controllers (ViewModels)" {
     suspend deletePhoto()
   }
 
+  class DeleteProfileController <<ViewModel>> {
+    isConfirming: Boolean
+    ownsCampsites: Boolean?
+    isDeleting: Boolean
+    deleted: Boolean
+    deleteError: String?
+    askToDelete()
+    cancel()
+    confirm()
+    suspend delete()
+  }
+
   class CampsiteSearchController <<ViewModel>> {
     searchText: String
     selectedRegion: Region?
@@ -275,10 +287,9 @@ package "services" {
     toCsv(reservation: Reservation, campsite: Campsite): String
   }
 
-  class DeletionService <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
-    deleteProfile(userId: String)
-    removeCampsite(campsiteId: String)
-    removeImage(imageId: String)
+  class DeletionService {
+    suspend deleteProfile(userId: String, now: Long)
+    suspend removeCampsite(campsite: Campsite, now: Long)
   }
 }
 
@@ -317,6 +328,9 @@ AppContainer --> NotificationRepository
 
 DeviceIdentityManager ..> ProfileRepository
 ProfileController ..> ProfileRepository : profile and photo
+DeleteProfileController ..> DeletionService
+DeleteProfileController ..> CampsiteRepository : owns campsites?
+AppContainer --> DeletionService
 CampsiteSearchController ..> CampsiteRepository
 CampsiteSearchController ..> LotteryRepository
 CampsiteSearchController ..> QrScanResult
@@ -366,7 +380,6 @@ DeletionService ..> ProfileRepository
 DeletionService ..> CampsiteRepository
 DeletionService ..> LotteryRepository
 DeletionService ..> ReservationRepository
-DeletionService ..> ImageRepository
 
 note top of AppContainer
   <b>Manual dependency injection</b>
