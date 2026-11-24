@@ -105,6 +105,13 @@ class ReservationTest {
     }
 
     @Test
+    fun isNotCompleted_whenCheckOutCantBeRead() {
+        val afterCheckOut = LocalDate.parse("2027-05-11")
+        assertFalse(mayEightToTen.copy(checkOut = "").isCompleted(afterCheckOut))
+        assertFalse(mayEightToTen.copy(checkOut = "last week").isCompleted(afterCheckOut))
+    }
+
+    @Test
     fun isCompletedAndIsActive_areNeverBothTrue() {
         for (status in ReservationStatus.entries) {
             val reservation = mayEightToTen.copy(status = status)
