@@ -23,6 +23,43 @@ class ReservationTest {
         status = ReservationStatus.CONFIRMED,
     )
 
+    private val samsStay = mayEightToTen.copy(userId = "sam", ownerId = "priya")
+
+    @Test
+    fun canMessageOwner_whenEntrantsStayIsConfirmed() {
+        assertTrue(samsStay.canMessageOwner("sam"))
+    }
+
+    @Test
+    fun canMessageOwner_whenEntrantsStayIsRejected() {
+        assertTrue(samsStay.copy(status = ReservationStatus.REJECTED).canMessageOwner("sam"))
+    }
+
+    @Test
+    fun cannotMessageOwner_whenStayIsCancelled() {
+        assertFalse(samsStay.copy(status = ReservationStatus.CANCELLED).canMessageOwner("sam"))
+    }
+
+    @Test
+    fun cannotMessageOwner_asAnotherEntrant() {
+        assertFalse(samsStay.canMessageOwner("another-entrant"))
+    }
+
+    @Test
+    fun cannotMessageOwner_asTheOwner() {
+        assertFalse(samsStay.canMessageOwner("priya"))
+    }
+
+    @Test
+    fun cannotMessageOwner_whenEntrantBookedTheirOwnCampsite() {
+        assertFalse(samsStay.copy(ownerId = "sam").canMessageOwner("sam"))
+    }
+
+    @Test
+    fun cannotMessageOwner_whenOwnerIdIsBlank() {
+        assertFalse(samsStay.copy(ownerId = "").canMessageOwner("sam"))
+    }
+
     @Test
     fun isActive_whenConfirmedAndNotCheckedOut() {
         assertTrue(mayEightToTen.isActive(today))

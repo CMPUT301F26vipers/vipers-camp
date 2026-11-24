@@ -4,10 +4,11 @@
  * Randomly picks the set number of winners from WAITING entries, writes chunked manifests,
  * commits the atomic Phase 1 draw transaction, reconciles entry statuses, and has
  * NotificationService send the idempotent "You won" (US 01.03.01) and "Not selected" (US 01.03.02)
- * notices.
- * Known issues: Draw transaction not tested against real Firestore yet. Nothing in the app starts
- * a draw yet; DrawAndNotifyWorker (US 02.05.01b) will. The replacement draw after a decline
- * (US 01.04.03) isn't built.
+ * notices. Also handles the atomic replacement draw and replacement "You won" notice when a
+ * winner declines (US 01.04.03, T-12).
+ * DrawAndNotifyWorker starts the draw once registration ends, and the owner's Draw now button
+ * starts it through drawNow, which can close registration early (US 02.05.01b).
+ * Known issues: Draw transaction not tested against real Firestore yet.
  */
 package com.example.vipers.ui.lottery
 
@@ -15,6 +16,7 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
@@ -34,6 +36,18 @@ sealed class LotteryDrawResult {
 
     /** Draw failed or could not proceed due to [message]. */
     data class Error(val message: String) : LotteryDrawResult()
+}
+
+/** Outcome of declining a win and drawing a replacement winner (US 01.04.03, T-12). */
+sealed class ReplacementDrawResult {
+    /**
+     * The win was declined atomically; [promotedUserId] became WON (and their prepared notice, if
+     * opted in, was committed in the same transaction), or null when no LOST entrant was eligible.
+     */
+    data class Declined(val promotedUserId: String?) : ReplacementDrawResult()
+
+    /** The entry was no longer eligible to decline, so neither entry changed. */
+    object NotDeclined : ReplacementDrawResult()
 }
 
 /**
@@ -58,6 +72,18 @@ class LotteryDrawer(
     private val notificationService: NotificationService =
         NotificationService(notificationRepository, campsiteRepository, profileRepository),
 ) {
+
+    /**
+     * Runs the draw for [lotteryId] when the owner taps Draw now (US 02.05.01b). If registration
+     * is still open it's closed at [now] first, so nobody can join once the winners are picked.
+     */
+    suspend fun drawNow(lotteryId: String, now: Long = System.currentTimeMillis()): LotteryDrawResult {
+        if (!lotteryRepository.closeRegistration(lotteryId, now)) {
+            return LotteryDrawResult.Error("This lottery can't be drawn now")
+        }
+        // the draw has to run after registration ends, so it runs 1 ms after the new end time
+        return drawLottery(lotteryId, now + 1)
+    }
 
     /**
      * Executes the draw for [lotteryId] at timestamp [now].
@@ -203,5 +229,65 @@ class LotteryDrawer(
         )
 
         return LotteryDrawResult.Success(winnerCount = manifestWinners.size, totalCount = totalParticipants)
+    }
+
+    /**
+     * Atomically declines [decliningUserId]'s win in [lotteryId] at time [now], promotes one
+     * uniformly chosen [EntryStatus.LOST] entrant from the same lottery, and commits their
+     * prepared replacement WON notice (if opted in) in the same transaction (US 01.04.03, T-12).
+     *
+     * Eligible LOST entrants are shuffled once outside the transaction using [random]. For each
+     * candidate in that order, [NotificationService.prepareReplacementWinNotice] runs outside the
+     * transaction immediately before attempting the commit; stale candidates write nothing and
+     * advance to the next candidate, while an opted-out candidate (`null` notice) is still promoted.
+     * If the shuffled pool is empty or exhausted, the valid decline commits alone.
+     */
+    suspend fun declineAndDrawReplacement(
+        lotteryId: String,
+        decliningUserId: String,
+        now: Long = System.currentTimeMillis(),
+    ): ReplacementDrawResult {
+        val lottery = lotteryRepository.getLottery(lotteryId)
+            ?: return ReplacementDrawResult.NotDeclined
+        if (lottery.removed) return ReplacementDrawResult.NotDeclined
+
+        val candidateUserIds = lotteryRepository.getEntries(lotteryId)
+            .filter { it.lotteryId == lotteryId && it.status == EntryStatus.LOST && it.userId != decliningUserId }
+            .map { it.userId }
+            .distinct()
+            .shuffled(random)
+
+        for (candidateId in candidateUserIds) {
+            val notice = notificationService.prepareReplacementWinNotice(lottery, candidateId, now)
+            when (
+                val attempt = lotteryRepository.declineTransaction(
+                    lotteryId = lotteryId,
+                    userId = decliningUserId,
+                    candidateUserId = candidateId,
+                    replacementNotice = notice,
+                    now = now,
+                )
+            ) {
+                is DeclineTransactionResult.Declined ->
+                    return ReplacementDrawResult.Declined(attempt.promotedUserId)
+                DeclineTransactionResult.CandidateStale -> continue
+                DeclineTransactionResult.NotDeclined -> return ReplacementDrawResult.NotDeclined
+            }
+        }
+
+        return when (
+            val emptyPool = lotteryRepository.declineTransaction(
+                lotteryId = lotteryId,
+                userId = decliningUserId,
+                candidateUserId = null,
+                replacementNotice = null,
+                now = now,
+            )
+        ) {
+            is DeclineTransactionResult.Declined ->
+                ReplacementDrawResult.Declined(emptyPool.promotedUserId)
+            DeclineTransactionResult.CandidateStale,
+            DeclineTransactionResult.NotDeclined -> ReplacementDrawResult.NotDeclined
+        }
     }
 }

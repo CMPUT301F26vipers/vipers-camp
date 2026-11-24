@@ -2,15 +2,18 @@
  * NotificationService.kt
  * The app's notification logic, between the screens and NotificationRepository. It passes the
  * inbox and marking read through to the repository (T-13), builds and saves a draw's "You won"
- * (US 01.03.01) and "Not selected" (US 01.03.02) notices, and skips users who turned
- * notifications off in Settings (US 01.10.01).
+ * (US 01.03.01), "Not selected" (US 01.03.02), and replacement win (US 01.04.03, T-12) notices
+ * and the "New message" notice (US 02.12.01), and skips users who turned notifications off in
+ * Settings (US 01.10.01).
  * Known issues: showing notifications on the phone is left to T-14.
  */
 package com.example.vipers.domain.service
 
 import com.example.vipers.domain.model.Lottery
+import com.example.vipers.domain.model.Message
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
@@ -82,14 +85,12 @@ class NotificationService(
         val loserIds = optedIn(allLosers)
         if (winnerIds.isEmpty() && loserIds.isEmpty()) return
         // Notification has no campsite name field, so the names go in the message
-        val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }
-        val where = if (names.isEmpty()) "a campsite" else names.joinToString(", ")
+        val where = campsiteNamesFor(lottery)
         val won = drawNotices(
             lottery, winnerIds, now,
             type = NotificationType.WON,
-            title = "You won the lottery!",
-            message = "You won a spot at $where. " +
-                "Reserve your nights before ${formatDate(lottery.bookingEnd)}.",
+            title = WON_TITLE,
+            message = wonMessage(where, lottery.bookingEnd),
         )
         val lost = drawNotices(
             lottery, loserIds, now,
@@ -99,6 +100,55 @@ class NotificationService(
         )
         notificationRepository.addAll(won + lost)
     }
+
+    /**
+     * Prepares the replacement "You won" notice for [recipientId] in [lottery] at promotion time
+     * [promotedAt] (US 01.04.03, T-12), or returns null if [recipientId] turned notifications off
+     * ([optedIn], US 01.10.01). Uses the separate deterministic ID
+     * `replacement_<lotteryId>_<recipientId>` and established win wording so the repository can
+     * commit the notice atomically with the decline and promotion without overwriting the original
+     * draw's `draw_<lotteryId>_<recipientId>` record.
+     */
+    suspend fun prepareReplacementWinNotice(
+        lottery: Lottery,
+        recipientId: String,
+        promotedAt: Long = System.currentTimeMillis(),
+    ): Notification? {
+        if (optedIn(listOf(recipientId)).isEmpty()) return null
+        val where = campsiteNamesFor(lottery)
+        return Notification(
+            id = replacementNoticeId(lottery.id, recipientId),
+            recipientId = recipientId,
+            senderId = "system",
+            campsiteId = lottery.campsiteIds.singleOrNull(),
+            lotteryId = lottery.id,
+            type = NotificationType.WON,
+            title = WON_TITLE,
+            message = wonMessage(where, lottery.bookingEnd),
+            createdAt = promotedAt,
+        )
+    }
+
+    /**
+     * Tells the other person in [reservation]'s conversation about the saved [message]
+     * (US 02.12.01): the entrant when the owner wrote, and the owner when the entrant wrote
+     * ([Reservation.otherSide]). It adds one NEW_MESSAGE notice ([Message.notice]) that opens the
+     * conversation. Nothing is sent if the other person turned notifications off ([optedIn],
+     * US 01.10.01), or if there is nobody else in the conversation.
+     */
+    suspend fun sendNewMessage(reservation: Reservation, message: Message) {
+        val recipientId = reservation.otherSide(message.senderId) ?: return
+        if (optedIn(listOf(recipientId)).isEmpty()) return
+        notificationRepository.saveNotification(message.notice(reservation, recipientId))
+    }
+
+    private suspend fun campsiteNamesFor(lottery: Lottery): String {
+        val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }
+        return if (names.isEmpty()) "a campsite" else names.joinToString(", ")
+    }
+
+    private fun wonMessage(where: String, bookingEnd: Long): String =
+        "You won a spot at $where. Reserve your nights before ${formatDate(bookingEnd)}."
 
     // One notice per user in userIds with what every draw notice shares: the ID
     // "draw_<lotteryId>_<userId>", sent by "system" about the lottery, pointing to its campsite only
@@ -122,6 +172,14 @@ class NotificationService(
             message = message,
             createdAt = lottery.drawnAt ?: now,
         )
+    }
+
+    companion object {
+        private const val WON_TITLE = "You won the lottery!"
+
+        /** Deterministic ID for a replacement win notice, distinct from the original draw notice. */
+        fun replacementNoticeId(lotteryId: String, userId: String): String =
+            "replacement_${lotteryId}_$userId"
     }
 }
 

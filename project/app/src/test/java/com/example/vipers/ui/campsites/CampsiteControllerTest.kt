@@ -8,6 +8,8 @@ package com.example.vipers.ui.campsites
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakePlaceFinder
+import com.example.vipers.data.fake.FakePhotoReader
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Place
@@ -31,6 +33,8 @@ class CampsiteControllerTest {
     private val repo = FakeCampsiteRepository()
     private val controller = CampsiteController(
         repo, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+        imageRepository = FakeImageRepository(),
+        photoReader = FakePhotoReader(),
     )
 
     @Before
@@ -176,6 +180,8 @@ class CampsiteControllerTest {
     ): CampsiteController {
         val form = CampsiteController(
             campsites, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         form.loadForEdit(campsite.id)
         return form
@@ -206,6 +212,8 @@ class CampsiteControllerTest {
             FakeCampsiteRepository(listOf(hinton)),
             ownerId = "my-phone",
             placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         form.loadForEdit("hinton")
 
@@ -227,6 +235,8 @@ class CampsiteControllerTest {
             FakeCampsiteRepository(listOf(hinton)),
             ownerId = "someone-else",
             placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         form.loadForEdit("hinton")
 
@@ -238,6 +248,8 @@ class CampsiteControllerTest {
     fun loadForEdit_missingId_setsNotAllowedAndLeavesTheFormEmpty() = runBlocking {
         val form = CampsiteController(
             FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         form.loadForEdit("nope")
 
@@ -252,6 +264,8 @@ class CampsiteControllerTest {
         }
         val form = CampsiteController(
             failing, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         form.loadForEdit("hinton")
 
@@ -374,6 +388,8 @@ class CampsiteControllerTest {
         val campsites = FakeCampsiteRepository(listOf(hintonInFull))
         val form = CampsiteController(
             campsites, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         form.saveEdits(Campsite(id = "hinton", name = "Taken over"))
 
@@ -485,12 +501,16 @@ class CampsiteControllerTest {
     fun hasUnsavedChanges_newFormAfterTypingRulesOrCancellationPolicy_isTrue() {
         val rulesOnly = CampsiteController(
             FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         rulesOnly.onRulesChange("Quiet hours after 10 PM")
         assertTrue(rulesOnly.hasUnsavedChanges)
 
         val policyOnly = CampsiteController(
             FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         policyOnly.onCancellationPolicyChange("Free up to 7 days before")
         assertTrue(policyOnly.hasUnsavedChanges)
@@ -515,6 +535,8 @@ class CampsiteControllerTest {
         }
         val offlineController = CampsiteController(
             failing, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         offlineController.save(Campsite(name = "Bow River Sites"))
 
@@ -541,6 +563,8 @@ class CampsiteControllerTest {
         for ((typed, cents) in prices) {
             val form = CampsiteController(
                 FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+                imageRepository = FakeImageRepository(),
+                photoReader = FakePhotoReader(),
             )
             form.onNameChange("Hinton Ridge Campground")
             form.onAddressChange("Hinton, AB")
@@ -636,7 +660,13 @@ class CampsiteControllerTest {
 
     /** An empty Add Campsite form whose Find location returns [finder]'s places. */
     private fun formWith(finder: FakePlaceFinder, campsites: CampsiteRepository = repo) =
-        CampsiteController(campsites, ownerId = "my-phone", placeFinder = finder)
+        CampsiteController(
+            campsites,
+            ownerId = "my-phone",
+            placeFinder = finder,
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
 
     @Test
     fun fetchPlaces_listsThePlacesFoundForTheTrimmedAddress() = runBlocking {
@@ -800,6 +830,8 @@ class CampsiteControllerTest {
         val campsites = FakeCampsiteRepository(listOf(hintonInFull))
         val form = CampsiteController(
             campsites, ownerId = "my-phone", placeFinder = FakePlaceFinder(listOf(nordicCentre)),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         form.loadForEdit("hinton")
         form.fetchPlaces()

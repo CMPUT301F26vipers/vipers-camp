@@ -1,9 +1,10 @@
 /*
  * ReservationController.kt
- * The controller (a ViewModel) behind the owner's Reservations screen. It loads the reservations at
- * the owner's campsites once, splits them into the Active list (US 02.07.01) and the Past list of
+ * The controller (a ViewModel) behind the lists of reservations: the entrant's My Reservations
+ * (US 01.06.01) and the owner's Reservations screen. For the owner it loads the reservations at
+ * their campsites once, splits them into the Active list (US 02.07.01) and the Past list of
  * completed stays (US 02.07.02), and looks up each entrant's current name.
- * Known issues: the Cancelled list (US 02.07.03) is not built yet.
+ * Known issues: the owner's Cancelled list (US 02.07.03) is not built yet.
  */
 package com.example.vipers.ui.reservations
 
@@ -25,16 +26,24 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Loads the reservations at [ownerId]'s campsites and splits them into the tabs of the owner's
- * Reservations screen: active ones (US 02.07.01) and completed stays (US 02.07.02). Each tab's list
- * is built from the same load, so switching tabs doesn't load again and the tabs never disagree.
+ * Loads the reservation lists for this device's user: the ones they made as an entrant
+ * (US 01.06.01), and the ones at their campsites as an owner, split into the tabs of the owner's
+ * Reservations screen: active ones (US 02.07.01) and completed stays (US 02.07.02). The owner's
+ * tabs are built from the same load, so switching tabs doesn't load again and the tabs never
+ * disagree.
  * Takes the repositories in its constructor so tests can pass fake ones.
+ *
+ * @param userId This device's ID, the entrant for My Reservations and the owner for the owner list.
  */
 class ReservationController(
     private val reservationRepository: ReservationRepository,
     private val profileRepository: ProfileRepository,
-    private val ownerId: String,
+    private val userId: String,
 ) : ViewModel() {
+
+    /** The entrant's own active reservations, soonest check-in first (US 01.06.01). */
+    var myActive by mutableStateOf(emptyList<Reservation>())
+        private set
 
     /** The owner's active reservations, soonest check-in first. */
     var activeRows by mutableStateOf(emptyList<ReservationRow>())
@@ -51,6 +60,35 @@ class ReservationController(
     /** True if the last load failed, e.g. because the phone is offline. */
     var loadFailed by mutableStateOf(false)
         private set
+
+    /** Loads the entrant's own reservations in the background (US 01.06.01). */
+    fun loadMyReservations() {
+        viewModelScope.launch { fetchMyReservations() }
+    }
+
+    /**
+     * Gets the reservations this user made that are active on [today] into [myActive], and sets
+     * [isLoading] and [loadFailed] (US 01.06.01). Reservations whose dates can't be read are
+     * left out. [loadMyReservations] runs this in the background; unit tests call it directly
+     * with a fixed date.
+     */
+    suspend fun fetchMyReservations(today: LocalDate = LocalDate.now()) {
+        isLoading = true
+        loadFailed = false
+        try {
+            val reservations = reservationRepository.getReservationsForUser(userId)
+            myActive = activeSoonestFirst(reservations, today)
+        } catch (e: CancellationException) {
+            // the load was stopped on purpose (the controller is gone), so it didn't fail
+            throw e
+        } catch (e: Exception) {
+            // clear the old list so a failed reload doesn't leave stale reservations behind
+            myActive = emptyList()
+            loadFailed = true
+        } finally {
+            isLoading = false
+        }
+    }
 
     /** Loads the owner's reservations in the background (US 02.07.01, 02.07.02). */
     fun loadOwnerReservations() {
@@ -70,7 +108,7 @@ class ReservationController(
         isLoading = true
         loadFailed = false
         try {
-            val reservations = reservationRepository.getReservationsForOwner(ownerId)
+            val reservations = reservationRepository.getReservationsForOwner(userId)
                 .filter { hasReadableDates(it) }
 
             val active = reservations
@@ -87,7 +125,6 @@ class ReservationController(
             activeRows = active
             pastRows = past
         } catch (e: CancellationException) {
-            // the load was stopped on purpose (the controller is gone), so it didn't fail
             throw e
         } catch (e: Exception) {
             activeRows = emptyList()
@@ -97,6 +134,23 @@ class ReservationController(
             isLoading = false
         }
     }
+
+    // the active ones on today, soonest check-in first, skipping any with dates that can't be read
+    // so one bad document doesn't stop the rest from showing (My Reservations uses this)
+    private fun activeSoonestFirst(
+        reservations: List<Reservation>,
+        today: LocalDate,
+    ): List<Reservation> =
+        reservations
+            .filter { reservation ->
+                try {
+                    LocalDate.parse(reservation.checkIn)
+                    reservation.isActive(today)
+                } catch (e: DateTimeParseException) {
+                    false
+                }
+            }
+            .sortedBy { it.checkIn }
 
     /** True if [reservation]'s check-in and check-out are both readable "yyyy-MM-dd" dates. */
     private fun hasReadableDates(reservation: Reservation): Boolean =
@@ -126,7 +180,7 @@ class ReservationController(
                 ReservationController(
                     reservationRepository = app.container.reservationRepository,
                     profileRepository = app.container.profileRepository,
-                    ownerId = app.container.deviceId,
+                    userId = app.container.deviceId,
                 )
             }
         }
