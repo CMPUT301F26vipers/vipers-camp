@@ -290,6 +290,16 @@ minutes. If the user says no, nothing else happens and the in-app inbox is used 
 that show `AppRoot` grant the permission with `GrantPermissionRule`, so the system dialog doesn't
 cover the screen.
 
+Tapping a phone notification opens the same screen as tapping the item in the inbox. Both go
+through `NavHostController.openNotificationTarget(target)` in `AppNavigation.kt`, the one place
+that turns a `NotificationTarget` into a route. `MainActivity` reads the tap with
+`DeviceNotificationLink.fromIntent` (in `onCreate` and `onNewIntent`), removes the extras with
+`DeviceNotificationLink.clear` so it's handled once, and marks the item read with
+`NotificationService.markRead`, like the inbox. `AppRoot` then opens the screen on top of the
+Notifications tab once Home is shown, so Back returns to the inbox, as it does after tapping the
+item there. On Welcome (no profile yet) the tap is dropped, and an intent with no tap, or whose
+item has no target, just opens Home.
+
 ### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |

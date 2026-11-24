@@ -6,7 +6,7 @@
  * comes to the front it runs onAppOpened, which MainActivity uses to start any draws that are due
  * (US 02.05.01b). onScanQr is passed down to Home's Scan QR button (US 01.12.01). Once Home is
  * shown (not on Welcome), Android 13 and later ask once per app start for permission to show
- * phone notifications (T-14).
+ * phone notifications (T-14), and a tapped phone notification opens its screen (T-14).
  * Known issues: none.
  */
 package com.example.vipers.ui.navigation
@@ -46,6 +46,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.vipers.data.device.DeviceIdentityManager
+import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.ui.home.QrScanResult
 import com.example.vipers.ui.profile.WelcomeScreen
 import kotlinx.coroutines.CancellationException
@@ -56,7 +57,10 @@ import kotlinx.coroutines.launch
  * Also hides the Admin tab unless the profile is an admin. Runs [onAppOpened] each time the app
  * comes to the front, and passes [onScanQr] on to Home. Once the app's navigation is shown, on
  * Android 13 and later it asks for permission to show phone notifications and calls
- * [onNotificationPermissionGranted] if the user allows it (T-14).
+ * [onNotificationPermissionGranted] if the user allows it (T-14). [pendingTarget] is the screen a
+ * tapped phone notification opens (T-14): it is opened once the app's navigation is shown, and
+ * dropped if this device has no profile yet (Welcome); either way [onPendingTargetHandled] is then
+ * called.
  */
 @Composable
 fun AppRoot(
@@ -65,6 +69,8 @@ fun AppRoot(
     onAppOpened: suspend () -> Unit = {},
     onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
     onNotificationPermissionGranted: () -> Unit = {},
+    pendingTarget: NotificationTarget? = null,
+    onPendingTargetHandled: () -> Unit = {},
 ) {
     // null while we check for a profile
     var hasProfile by remember { mutableStateOf<Boolean?>(null) }
@@ -78,6 +84,7 @@ fun AppRoot(
     val lifecycleOwner = LocalLifecycleOwner.current
     // the observer stays the same, so keep it calling the newest onAppOpened
     val latestOnAppOpened by rememberUpdatedState(onAppOpened)
+    val latestOnPendingTargetHandled by rememberUpdatedState(onPendingTargetHandled)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) scope.launch { latestOnAppOpened() }
@@ -106,13 +113,20 @@ fun AppRoot(
         hasProfile == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-        hasProfile == false -> WelcomeScreen(onProfileCreated = { hasProfile = true })
+        hasProfile == false -> {
+            LaunchedEffect(pendingTarget) {
+                if (pendingTarget != null) latestOnPendingTargetHandled()
+            }
+            WelcomeScreen(onProfileCreated = { hasProfile = true })
+        }
         else -> {
             AskForNotificationPermission(onGranted = onNotificationPermissionGranted)
             AppNavigation(
                 isAdmin = isAdmin,
                 onLoadDemoData = onLoadDemoData,
                 onScanQr = onScanQr,
+                pendingTarget = pendingTarget,
+                onPendingTargetOpened = onPendingTargetHandled,
             )
         }
     }

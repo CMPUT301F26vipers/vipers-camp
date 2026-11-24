@@ -64,4 +64,10 @@ object DeviceNotificationLink {
         ).target ?: return null
         return Tap(id, target)
     }
+
+    /** Removes the phone-notification extras from [intent], so they're handled only once (T-14). */
+    fun clear(intent: Intent) {
+        listOf(EXTRA_ID, EXTRA_TYPE, EXTRA_LOTTERY_ID, EXTRA_RESERVATION_ID, EXTRA_CAMPSITE_ID)
+            .forEach(intent::removeExtra)
+    }
 }
