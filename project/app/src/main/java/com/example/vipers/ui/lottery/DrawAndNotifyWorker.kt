@@ -113,22 +113,29 @@ class DrawAndNotifyWorker(
          * wait for a network connection.
          */
         fun schedule(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val workManager = WorkManager.getInstance(context)
-            workManager.enqueueUniquePeriodicWork(
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 PERIODIC_WORK_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,
                 PeriodicWorkRequestBuilder<DrawAndNotifyWorker>(
                     PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS, TimeUnit.MILLISECONDS,
-                ).setConstraints(constraints).build(),
+                ).setConstraints(networkConnected()).build(),
             )
-            workManager.enqueueUniqueWork(
+            checkNow(context)
+        }
+
+        /**
+         * Runs one check as soon as there is a network connection, replacing one that hasn't run
+         * yet (T-14). Used when the app opens and right after notification permission is granted.
+         */
+        fun checkNow(context: Context) {
+            WorkManager.getInstance(context).enqueueUniqueWork(
                 APP_OPEN_WORK_NAME,
                 ExistingWorkPolicy.REPLACE,
-                OneTimeWorkRequestBuilder<DrawAndNotifyWorker>().setConstraints(constraints).build(),
+                OneTimeWorkRequestBuilder<DrawAndNotifyWorker>().setConstraints(networkConnected()).build(),
             )
         }
+
+        private fun networkConnected(): Constraints =
+            Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
     }
 }

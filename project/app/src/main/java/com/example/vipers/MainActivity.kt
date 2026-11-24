@@ -3,7 +3,8 @@
  * The app's only Activity. It shows Welcome on first launch, or the app's navigation (bottom
  * bar and screens) once this device has a profile. Whenever the app opens it starts the lottery
  * draws that are due (US 02.05.01b), and it schedules DrawAndNotifyWorker to check about every 15
- * minutes and once now (T-14). It also runs Google's code scanner for Home's Scan QR button
+ * minutes and once now, and once more if notification permission is granted (T-14). It also runs
+ * Google's code scanner for Home's Scan QR button
  * (US 01.12.01).
  * Known issues: if the screen rotates while the scanner is open, the scan is lost and the entrant
  * has to scan again.
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
                     onLoadDemoData = { loadDemoData() },
                     onAppOpened = { container.dueDraws.runDueDraws() },
                     onScanQr = { scanQrCode() },
+                    onNotificationPermissionGranted = { DrawAndNotifyWorker.checkNow(this) },
                 )
             }
         }

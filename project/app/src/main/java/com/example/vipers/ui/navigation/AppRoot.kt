@@ -4,11 +4,18 @@
  * repositories. DeviceIdentityManager checks whether this device has a profile: if not the
  * app opens on Welcome (T-01), otherwise on Home, with no login (US 01.09.01). Each time the app
  * comes to the front it runs onAppOpened, which MainActivity uses to start any draws that are due
- * (US 02.05.01b). onScanQr is passed down to Home's Scan QR button (US 01.12.01).
+ * (US 02.05.01b). onScanQr is passed down to Home's Scan QR button (US 01.12.01). Once Home is
+ * shown (not on Welcome), Android 13 and later ask once per app start for permission to show
+ * phone notifications (T-14).
  * Known issues: none.
  */
 package com.example.vipers.ui.navigation
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,10 +33,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -44,7 +54,9 @@ import kotlinx.coroutines.launch
 /**
  * Shows Welcome or the app's navigation, depending on [DeviceIdentityManager.hasProfile].
  * Also hides the Admin tab unless the profile is an admin. Runs [onAppOpened] each time the app
- * comes to the front, and passes [onScanQr] on to Home.
+ * comes to the front, and passes [onScanQr] on to Home. Once the app's navigation is shown, on
+ * Android 13 and later it asks for permission to show phone notifications and calls
+ * [onNotificationPermissionGranted] if the user allows it (T-14).
  */
 @Composable
 fun AppRoot(
@@ -52,6 +64,7 @@ fun AppRoot(
     onLoadDemoData: () -> Unit,
     onAppOpened: suspend () -> Unit = {},
     onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
+    onNotificationPermissionGranted: () -> Unit = {},
 ) {
     // null while we check for a profile
     var hasProfile by remember { mutableStateOf<Boolean?>(null) }
@@ -94,11 +107,39 @@ fun AppRoot(
             CircularProgressIndicator()
         }
         hasProfile == false -> WelcomeScreen(onProfileCreated = { hasProfile = true })
-        else -> AppNavigation(
-            isAdmin = isAdmin,
-            onLoadDemoData = onLoadDemoData,
-            onScanQr = onScanQr,
-        )
+        else -> {
+            AskForNotificationPermission(onGranted = onNotificationPermissionGranted)
+            AppNavigation(
+                isAdmin = isAdmin,
+                onLoadDemoData = onLoadDemoData,
+                onScanQr = onScanQr,
+            )
+        }
+    }
+}
+
+/**
+ * On Android 13 and later, asks once per app start for permission to show phone notifications
+ * (T-14) if it isn't granted yet, and calls [onGranted] if the user allows it. If the user says
+ * no, nothing else happens and the in-app inbox is used alone. Does nothing on older versions,
+ * which don't need the permission.
+ */
+@Composable
+private fun AskForNotificationPermission(onGranted: () -> Unit) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val context = LocalContext.current
+    var asked by rememberSaveable { mutableStateOf(false) }
+    val latestOnGranted by rememberUpdatedState(onGranted)
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) latestOnGranted()
+    }
+    LaunchedEffect(Unit) {
+        if (asked) return@LaunchedEffect
+        asked = true
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
+            launcher.launch(permission)
+        }
     }
 }
 

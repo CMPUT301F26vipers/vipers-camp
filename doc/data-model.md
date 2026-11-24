@@ -282,6 +282,14 @@ device's user, so a draw's result is shown in the same run. Each unshown inbox i
 as a phone notification. Opted-out users get none (their items are marked shown), and when
 permission is refused nothing is shown or marked.
 
+On Android 13 and later, `AppRoot` asks for `POST_NOTIFICATIONS` once per app start, as soon as Home
+is shown (never on Welcome), if it isn't granted yet. If the user allows it, `MainActivity` calls
+`DrawAndNotifyWorker.checkNow(context)`, which runs one check straight away (the same unique
+`draw_and_notify_app_open` work), so items already waiting in the inbox appear without waiting 15
+minutes. If the user says no, nothing else happens and the in-app inbox is used alone. Intent tests
+that show `AppRoot` grant the permission with `GrantPermissionRule`, so the system dialog doesn't
+cover the screen.
+
 ### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |
