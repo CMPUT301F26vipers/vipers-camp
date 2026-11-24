@@ -179,15 +179,9 @@ fun OwnerReservationDetailsScreen(
 private fun rulesAcceptedText(reservation: Reservation): String =
     if (reservation.rulesAcceptedAt > 0) "Yes" else "No"
 
-/** [status] as a word for the UI, e.g. "Rejected". */
 private fun statusText(status: ReservationStatus): String =
     status.name.lowercase().replaceFirstChar { it.uppercase() }
 
-/**
- * Asks the owner why they are rejecting the reservation (mockup O16, US 02.08.01). Reject needs a
- * [reason]; [reasonError] shows under the field. Cancel keeps the booking. Both buttons are
- * disabled while [rejecting].
- */
 @Composable
 private fun RejectReservationDialog(
     reason: String,

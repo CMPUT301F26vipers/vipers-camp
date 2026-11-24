@@ -458,7 +458,6 @@ class NotificationServiceTest {
         assertEquals(1, notifications.getNotificationsFor("sam").size)
     }
 
-    // Sam's stay after Priya rejected it for a fire warning (US 02.08.01)
     private val samsRejectedStay = samsStay.copy(
         checkIn = "2027-05-08",
         checkOut = "2027-05-10",

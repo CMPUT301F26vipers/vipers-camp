@@ -61,7 +61,6 @@ class RejectReservationTest {
 
     private val inbox = FakeNotificationRepository()
 
-    /** Opens the owner's details of [reservation], with its nights held at Hinton. */
     private fun open(reservation: Reservation): FakeReservationRepository {
         val campsites = FakeCampsiteRepository(listOf(hinton))
         runBlocking {

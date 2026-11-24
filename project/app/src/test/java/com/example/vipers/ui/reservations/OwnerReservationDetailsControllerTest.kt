@@ -111,7 +111,6 @@ class OwnerReservationDetailsControllerTest {
 
     private lateinit var reservationRepo: FakeReservationRepository
 
-    // Sam's stay holds May 8 and 9 at Hinton; May 10 is held by someone else
     private suspend fun loadedRejectController(
         stay: Reservation = reservation,
     ): OwnerReservationDetailsController {
