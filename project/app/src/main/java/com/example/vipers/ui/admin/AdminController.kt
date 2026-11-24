@@ -1,6 +1,6 @@
 /*
  * AdminController.kt
- * Loads campsites and user profiles for the admin browsing screens (US 03.04.01, US 03.05.01).
+ * Loads campsites, user profiles, images, and owner-entrant message logs for admin browsing (US 03.04.01, US 03.05.01, US 03.06.01, US 03.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
@@ -15,16 +15,64 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.vipers.CampApp
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.ImageAsset
+import com.example.vipers.domain.model.Message
+import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.ImageRepository
+import com.example.vipers.domain.repository.MessageRepository
 import com.example.vipers.domain.repository.ProfileRepository
+import com.example.vipers.domain.repository.ReservationRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Loads campsites and user profiles for the admin browsing screens. */
+/**
+ * A conversation thread for the admin message log (US 03.12.01).
+ *
+ * @property reservationId The reservation this conversation belongs to.
+ * @property campsiteName The name of the campsite booked.
+ * @property ownerName The resolved display name of the campsite owner.
+ * @property entrantName The resolved display name of the entrant.
+ * @property lastMessageTime Timestamp of the most recent message in the conversation.
+ * @property messages The full list of messages in this conversation, ordered oldest first.
+ */
+data class MessageLogConversation(
+    val reservationId: String,
+    val campsiteName: String,
+    val ownerName: String,
+    val entrantName: String,
+    val lastMessageTime: Long,
+    val messages: List<Message>,
+    val ownerId: String = "",
+    val entrantId: String = "",
+) {
+    /** Alias for [lastMessageTime]. */
+    val lastMessageAt: Long
+        get() = lastMessageTime
+
+    /** Alias for [messages]. */
+    val thread: List<Message>
+        get() = messages
+
+    /** Returns the resolved display name for the sender of [message]. */
+    fun senderName(message: Message): String {
+        return when {
+            ownerId.isNotBlank() && message.senderId == ownerId -> ownerName
+            entrantId.isNotBlank() && message.senderId == entrantId -> entrantName
+            else -> if (message.senderId.isNotBlank()) message.senderId else "Deleted user"
+        }
+    }
+}
+
+/** Loads campsites, user profiles, images, and owner-entrant message logs for admin browsing. */
 class AdminController(
     private val campsiteRepository: CampsiteRepository,
     private val profileRepository: ProfileRepository,
+    private val imageRepository: ImageRepository? = null,
+    private val messageRepository: MessageRepository? = null,
+    private val reservationRepository: ReservationRepository? = null,
 ) : ViewModel() {
 
     var campsites by mutableStateOf<List<Campsite>>(emptyList())
@@ -66,6 +114,68 @@ class AdminController(
     val profileError: String?
         get() = profilesError
 
+    var images by mutableStateOf<List<ImageAsset>>(emptyList())
+        private set
+
+    /** Maps image IDs to their resolved owner or fallback display names. */
+    var imageOwnerNames by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+
+    var isImagesLoading by mutableStateOf(false)
+        private set
+
+    val imagesLoading: Boolean
+        get() = isImagesLoading
+
+    var imagesLoadFailed by mutableStateOf(false)
+        private set
+
+    var imagesError by mutableStateOf<String?>(null)
+        private set
+
+    val imageError: String?
+        get() = imagesError
+
+    /** Loaded message log conversations, sorted newest message first. */
+    var messageLogs by mutableStateOf<List<MessageLogConversation>>(emptyList())
+        private set
+
+    /** Alias for [messageLogs]. */
+    val conversations: List<MessageLogConversation>
+        get() = messageLogs
+
+    /** Whether message logs are currently being loaded. */
+    var isMessageLogsLoading by mutableStateOf(false)
+        private set
+
+    /** Alias for [isMessageLogsLoading]. */
+    val messageLogsLoading: Boolean
+        get() = isMessageLogsLoading
+
+    /** Alias for [isMessageLogsLoading]. */
+    val conversationsLoading: Boolean
+        get() = isMessageLogsLoading
+
+    /** Whether the most recent attempt to load message logs failed. */
+    var messageLogsLoadFailed by mutableStateOf(false)
+        private set
+
+    /** Alias for [messageLogsLoadFailed]. */
+    val conversationsLoadFailed: Boolean
+        get() = messageLogsLoadFailed
+
+    /** Error message if loading message logs failed. */
+    var messageLogsError by mutableStateOf<String?>(null)
+        private set
+
+    /** Alias for [messageLogsError]. */
+    val messageLogError: String?
+        get() = messageLogsError
+
+    /** Alias for [messageLogsError]. */
+    val conversationsError: String?
+        get() = messageLogsError
+
     init {
         loadCampsites()
     }
@@ -88,6 +198,26 @@ class AdminController(
     /** Returns the active campsites owned by [ownerId] from the loaded campsites list. */
     fun getCampsitesForOwner(ownerId: String): List<Campsite> {
         return campsites.filter { it.ownerId == ownerId && !it.removed }
+    }
+
+    /** Returns the image asset with the given [imageId], or null if not found. */
+    fun getImage(imageId: String): ImageAsset? {
+        return images.firstOrNull { it.id == imageId }
+    }
+
+    /** Returns the resolved owner or fallback name for the given [image]. */
+    fun getImageOwnerName(image: ImageAsset): String {
+        return imageOwnerNames[image.id]
+            ?: image.label.trim().ifBlank { null }
+            ?: genericImageLabel(image.ownerType)
+    }
+
+    /** Returns the resolved owner or fallback name for the image with the given [imageId]. */
+    fun getImageOwnerName(imageId: String): String {
+        val image = getImage(imageId)
+        return imageOwnerNames[imageId]
+            ?: image?.let { getImageOwnerName(it) }
+            ?: "Photo"
     }
 
     /** Loads all campsites that have not been removed, along with owner display names. */
@@ -148,6 +278,163 @@ class AdminController(
         }
     }
 
+    /** Loads all uploaded images in the background. */
+    fun loadImages() {
+        viewModelScope.launch { fetchImages() }
+    }
+
+    /** Loads all uploaded images, newest first. Can be called directly from unit tests using runBlocking. */
+    suspend fun fetchImages() {
+        isImagesLoading = true
+        imagesLoadFailed = false
+        imagesError = null
+
+        try {
+            val repo = imageRepository ?: throw IllegalStateException("ImageRepository not configured")
+            val loadedImages = repo.getAllImages()
+
+            val resolvedNames = mutableMapOf<String, String>()
+            val ownerNameCache = mutableMapOf<Pair<String, String>, String?>()
+
+            for (image in loadedImages) {
+                val key = Pair(image.ownerType, image.ownerId)
+                val resolvedOwner = ownerNameCache.getOrPut(key) {
+                    try {
+                        when (image.ownerType) {
+                            ImageAsset.OWNER_CAMPSITE -> {
+                                campsiteRepository.getCampsite(image.ownerId)?.name?.trim()?.ifBlank { null }
+                            }
+                            ImageAsset.OWNER_PROFILE -> {
+                                profileRepository.getProfile(image.ownerId)?.name?.trim()?.ifBlank { null }
+                            }
+                            else -> null
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+
+                val finalName = resolvedOwner
+                    ?: image.label.trim().ifBlank { null }
+                    ?: genericImageLabel(image.ownerType)
+
+                resolvedNames[image.id] = finalName
+            }
+
+            imageOwnerNames = resolvedNames
+            images = loadedImages
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            imagesLoadFailed = true
+            imagesError = "Unable to load images."
+        } finally {
+            isImagesLoading = false
+        }
+    }
+
+    private fun genericImageLabel(ownerType: String): String {
+        return if (ownerType == ImageAsset.OWNER_CAMPSITE) "Campsite photo" else "Profile photo"
+    }
+
+    /** Returns the conversation with the given [reservationId], or null if not found. */
+    fun getConversation(reservationId: String): MessageLogConversation? {
+        return messageLogs.firstOrNull { it.reservationId == reservationId }
+    }
+
+    /** Returns the conversation with the given [reservationId], or null if not found. */
+    fun getMessageLog(reservationId: String): MessageLogConversation? {
+        return getConversation(reservationId)
+    }
+
+    /** Loads all owner-entrant message logs in the background. */
+    fun loadMessageLogs() {
+        messageLogJob?.cancel()
+        messageLogJob = viewModelScope.launch { fetchMessageLogs() }
+    }
+
+    private var messageLogJob: Job? = null
+    private var messageLogRequestId = 0
+
+    /**
+     * Loads all owner-entrant message logs and resolves their reservation and profile details.
+     * Can be called directly from unit tests using runBlocking or runTest.
+     */
+    suspend fun fetchMessageLogs() {
+        val requestId = ++messageLogRequestId
+        isMessageLogsLoading = true
+        messageLogsLoadFailed = false
+        messageLogsError = null
+
+        try {
+            val repo = messageRepository ?: throw IllegalStateException("MessageRepository not configured")
+            val threads = repo.getAllThreads()
+
+            val profileNameCache = mutableMapOf<String, String>()
+            suspend fun resolveName(id: String): String {
+                if (id.isBlank()) return "Deleted user"
+                return profileNameCache.getOrPut(id) {
+                    try {
+                        profileRepository.getDisplayName(id)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        "Deleted user"
+                    }
+                }
+            }
+
+            val logs = mutableListOf<MessageLogConversation>()
+            for (rawThread in threads) {
+                if (rawThread.isEmpty()) continue
+                val thread = Message.inOrder(rawThread)
+                val reservationId = thread.first().reservationId
+                val lastMessageTime = thread.last().createdAt
+
+                val reservation = reservationRepository?.getReservation(reservationId)
+
+                val ownerName = if (reservation != null) resolveName(reservation.ownerId) else "Deleted user"
+                val entrantName = if (reservation != null) resolveName(reservation.userId) else "Deleted user"
+                val campsiteName = reservation?.campsiteName?.trim()?.ifBlank { null } ?: "Unknown campsite"
+
+                logs.add(
+                    MessageLogConversation(
+                        reservationId = reservationId,
+                        campsiteName = campsiteName,
+                        ownerName = ownerName,
+                        entrantName = entrantName,
+                        lastMessageTime = lastMessageTime,
+                        messages = thread,
+                        ownerId = reservation?.ownerId.orEmpty(),
+                        entrantId = reservation?.userId.orEmpty(),
+                    )
+                )
+            }
+
+            logs.sortWith(
+                compareByDescending<MessageLogConversation> { it.lastMessageTime }
+                    .thenBy { it.reservationId }
+            )
+
+            if (requestId == messageLogRequestId) {
+                messageLogs = logs
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (requestId == messageLogRequestId) {
+                messageLogsLoadFailed = true
+                messageLogsError = "Unable to load message logs."
+            }
+        } finally {
+            if (requestId == messageLogRequestId) {
+                isMessageLogsLoading = false
+            }
+        }
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -157,6 +444,9 @@ class AdminController(
                 AdminController(
                     campsiteRepository = application.container.campsiteRepository,
                     profileRepository = application.container.profileRepository,
+                    imageRepository = application.container.imageRepository,
+                    messageRepository = application.container.messageRepository,
+                    reservationRepository = application.container.reservationRepository,
                 )
             }
         }

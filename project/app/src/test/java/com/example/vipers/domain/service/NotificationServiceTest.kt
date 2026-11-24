@@ -455,4 +455,74 @@ class NotificationServiceTest {
 
         assertEquals(1, notifications.getNotificationsFor("sam").size)
     }
+
+    // US 01.04.03 / T-12: preparing replacement win notices
+
+    @Test
+    fun prepareReplacementWinNotice_oneCampsite_usesReplacementIdPromotionTimeAndWinWordingWithoutWriting() = runBlocking {
+        var writeCalled = false
+        val counting = object : NotificationRepository by notifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                writeCalled = true
+            }
+
+            override suspend fun saveNotification(notification: Notification): String {
+                writeCalled = true
+                return notification.id
+            }
+
+            override suspend fun addNotification(notification: Notification): String {
+                writeCalled = true
+                return notification.id
+            }
+        }
+        val svc = NotificationService(counting, campsites, profiles, formatDate = { "time $it" })
+
+        val notice = svc.prepareReplacementWinNotice(hintonLottery, "jo", promotedAt = 1_750L)!!
+        assertFalse(writeCalled)
+        assertEquals("replacement_may_jo", notice.id)
+        assertEquals("jo", notice.recipientId)
+        assertEquals(NotificationType.WON, notice.type)
+        assertEquals("system", notice.senderId)
+        assertEquals("hinton", notice.campsiteId)
+        assertEquals("may", notice.lotteryId)
+        assertEquals("You won the lottery!", notice.title)
+        assertEquals(
+            "You won a spot at Hinton Ridge Campground. Reserve your nights before time 2000.",
+            notice.message,
+        )
+        assertEquals(1_750L, notice.createdAt)
+        assertFalse(notice.read)
+        assertFalse(notice.shownOnDevice)
+        assertEquals(NotificationTarget.OpenReserve("may"), notice.target)
+    }
+
+    @Test
+    fun prepareReplacementWinNotice_twoCampsites_namesBothWithNullCampsiteId() = runBlocking {
+        val bothLottery = hintonLottery.copy(campsiteIds = listOf("hinton", "banff"))
+        val notice = service.prepareReplacementWinNotice(bothLottery, "jo", promotedAt = 1_800L)!!
+
+        assertEquals(
+            "You won a spot at Hinton Ridge Campground, Bow River Sites. " +
+                "Reserve your nights before time 2000.",
+            notice.message,
+        )
+        assertNull(notice.campsiteId)
+    }
+
+    @Test
+    fun prepareReplacementWinNotice_optedOutRecipient_returnsNullWithoutWriting() = runBlocking {
+        var addAllCalled = false
+        val counting = object : NotificationRepository by notifications {
+            override suspend fun addAll(notifications: List<Notification>) {
+                addAllCalled = true
+            }
+        }
+        val notice = NotificationService(counting, campsites, profiles, formatDate = { "time $it" })
+            .prepareReplacementWinNotice(hintonLottery, "riley", promotedAt = 1_750L)
+
+        assertNull(notice)
+        assertFalse(addAllCalled)
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+    }
 }

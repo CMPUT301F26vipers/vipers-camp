@@ -5,15 +5,22 @@
  */
 package com.example.vipers.data.fake
 
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.validateLottery
+import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.UpdateLotteryResult
+import com.example.vipers.domain.service.NotificationService
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +32,8 @@ import kotlinx.coroutines.sync.withLock
 class FakeLotteryRepository(
     initialLotteries: List<Lottery> = emptyList(),
     initialEntries: List<LotteryEntry> = emptyList(),
+    var notificationRepository: NotificationRepository? = null,
+    var campsiteRepository: CampsiteRepository? = null,
 ) : LotteryRepository {
 
     private val mutex = Mutex()
@@ -51,7 +60,11 @@ class FakeLotteryRepository(
 
     override suspend fun addLottery(lottery: Lottery): String = mutex.withLock {
         val id = "lottery-${nextId++}"
-        lotteries[id] = lottery.copy(id = id)
+        lotteries[id] = lottery.copy(
+            id = id,
+            campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
+        )
+        publish()
         id
     }
 
@@ -81,30 +94,56 @@ class FakeLotteryRepository(
             return@withLock UpdateLotteryResult.ReadOnly(blockedReason)
         }
 
+        val submittedIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct()
+        val normalizedLottery = lottery.copy(campsiteIds = submittedIds)
         val currentWaitingCount = stored.waitingUserIds.size
 
+        val calendarsByCampsiteId: Map<String, AvailabilityCalendar>? = campsiteRepository?.let { campsites ->
+            for (cid in submittedIds) {
+                val campsite = campsites.getCampsite(cid)
+                if (campsite == null || campsite.removed || campsite.ownerId != stored.ownerId) {
+                    return@withLock UpdateLotteryResult.Error(
+                        "One or more selected campsites are no longer available or you do not own them.",
+                    )
+                }
+            }
+
+            val storedIds = stored.campsiteIds.filter { it.isNotBlank() }.toSet()
+            val storedNights = stored.nightsOffered.toSet()
+            val hasAddedNight = normalizedLottery.nightsOffered.any { it !in storedNights }
+            val idsNeedingCalendars = submittedIds.filter { cid -> cid !in storedIds || hasAddedNight }
+            if (idsNeedingCalendars.isNotEmpty()) {
+                idsNeedingCalendars.associateWith { cid -> campsites.getAvailability(cid) }
+            } else {
+                null
+            }
+        }
+
         val validationErrors = validateLottery(
-            lottery = lottery,
+            lottery = normalizedLottery,
             now = now,
             storedLottery = stored,
             currentWaitingCount = currentWaitingCount,
             zone = zone,
+            calendarsByCampsiteId = calendarsByCampsiteId,
         )
         if (validationErrors.isNotEmpty()) {
             return@withLock UpdateLotteryResult.Error(validationErrors.first())
         }
 
         val updated = stored.copy(
-            nightsOffered = lottery.nightsOffered,
-            nightsDescription = lottery.nightsDescription,
-            registrationStart = lottery.registrationStart,
-            registrationEnd = lottery.registrationEnd,
-            bookingStart = lottery.bookingStart,
-            bookingEnd = lottery.bookingEnd,
-            winnersCount = lottery.winnersCount,
-            waitlistCapacity = lottery.waitlistCapacity,
+            campsiteIds = normalizedLottery.campsiteIds,
+            nightsOffered = normalizedLottery.nightsOffered,
+            nightsDescription = normalizedLottery.nightsDescription,
+            registrationStart = normalizedLottery.registrationStart,
+            registrationEnd = normalizedLottery.registrationEnd,
+            bookingStart = normalizedLottery.bookingStart,
+            bookingEnd = normalizedLottery.bookingEnd,
+            winnersCount = normalizedLottery.winnersCount,
+            waitlistCapacity = normalizedLottery.waitlistCapacity,
         )
         lotteries[lottery.id] = updated
+        publish()
         UpdateLotteryResult.Success
     }
 
@@ -210,13 +249,61 @@ class FakeLotteryRepository(
         true
     }
 
-    override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean = mutex.withLock {
+    override suspend fun declineTransaction(
+        lotteryId: String,
+        userId: String,
+        candidateUserId: String?,
+        replacementNotice: Notification?,
+        now: Long,
+    ): DeclineTransactionResult = mutex.withLock {
+        if (candidateUserId == null) {
+            require(replacementNotice == null) {
+                "replacementNotice must be null when no replacement candidate is specified"
+            }
+        } else if (replacementNotice != null) {
+            require(notificationRepository != null) {
+                "notificationRepository must be configured when replacementNotice is non-null"
+            }
+            require(replacementNotice.id == NotificationService.replacementNoticeId(lotteryId, candidateUserId)) {
+                "replacementNotice id must match replacement_<lotteryId>_<candidateUserId>"
+            }
+            require(replacementNotice.lotteryId == lotteryId) {
+                "replacementNotice lotteryId must match $lotteryId"
+            }
+            require(replacementNotice.recipientId == candidateUserId) {
+                "replacementNotice recipientId must match $candidateUserId"
+            }
+            require(replacementNotice.type == NotificationType.WON) {
+                "replacementNotice type must be WON"
+            }
+        }
+
+        val lottery = lotteries[lotteryId] ?: return@withLock DeclineTransactionResult.NotDeclined
         val id = LotteryEntry.idFor(lotteryId, userId)
-        val entry = entries[id]
-        if (entry == null || entry.status != EntryStatus.WON) return@withLock false
+        val entry = entries[id] ?: return@withLock DeclineTransactionResult.NotDeclined
+        if (entry.lotteryId != lotteryId || !entry.canDecline(lottery, now)) {
+            return@withLock DeclineTransactionResult.NotDeclined
+        }
+
+        if (candidateUserId != null) {
+            if (candidateUserId == userId) return@withLock DeclineTransactionResult.CandidateStale
+            val candidate = entries[LotteryEntry.idFor(lotteryId, candidateUserId)]
+            if (candidate == null || candidate.lotteryId != lotteryId || candidate.status != EntryStatus.LOST) {
+                return@withLock DeclineTransactionResult.CandidateStale
+            }
+            // Persist notice before mutating entries so a notification write failure leaves WON/LOST intact.
+            if (replacementNotice != null) {
+                notificationRepository!!.addAll(listOf(replacementNotice))
+            }
+            entries[id] = entry.copy(status = EntryStatus.DECLINED)
+            entries[candidate.id] = candidate.copy(status = EntryStatus.WON)
+            publish()
+            return@withLock DeclineTransactionResult.Declined(promotedUserId = candidate.userId)
+        }
+
         entries[id] = entry.copy(status = EntryStatus.DECLINED)
         publish()
-        true
+        DeclineTransactionResult.Declined(promotedUserId = null)
     }
 
     override suspend fun seedEntry(entry: LotteryEntry): Unit = mutex.withLock {

@@ -6,8 +6,7 @@
  * total, the group size selector, the Reserve action button (T-03), the confirmation dialog
  * (01.05.01), and the campsite rules. A winner can decline the win here (US 01.04.03, mockup E12).
  * ReserveController does the work.
- * Known issues: choosing between several campsites (01.04.02) is added by that story. Declining
- * doesn't pick a replacement winner yet (T-12).
+ * Known issues: choosing between several campsites (01.04.02) is added by that story.
  */
 package com.example.vipers.ui.reservations
 

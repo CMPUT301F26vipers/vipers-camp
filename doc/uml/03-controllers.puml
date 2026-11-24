@@ -161,13 +161,20 @@ package "controllers (ViewModels)" {
 
   class LotteryController <<ViewModel>> {
     campsite: Campsite?
+    ownedCampsites: List<Campsite>
+    selectedCampsiteIds: Set<String>
     availableNights: List<String>
     selectedNights: Set<String>
+    conflictingNights: Set<String>
+    hasIneligibleStoredCampsites: Boolean
     winnersCountText: String
     waitlistCapacityText: String
     suspend fetchCampsiteData()
+    suspend fetchLotteryForEdit(lotteryId: String, now: Long)
+    toggleCampsite(targetCampsiteId: String, checked: Boolean)
+    onConfirmRemoveIneligibleChange(confirmed: Boolean)
     toggleNight(night: String, checked: Boolean)
-    saveLottery()
+    saveLottery(now: Long?)
   }
 
   class LotteryDetailsController <<ViewModel>> {
@@ -256,8 +263,15 @@ package "controllers (ViewModels)" {
   class AdminController <<ViewModel>> {
     campsites: List<Campsite>
     ownerNames: Map<String, String>
+    profiles: List<UserProfile>
+    images: List<ImageAsset>
+    messageLogs: List<MessageLogConversation>
     loadCampsites()
+    loadProfiles()
+    loadImages()
+    loadMessageLogs()
     getOwnerName(ownerId: String): String
+    getConversation(reservationId: String): MessageLogConversation?
   }
 
   class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
@@ -271,12 +285,14 @@ package "services" {
     listenToInbox(userId: String, listener: InboxListener): Subscription
     suspend markRead(id: String)
     suspend sendDrawResults(result: DrawResult, now: Long)
+    suspend prepareReplacementWinNotice(lottery: Lottery, recipientId: String, promotedAt: Long): Notification?
   }
 
   class LotteryDrawer {
     random: Random
     suspend drawLottery(lotteryId: String, now: Long): LotteryDrawResult
     suspend drawNow(lotteryId: String, now: Long): LotteryDrawResult
+    suspend declineAndDrawReplacement(lotteryId: String, decliningUserId: String, now: Long): ReplacementDrawResult
   }
 
   class DrawAndNotifyWorker {
@@ -317,6 +333,11 @@ abstract class LotteryDrawResult <<sealed>> {
   Error(message)
 }
 
+abstract class ReplacementDrawResult <<sealed>> {
+  Declined(promotedUserId)
+  NotDeclined
+}
+
 CampApp *-- AppContainer : creates >
 AppContainer o-- DeviceIdentityManager
 AppContainer o-- LotteryDrawer
@@ -353,6 +374,7 @@ WaitingListController ..> ProfileRepository
 ReserveController ..> CampsiteRepository
 ReserveController ..> LotteryRepository
 ReserveController ..> ReservationRepository
+ReserveController ..> LotteryDrawer
 ReserveController ..> OfferState
 ReservationController ..> ReservationRepository
 ReservationController ..> ProfileRepository
@@ -363,6 +385,9 @@ OwnerReservationDetailsController ..> ProfileRepository
 NotificationsController ..> NotificationService
 AdminController ..> CampsiteRepository
 AdminController ..> ProfileRepository
+AdminController ..> ImageRepository
+AdminController ..> MessageRepository
+AdminController ..> ReservationRepository
 MessageController ..> MessageRepository
 MessageController ..> NotificationService
 
@@ -373,6 +398,7 @@ LotteryDrawer ..> NotificationRepository
 LotteryDrawer ..> CampsiteRepository
 LotteryDrawer --> NotificationService : sends results through >
 LotteryDrawer ..> LotteryDrawResult
+LotteryDrawer ..> ReplacementDrawResult
 AppContainer o-- DrawAndNotifyWorker
 DrawAndNotifyWorker ..> LotteryDrawer
 DrawAndNotifyWorker ..> LotteryRepository

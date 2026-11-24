@@ -7,15 +7,20 @@
  */
 package com.example.vipers.data.firestore
 
+import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.validateLottery
+import com.example.vipers.domain.repository.DeclineTransactionResult
 import com.example.vipers.domain.repository.DrawTransactionResult
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.UpdateLotteryResult
+import com.example.vipers.domain.service.NotificationService
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import java.time.ZoneId
@@ -31,10 +36,17 @@ class FirestoreLotteryRepository(
 
     private val lotteries = db.collection("lotteries")
     private val entries = db.collection("lotteryEntries")
+    private val notifications = db.collection("notifications")
+    private val campsites = db.collection("campsites")
+    private val availability = db.collection("availability")
 
     override suspend fun addLottery(lottery: Lottery): String {
         val doc = lotteries.document()
-        doc.set(lottery.copy(id = doc.id).toMap()).await()
+        val normalized = lottery.copy(
+            id = doc.id,
+            campsiteIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct(),
+        )
+        doc.set(normalized.toMap()).await()
         return doc.id
     }
 
@@ -97,20 +109,57 @@ class FirestoreLotteryRepository(
                     return@runTransaction UpdateLotteryResult.ReadOnly(blockedReason)
                 }
 
+                val submittedIds = lottery.campsiteIds.filter { it.isNotBlank() }.distinct()
+                val normalizedLottery = lottery.copy(campsiteIds = submittedIds)
                 val currentWaitingCount = stored.waitingUserIds.size
 
+                // Perform all campsite and availability reads before validation/write so Firestore
+                // retries if any referenced document changes concurrently.
+                for (cid in submittedIds) {
+                    val campsiteSnap = tx.get(campsites.document(cid))
+                    if (!campsiteSnap.exists()) {
+                        return@runTransaction UpdateLotteryResult.Error(
+                            "One or more selected campsites are no longer available or you do not own them.",
+                        )
+                    }
+                    val campsite = campsiteSnap.toCampsite()
+                    if (campsite.removed || campsite.ownerId != stored.ownerId) {
+                        return@runTransaction UpdateLotteryResult.Error(
+                            "One or more selected campsites are no longer available or you do not own them.",
+                        )
+                    }
+                }
+
+                val storedIds = stored.campsiteIds.filter { it.isNotBlank() }.toSet()
+                val storedNights = stored.nightsOffered.toSet()
+                val hasAddedNight = normalizedLottery.nightsOffered.any { it !in storedNights }
+                val idsNeedingCalendars = submittedIds.filter { cid -> cid !in storedIds || hasAddedNight }
+                val calendarsByCampsiteId = if (idsNeedingCalendars.isNotEmpty()) {
+                    idsNeedingCalendars.associateWith { cid ->
+                        val calSnap = tx.get(availability.document(cid))
+                        AvailabilityCalendar(
+                            campsiteId = cid,
+                            openNights = calSnap.getStringList("openNights"),
+                            heldNights = calSnap.getStringList("heldNights"),
+                        )
+                    }
+                } else {
+                    null
+                }
+
                 val validationErrors = validateLottery(
-                    lottery = lottery,
+                    lottery = normalizedLottery,
                     now = now,
                     storedLottery = stored,
                     currentWaitingCount = currentWaitingCount,
                     zone = zone,
+                    calendarsByCampsiteId = calendarsByCampsiteId,
                 )
                 if (validationErrors.isNotEmpty()) {
                     return@runTransaction UpdateLotteryResult.Error(validationErrors.first())
                 }
 
-                tx.update(lotteryRef, lottery.toEditableFields())
+                tx.update(lotteryRef, normalizedLottery.toEditableFields())
                 UpdateLotteryResult.Success
             }.await()
         } catch (e: CancellationException) {
@@ -261,17 +310,80 @@ class FirestoreLotteryRepository(
         }.await()
     }
 
-    override suspend fun declineTransaction(lotteryId: String, userId: String): Boolean {
-        val entryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+    override suspend fun declineTransaction(
+        lotteryId: String,
+        userId: String,
+        candidateUserId: String?,
+        replacementNotice: Notification?,
+        now: Long,
+    ): DeclineTransactionResult {
+        if (candidateUserId == null) {
+            require(replacementNotice == null) {
+                "replacementNotice must be null when no replacement candidate is specified"
+            }
+        } else if (replacementNotice != null) {
+            require(replacementNotice.id == NotificationService.replacementNoticeId(lotteryId, candidateUserId)) {
+                "replacementNotice id must match replacement_<lotteryId>_<candidateUserId>"
+            }
+            require(replacementNotice.lotteryId == lotteryId) {
+                "replacementNotice lotteryId must match $lotteryId"
+            }
+            require(replacementNotice.recipientId == candidateUserId) {
+                "replacementNotice recipientId must match $candidateUserId"
+            }
+            require(replacementNotice.type == NotificationType.WON) {
+                "replacementNotice type must be WON"
+            }
+        }
+
+        val lotteryDoc = lotteries.document(lotteryId)
+        val decliningEntryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+        val candidateDoc = candidateUserId?.let { entries.document(LotteryEntry.idFor(lotteryId, it)) }
+        val noticeDoc = replacementNotice?.let { notifications.document(it.id) }
 
         return db.runTransaction { tx ->
-            val snap = tx.get(entryDoc)
-            if (!snap.exists() || snap.getString("status") != EntryStatus.WON.name) {
-                return@runTransaction false
+            // All reads first (Firestore requirement)
+            val lotterySnap = tx.get(lotteryDoc)
+            if (!lotterySnap.exists()) {
+                return@runTransaction DeclineTransactionResult.NotDeclined
             }
-            // only the status, so groupSize and joinedAt keep their saved values
-            tx.update(entryDoc, "status", EntryStatus.DECLINED.name)
-            true
+            val lottery = lotterySnap.toLottery()
+
+            val decliningSnap = tx.get(decliningEntryDoc)
+            if (!decliningSnap.exists()) {
+                return@runTransaction DeclineTransactionResult.NotDeclined
+            }
+            val decliningEntry = decliningSnap.toLotteryEntry()
+            if (decliningEntry.lotteryId != lotteryId || !decliningEntry.canDecline(lottery, now)) {
+                return@runTransaction DeclineTransactionResult.NotDeclined
+            }
+
+            if (candidateUserId != null) {
+                if (candidateUserId == userId || candidateDoc == null) {
+                    return@runTransaction DeclineTransactionResult.CandidateStale
+                }
+                val candidateSnap = tx.get(candidateDoc)
+                if (!candidateSnap.exists()) {
+                    return@runTransaction DeclineTransactionResult.CandidateStale
+                }
+                val candidateEntry = candidateSnap.toLotteryEntry()
+                if (candidateEntry.lotteryId != lotteryId || candidateEntry.status != EntryStatus.LOST) {
+                    return@runTransaction DeclineTransactionResult.CandidateStale
+                }
+            }
+
+            val existingNoticeSnap = noticeDoc?.let { tx.get(it) }
+
+            // Writes commit together; only the necessary fields change
+            tx.update(decliningEntryDoc, "status", EntryStatus.DECLINED.name)
+            if (candidateDoc != null) {
+                tx.update(candidateDoc, "status", EntryStatus.WON.name)
+            }
+            if (replacementNotice != null && noticeDoc != null && existingNoticeSnap != null) {
+                tx.set(noticeDoc, replacementNotice.keepingStateOf(existingNoticeSnap).toMap())
+            }
+
+            DeclineTransactionResult.Declined(promotedUserId = candidateUserId)
         }.await()
     }
 
@@ -507,11 +619,12 @@ fun Lottery.toMap(): Map<String, Any?> = mapOf(
 )
 
 /**
- * The fields an owner can edit in a lottery (US 02.04.06).
- * Leaving out id, ownerId, campsiteIds, drawnAt, removed, waitingUserIds, entriesVersion,
+ * The fields an owner can edit in a lottery (US 02.04.02, 02.04.06).
+ * Leaving out id, ownerId, drawnAt, removed, waitingUserIds, entriesVersion,
  * and draw metadata preserves their saved values in Firestore.
  */
 fun Lottery.toEditableFields(): Map<String, Any?> = mapOf(
+    "campsiteIds" to campsiteIds.filter { it.isNotBlank() }.distinct(),
     "nightsOffered" to nightsOffered,
     "nightsDescription" to nightsDescription,
     "registrationStart" to registrationStart,
