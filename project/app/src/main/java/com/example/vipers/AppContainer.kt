@@ -20,9 +20,8 @@ import com.example.vipers.ui.lottery.DrawAndNotifyWorker
 import com.example.vipers.ui.lottery.LotteryDrawer
 
 /**
- * Holds everything the screens need. CampApp makes one with the Firestore repositories and
- * the real [deviceNotifier]; tests make one with the fake repositories, and get a
- * [FakeDeviceNotifier] unless they pass their own.
+ * Holds everything the screens need. CampApp makes one with the Firestore repositories;
+ * tests make one with the fake repositories.
  *
  * @property deviceNotifier Shows inbox items as phone notifications (T-14).
  */
@@ -45,9 +44,6 @@ class AppContainer(
         lotteryRepository, notificationRepository, campsiteRepository, profileRepository,
     )
 
-    /**
-     * Starts the draws that are due (US 02.05.01b); AppRoot runs it whenever the app comes to the
-     * front, and DrawAndNotifyWorker on each background check.
-     */
+    /** Starts the draws that are due whenever the app is opened (US 02.05.01b). */
     val dueDraws = DrawAndNotifyWorker.DueDraws(lotteryRepository, lotteryDrawer)
 }

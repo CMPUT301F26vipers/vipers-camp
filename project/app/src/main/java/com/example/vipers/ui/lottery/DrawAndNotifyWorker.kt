@@ -62,7 +62,7 @@ class DrawAndNotifyWorker(
         }
 
     /**
-     * Starts the draws that are due, without WorkManager, so AppRoot and tests can run it directly.
+     * Starts the draws that are due.
      *
      * @param lotteryRepository Finds the lotteries whose registration has ended.
      * @param lotteryDrawer Runs each draw and sends the results to the inbox.

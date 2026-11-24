@@ -4,9 +4,7 @@
  * repositories. DeviceIdentityManager checks whether this device has a profile: if not the
  * app opens on Welcome (T-01), otherwise on Home, with no login (US 01.09.01). Each time the app
  * comes to the front it runs onAppOpened, which MainActivity uses to start any draws that are due
- * (US 02.05.01b). onScanQr is passed down to Home's Scan QR button (US 01.12.01). Once Home is
- * shown (not on Welcome), Android 13 and later ask once per app start for permission to show
- * phone notifications (T-14), and a tapped phone notification opens its screen (T-14).
+ * (US 02.05.01b). onScanQr is passed down to Home's Scan QR button (US 01.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.navigation
@@ -132,12 +130,6 @@ fun AppRoot(
     }
 }
 
-/**
- * On Android 13 and later, asks once per app start for permission to show phone notifications
- * (T-14) if it isn't granted yet, and calls [onGranted] if the user allows it. If the user says
- * no, nothing else happens and the in-app inbox is used alone. Does nothing on older versions,
- * which don't need the permission.
- */
 @Composable
 private fun AskForNotificationPermission(onGranted: () -> Unit) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return

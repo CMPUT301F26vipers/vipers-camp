@@ -1,7 +1,6 @@
 /*
  * CampApp.kt
- * The Application class: starts once when the app launches and creates the AppContainer and the
- * phone notification channel (T-14).
+ * The Application class: starts once when the app launches and creates the AppContainer.
  * Known issues: none.
  */
 package com.example.vipers

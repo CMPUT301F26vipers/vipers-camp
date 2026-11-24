@@ -2,9 +2,7 @@
  * AppNavigation.kt
  * Puts the bottom bar and the screens together, and decides which screen each route shows (T-02).
  * The app always opens on Home, and Back returns to the previous screen. A scanned campsite QR
- * code opens that campsite's details, like tapping it on Home (US 01.12.01). A notification's
- * screen is chosen in one place, openNotificationTarget, for both the inbox (T-13) and a tapped
- * phone notification (T-14).
+ * code opens that campsite's details, like tapping it on Home (US 01.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.navigation
