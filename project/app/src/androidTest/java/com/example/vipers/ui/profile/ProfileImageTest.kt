@@ -4,18 +4,23 @@
  * screen (mockup E18), one test per acceptance criterion, plus a photo that can't be used, a
  * failed remove, saving in progress, and keeping the other fields. Uses fake repositories and a
  * fake photo reader, so it doesn't touch Firestore or need the photo picker.
+ * The old photo is blue and a picked one red, so the replace test can check the screen changed.
  * Known issues: the system photo picker can't be driven from a test without another library, so
  * "Change photo opens the picker" is only checked as the button being there, and tests hand the
- * controller a picked photo directly, as the picker would. The admin image browser
- * (US 03.06.01) isn't on main yet, so one test checks the image is in the list that browser shows.
+ * controller a picked photo directly, as the picker would. One test checks the image is in
+ * getAllImages, the list the admin image browser (US 03.06.01) shows.
  */
 package com.example.vipers.ui.profile
 
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -49,6 +54,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 
 class ProfileImageTest {
@@ -63,13 +69,22 @@ class ProfileImageTest {
         phone = "780 555 0100",
     )
     private val oldPhoto = ImageAsset.fromJpeg(
-        FakePhotoReader.SAMPLE_JPEG, "test-device", ImageAsset.OWNER_PROFILE, "test-device",
-        "Sam Patel", 1_809_000_000_000,
+        jpegOf(android.graphics.Color.BLUE), "test-device", ImageAsset.OWNER_PROFILE,
+        "test-device", "Sam Patel", 1_809_000_000_000,
     ).copy(id = "old-photo")
 
-    private val profiles = FakeProfileRepository(listOf(sam))
     private val images = FakeImageRepository()
-    private val reader = FakePhotoReader()
+    private val profiles = FakeProfileRepository(listOf(sam), images)
+    private val reader = FakePhotoReader(jpegOf(android.graphics.Color.RED))
+
+    // a small JPEG all in one colour, so tests can tell two photos apart on screen
+    private fun jpegOf(colour: Int): ByteArray {
+        val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(colour)
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+        return out.toByteArray()
+    }
 
     @Before
     fun useFakeRepositories() {
@@ -101,7 +116,7 @@ class ProfileImageTest {
             }
         }
         val controller =
-            ProfileController(profileRepository, "test-device", images, photoReader)
+            ProfileController(profileRepository, "test-device", photoReader)
         composeRule.setContent {
             VipersTheme {
                 ProfileScreen(onOpenSettings = {}, onOpenPolicy = {}, controller = controller)
@@ -133,6 +148,16 @@ class ProfileImageTest {
         .onAllNodesWithTag("photo_placeholder", useUnmergedTree = true)
         .fetchSemanticsNodes()
         .isNotEmpty()
+
+    // the colour in the middle of the profile photo on screen
+    private fun photoColour(): Color {
+        val pixels = composeRule.onNodeWithTag("profile_photo").captureToImage().toPixelMap()
+        return pixels[pixels.width / 2, pixels.height / 2]
+    }
+
+    private fun photoLooksBlue() = photoColour().let { it.blue > 0.6f && it.red < 0.4f }
+
+    private fun photoLooksRed() = photoColour().let { it.red > 0.6f && it.blue < 0.4f }
 
     private fun removeButtonIsShown(): Boolean = composeRule
         .onAllNodesWithTag("button_remove_photo")
@@ -176,6 +201,7 @@ class ProfileImageTest {
     fun replacingThePhoto_showsTheNewOneAndDeletesTheOldOne() {
         val controller = openProfile(imageId = "old-photo")
         waitForPhoto(shown = true)
+        composeRule.waitUntil(5_000) { photoLooksBlue() }
 
         pickPhoto(controller, "content://media/photo/2")
 
@@ -184,7 +210,8 @@ class ProfileImageTest {
         assertNotEquals("old-photo", savedId)
         // the screen shows the new photo, which is the one saved on the profile
         assertEquals(savedId, composeRule.runOnIdle { controller.imageId })
-        waitForPhoto(shown = true)
+        // the old photo is blue and the new one red, so this checks the screen really changed
+        composeRule.waitUntil(5_000) { photoLooksRed() }
         assertFalse(defaultAvatarIsShown())
         assertEquals(listOf("old-photo"), images.deletedIds)
         assertNull(runBlocking { images.getImage("old-photo") })
@@ -254,7 +281,11 @@ class ProfileImageTest {
             profiles.saveProfile(sam.copy(imageId = "old-photo"))
         }
         val failing = object : ProfileRepository by profiles {
-            override suspend fun saveProfile(profile: UserProfile) = throw IOException("offline")
+            override suspend fun setPhoto(
+                id: String,
+                newImage: ImageAsset?,
+                oldImageId: String?,
+            ): String? = throw IOException("offline")
         }
         openProfile(profileRepository = failing)
         waitForPhoto(shown = true)
