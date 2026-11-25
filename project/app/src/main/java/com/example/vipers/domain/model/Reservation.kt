@@ -7,6 +7,7 @@
 package com.example.vipers.domain.model
 
 import java.time.LocalDate
+import java.time.format.DateTimeParseException
 
 /**
  * A booking of nights at a campsite. Dates are "yyyy-MM-dd" strings.
@@ -48,7 +49,97 @@ data class Reservation(
     fun isActive(today: LocalDate): Boolean =
         status == ReservationStatus.CONFIRMED && !LocalDate.parse(checkOut).isBefore(today)
 
+    /**
+     * True if the entrant can still cancel: it is CONFIRMED and check-in is [today] or later
+     * (US 01.07.01). A check-in that can't be read counts as not cancellable.
+     */
+    fun canCancel(today: LocalDate): Boolean {
+        if (status != ReservationStatus.CONFIRMED) return false
+        return try {
+            !LocalDate.parse(checkIn).isBefore(today)
+        } catch (e: DateTimeParseException) {
+            false
+        }
+    }
+
+    /**
+     * The nights this reservation holds, from [checkIn] up to the night before [checkOut], as
+     * "yyyy-MM-dd" strings. These are the nights a cancel or reject gives back (US 01.07.01).
+     */
+    fun nights(): List<String> {
+        val nights = mutableListOf<String>()
+        var night = LocalDate.parse(checkIn)
+        val end = LocalDate.parse(checkOut)
+        while (night.isBefore(end)) {
+            nights.add(night.toString())
+            night = night.plusDays(1)
+        }
+        return nights
+    }
+
+    /**
+     * The inbox notice telling the entrant this reservation was cancelled or rejected, for
+     * ReservationRepository.changeStatus to save (US 01.07.01, 02.08.01). Call it on the
+     * reservation after its status changed. The ID is `cancelled_<id>` or `rejected_<id>`, so
+     * the notice is only ever saved once, and the message starts with the campsite name like
+     * the other inbox items.
+     */
+    fun statusNotice(now: Long): Notification {
+        val rejected = status == ReservationStatus.REJECTED
+        val dates = "$campsiteName: $checkIn to $checkOut"
+        return Notification(
+            id = (if (rejected) "rejected_" else "cancelled_") + id,
+            recipientId = userId,
+            senderId = if (rejected) ownerId else "system",
+            campsiteId = campsiteId,
+            reservationId = id,
+            type = if (rejected) {
+                NotificationType.RESERVATION_REJECTED
+            } else {
+                NotificationType.RESERVATION_CANCELLED
+            },
+            title = if (rejected) "Reservation rejected" else "Reservation cancelled",
+            message = if (rejected && !rejectionReason.isNullOrBlank()) {
+                "$dates. Reason: $rejectionReason"
+            } else {
+                dates
+            },
+            createdAt = now,
+        )
+    }
+
     /** The total price as text for the UI, e.g. "$100" or "$65.50" (T-03, US 01.05.01). */
     val totalPriceText: String
         get() = "$${Campsite.dollarsText(totalPriceCents)}"
+
+    /**
+     * True if the user with this [userId] can read and send messages about this reservation: its
+     * entrant or the owner of its campsite (US 02.12.01, 01.14.01). Anyone else, including
+     * another owner, can't.
+     */
+    fun canMessage(userId: String): Boolean =
+        userId.isNotBlank() && (userId == this.userId || userId == ownerId)
+
+    /**
+     * Checks whether an entrant can message the owner about this reservation (US 01.14.01).
+     *
+     * @param entrantId ID of the entrant requesting the conversation.
+     * @return True if [entrantId] identifies this reservation's entrant, the reservation has
+     * not been cancelled, and it has a different owner with a nonblank ID.
+     */
+    fun canMessageOwner(entrantId: String): Boolean =
+        status != ReservationStatus.CANCELLED && entrantId == userId &&
+            !otherSide(entrantId).isNullOrBlank()
+
+    /**
+     * The other person in this reservation's conversation (US 02.12.01): the entrant for the
+     * owner, and the owner for the entrant. Null if [userId] can't message about it
+     * ([canMessage]), or if the owner booked their own campsite, so there is nobody else.
+     */
+    fun otherSide(userId: String): String? = when {
+        !canMessage(userId) -> null
+        this.userId == ownerId -> null
+        userId == ownerId -> this.userId
+        else -> ownerId
+    }
 }

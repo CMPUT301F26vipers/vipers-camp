@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
@@ -83,7 +84,8 @@ class LossNotificationTest {
     private val notifications = FakeNotificationRepository()
 
     // with this seed the draw picks alex-phone, so this device loses (Random(42) picks this device)
-    private val drawer = LotteryDrawer(lotteries, notifications, campsites, Random(12345))
+    private val drawer =
+        LotteryDrawer(lotteries, notifications, campsites, FakeProfileRepository(), Random(12345))
 
     @Before
     fun runTheDraw() {
@@ -98,7 +100,7 @@ class LossNotificationTest {
     /** Shows this device's Notifications screen, reading the fake inbox the draw wrote to. */
     private fun openNotifications() {
         val controller = NotificationsController(
-            NotificationService(notifications, campsites),
+            NotificationService(notifications, campsites, FakeProfileRepository()),
             userId = "test-device",
         )
         composeRule.setContent {

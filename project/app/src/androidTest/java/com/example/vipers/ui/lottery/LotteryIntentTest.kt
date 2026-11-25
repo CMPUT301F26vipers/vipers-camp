@@ -9,14 +9,22 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
@@ -24,7 +32,9 @@ import androidx.test.uiautomator.Until
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -33,6 +43,7 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.JoinWaitingListResult
 import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.ui.navigation.AppNavigation
@@ -40,6 +51,7 @@ import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -62,7 +74,7 @@ class LotteryIntentTest {
     fun setUp() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
         campsiteRepository = FakeCampsiteRepository()
-        lotteryRepository = FakeLotteryRepository()
+        lotteryRepository = FakeLotteryRepository(campsiteRepository = campsiteRepository)
 
         app.container = AppContainer(
             deviceId = ownerId,
@@ -70,7 +82,9 @@ class LotteryIntentTest {
             campsiteRepository = campsiteRepository,
             lotteryRepository = lotteryRepository,
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(),
+            imageRepository = FakeImageRepository(),
         )
 
         // Seed a campsite and availability
@@ -78,10 +92,17 @@ class LotteryIntentTest {
         runBlocking { campsiteRepository.addCampsite(camp) }
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val today = Calendar.getInstance()
-        val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, 1) }
+        // Advance to next month (setting day 1 first to avoid month-length rollover)
+        val nextMonthCal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, 1)
+        }
+        val offeredNightCal = Calendar.getInstance().apply {
+            time = nextMonthCal.time
+            set(Calendar.DAY_OF_MONTH, 20)
+        }
 
-        val openNights = listOf(dateFormat.format(today.time), dateFormat.format(tomorrow.time))
+        val openNights = listOf(dateFormat.format(offeredNightCal.time))
 
         runBlocking {
             campsiteRepository.saveAvailability(
@@ -111,6 +132,25 @@ class LotteryIntentTest {
         ok.click()
         uiDevice.waitForIdle()
         composeRule.waitForIdle()
+    }
+
+    private fun selectDate(day: String, advanceMonth: Boolean = true) {
+        composeRule.waitForIdle()
+        uiDevice.waitForIdle()
+        uiDevice.wait(Until.hasObject(By.text("OK")), 5_000)
+
+        if (advanceMonth) {
+            val nextBtn = uiDevice.findObject(By.desc("Next month"))
+                ?: uiDevice.findObject(By.res("android:id/next"))
+            nextBtn?.click()
+            uiDevice.waitForIdle()
+        }
+
+        val dayNode = uiDevice.findObject(By.text(day))
+        dayNode?.click()
+        uiDevice.waitForIdle()
+
+        clickNativeOk()
     }
 
     private fun selectDateTime(day: String) {
@@ -166,7 +206,7 @@ class LotteryIntentTest {
 
         // 5. Select range dates using date pickers
         composeRule.onNodeWithTag("button_range_start").performScrollTo().performClick()
-        clickNativeOk()
+        selectDate("20", advanceMonth = true)
 
         composeRule.onNodeWithTag("button_range_end").performScrollTo().performClick()
         clickNativeOk()
@@ -208,8 +248,16 @@ class LotteryIntentTest {
         assertEquals(1, lotteries.size)
         val lottery = lotteries.first()
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val todayStr = dateFormat.format(Calendar.getInstance().time)
-        assertEquals(listOf(todayStr), lottery.nightsOffered)
+        val targetMonthCal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, 1)
+        }
+        val expectedOfferedNight = Calendar.getInstance().apply {
+            time = targetMonthCal.time
+            set(Calendar.DAY_OF_MONTH, 20)
+        }
+        val expectedNightStr = dateFormat.format(expectedOfferedNight.time)
+        assertEquals(listOf(expectedNightStr), lottery.nightsOffered)
         assertEquals("May 2027 weekends", lottery.nightsDescription)
         assertTrue(lottery.registrationStart > System.currentTimeMillis())
         assertTrue(lottery.registrationEnd > lottery.registrationStart)
@@ -712,5 +760,708 @@ class LotteryIntentTest {
         composeRule.onNodeWithText("Couldn't leave the waiting list. Please try again.").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Leave Waiting List").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("On Waiting List").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun editLottery_navigatesFromDetailsAndPrefillsSavedValues() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-edit-1",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "June weekend getaway",
+            registrationStart = now + 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+            winnersCount = 3,
+            waitlistCapacity = 25,
+            waitingUserIds = listOf("entrant-1", "entrant-2")
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        startApp()
+
+        // 1. Navigate to Campsites tab -> Banff Spot
+        composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Banff Spot").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Banff Spot").performClick()
+
+        // 2. Open Lottery Details from owner's campsite screen
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery: June weekend getaway").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery: June weekend getaway").performClick()
+
+        // 3. Verify on Lottery Details and click Edit Lottery
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").performClick()
+
+        // 4. Verify on Edit Lottery screen with pre-filled values
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").assertIsDisplayed()
+        composeRule.onNodeWithText("Save changes").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().assertTextContains("June weekend getaway")
+        composeRule.onNodeWithTag("tag_winners_count").performScrollTo().assertTextContains("3")
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().assertTextContains("25")
+    }
+
+    @Test
+    fun editLottery_saveEditsUpdatesLotteryAndRefreshesDetails() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-edit-2",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Original description",
+            registrationStart = now + 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+            winnersCount = 2,
+            waitlistCapacity = 10,
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        startApp()
+
+        composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Banff Spot").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Banff Spot").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery: Original description").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery: Original description").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Change nights description and winners count
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().performTextReplacement("Updated description")
+        composeRule.onNodeWithTag("tag_winners_count").performScrollTo().performTextReplacement("5")
+        composeRule.onNodeWithText("Save changes").performScrollTo().performClick()
+
+        // Wait for return to Lottery Details
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery Details").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery Details").assertIsDisplayed()
+
+        // Verify updated lottery details are displayed on return
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Description: Updated description").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Description: Updated description").performScrollTo().assertIsDisplayed()
+
+        // Verify fake repository has the updated data
+        val updated = runBlocking { lotteryRepository.getLottery(lotteryId) }
+        assertEquals("Updated description", updated?.nightsDescription)
+        assertEquals(5, updated?.winnersCount)
+    }
+
+    @Test
+    fun editLottery_whenClosedOrDrawn_displaysReadOnlyExplanationAndDisablesSave() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-edit-closed",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Closed lottery",
+            registrationStart = now - 50_000,
+            registrationEnd = now - 10_000,
+            bookingStart = now + 50_000,
+            bookingEnd = now + 100_000,
+            winnersCount = 2,
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        startApp()
+
+        composeRule.onNodeWithTag("tab_${Routes.CAMPSITES}").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Banff Spot").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Banff Spot").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Lottery: Closed lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lottery: Closed lottery").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit Lottery").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Edit Lottery").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Verify read-only explanation banner is visible
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Registration has closed; this lottery can no longer be edited.").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Registration has closed; this lottery can no longer be edited.").assertIsDisplayed()
+
+        // Verify Save changes button is disabled
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().assertIsNotEnabled()
+
+        // Verify form fields are disabled
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("tag_winners_count").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("tag_waitlist_limit").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun editLottery_nonOwnerAccess_showsPermissionError() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-other-owner",
+            ownerId = "someone-else",
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Other owner lottery",
+            registrationStart = now + 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+        )
+        runBlocking { lotteryRepository.addLottery(lottery) }
+
+        // Start directly with LotteryFormScreen in edit mode for this lottery
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(
+                    lotteryId = "lottery-other-owner",
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("You do not own this lottery or it was not found.").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("You do not own this lottery or it was not found.").assertIsDisplayed()
+        composeRule.onNodeWithText("Save changes").assertDoesNotExist()
+    }
+
+    @Test
+    fun editLottery_entrantViewingDetails_seesUpdatedValuesAfterOwnerEdits() {
+        val now = System.currentTimeMillis()
+        val lottery = Lottery(
+            id = "lottery-entrant-refresh",
+            ownerId = ownerId,
+            campsiteIds = listOf("c-123"),
+            nightsOffered = listOf("2027-06-01"),
+            nightsDescription = "Early Summer Promo",
+            registrationStart = now - 10_000,
+            registrationEnd = now + 100_000,
+            bookingStart = now + 120_000,
+            bookingEnd = now + 240_000,
+            winnersCount = 2,
+            waitlistCapacity = 15,
+        )
+        val lotteryId = runBlocking { lotteryRepository.addLottery(lottery) }
+
+        // Entrant opens details controller
+        val entrantController = LotteryDetailsController(
+            lotteryRepository = lotteryRepository,
+            profileRepository = FakeProfileRepository(),
+            lotteryId = lotteryId,
+            currentUserId = "entrant-user",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryDetailsScreen(
+                    lotteryId = lotteryId,
+                    onBack = {},
+                    controller = entrantController
+                )
+            }
+        }
+
+        // Entrant views initial lottery details
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Description: Early Summer Promo").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Description: Early Summer Promo").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Waiting List Entrants: 0 / 15").performScrollTo().assertIsDisplayed()
+
+        // Owner saves edits to the lottery in repository
+        val updated = lottery.copy(
+            id = lotteryId,
+            nightsDescription = "Updated Summer Special",
+            waitlistCapacity = 20,
+            winnersCount = 4
+        )
+        runBlocking { lotteryRepository.updateLottery(updated, callerId = ownerId) }
+
+        // Entrant refreshes details (e.g. reopening or onResume triggered)
+        entrantController.loadData()
+
+        // Verify updated values are displayed to the entrant
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Description: Updated Summer Special").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Description: Updated Summer Special").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Waiting List Entrants: 0 / 20").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Description: Early Summer Promo").assertDoesNotExist()
+
+        // Verify persisted repository values
+        val persisted = runBlocking { lotteryRepository.getLottery(lotteryId) }
+        assertEquals("Updated Summer Special", persisted?.nightsDescription)
+        assertEquals(20, persisted?.waitlistCapacity)
+        assertEquals(4, persisted?.winnersCount)
+    }
+
+    @Test
+    fun createLottery_multiCampsite_excludesForeignAndRemovedSitesAndIntersectsNights() {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val nextMonthCal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, 1)
+        }
+        val nightACal = Calendar.getInstance().apply {
+            time = nextMonthCal.time
+            set(Calendar.DAY_OF_MONTH, 20)
+        }
+        val nightBCal = Calendar.getInstance().apply {
+            time = nextMonthCal.time
+            set(Calendar.DAY_OF_MONTH, 21)
+        }
+        val nightA = dateFormat.format(nightACal.time)
+        val nightB = dateFormat.format(nightBCal.time)
+
+        runBlocking {
+            campsiteRepository.saveAvailability(
+                AvailabilityCalendar(campsiteId = "c-123", openNights = listOf(nightA, nightB)),
+            )
+            campsiteRepository.addCampsite(Campsite(id = "c-2", ownerId = ownerId, name = "Jasper Spot"))
+            campsiteRepository.saveAvailability(
+                AvailabilityCalendar(
+                    campsiteId = "c-2",
+                    openNights = listOf(nightA, nightB),
+                    heldNights = listOf(nightB),
+                ),
+            )
+            campsiteRepository.addCampsite(
+                Campsite(id = "c-removed", ownerId = ownerId, name = "Closed Spot", removed = true),
+            )
+            campsiteRepository.addCampsite(
+                Campsite(id = "c-foreign", ownerId = "other-owner", name = "Foreign Spot"),
+            )
+        }
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(campsiteId = "c-123", onBack = {})
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("campsite_checkbox_c-123").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("campsite_checkbox_c-123").assertIsOn()
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().assertIsOff()
+        composeRule.onAllNodesWithText("Closed Spot").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Foreign Spot").assertCountEquals(0)
+
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("2 campsite(s) selected").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("button_range_start").performScrollTo().performClick()
+        selectDate("20", advanceMonth = true)
+        composeRule.onNodeWithTag("button_range_end").performScrollTo().performClick()
+        selectDate("21", advanceMonth = false)
+        composeRule.onNodeWithText("Load nights").performScrollTo().performClick()
+
+        composeRule.onNodeWithTag("night_checkbox_$nightA").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithTag("night_checkbox_$nightB").assertCountEquals(0)
+        composeRule.onNodeWithText("Select All").performScrollTo().performClick()
+
+        composeRule.onNodeWithTag("button_reg_start").performScrollTo().performClick()
+        selectDateTime("10")
+        composeRule.onNodeWithTag("button_reg_end").performScrollTo().performClick()
+        selectDateTime("11")
+        composeRule.onNodeWithTag("button_book_start").performScrollTo().performClick()
+        selectDateTime("12")
+        composeRule.onNodeWithTag("button_book_end").performScrollTo().performClick()
+        selectDateTime("13")
+
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().performClick()
+
+        composeRule.waitUntil(5_000) {
+            runBlocking { lotteryRepository.getLotteriesForCampsite("c-2") }.isNotEmpty()
+        }
+        val forFirst = runBlocking { lotteryRepository.getLotteriesForCampsite("c-123") }
+        val forSecond = runBlocking { lotteryRepository.getLotteriesForCampsite("c-2") }
+        assertEquals(1, forFirst.size)
+        assertEquals(forFirst.single().id, forSecond.single().id)
+        assertEquals(listOf("c-123", "c-2"), forFirst.single().campsiteIds)
+        assertEquals(listOf(nightA), forFirst.single().nightsOffered)
+    }
+
+    @Test
+    fun editLottery_withIneligibleStoredCampsite_requiresConfirmationAndSavesUpdatedMembership() {
+        val now = System.currentTimeMillis()
+        val futureNight = runBlocking { campsiteRepository.getAvailability("c-123").openNights.single() }
+        val lotteryId = runBlocking {
+            campsiteRepository.addCampsite(Campsite(id = "c-2", ownerId = ownerId, name = "Jasper Spot"))
+            campsiteRepository.saveAvailability(
+                AvailabilityCalendar(campsiteId = "c-2", openNights = listOf(futureNight)),
+            )
+            campsiteRepository.addCampsite(
+                Campsite(id = "c-removed", ownerId = ownerId, name = "Removed Spot", removed = true),
+            )
+            campsiteRepository.addCampsite(
+                Campsite(id = "c-foreign", ownerId = "other-owner", name = "Hidden Foreign Spot"),
+            )
+            lotteryRepository.addLottery(
+                Lottery(
+                    ownerId = ownerId,
+                    campsiteIds = listOf("c-123", "c-removed", "c-foreign"),
+                    nightsOffered = listOf(futureNight),
+                    nightsDescription = "Multi edit",
+                    registrationStart = now + 10_000,
+                    registrationEnd = now + 100_000,
+                    bookingStart = now + 120_000,
+                    bookingEnd = now + 240_000,
+                    winnersCount = 1,
+                ),
+            )
+        }
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(lotteryId = lotteryId, onBack = {})
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("ineligible_campsites_banner").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("ineligible_campsites_banner").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Removed Spot").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Hidden Foreign Spot").assertCountEquals(0)
+        composeRule.onNodeWithTag("campsite_checkbox_c-123").performScrollTo().assertIsOn()
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().assertIsOff()
+
+        // Selecting an additional eligible campsite and saving without explicit confirmation fails.
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().performClick()
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                "Please confirm removing the unavailable campsite(s) from this lottery before saving.",
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(
+            listOf("c-123", "c-removed", "c-foreign"),
+            runBlocking { lotteryRepository.getLottery(lotteryId)?.campsiteIds },
+        )
+
+        // Confirm removal and save: stored membership updates cleanly.
+        composeRule.onNodeWithTag("checkbox_confirm_remove_ineligible").performScrollTo().performClick()
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().performClick()
+
+        composeRule.waitUntil(5_000) {
+            runBlocking { lotteryRepository.getLottery(lotteryId)?.campsiteIds } == listOf("c-123", "c-2")
+        }
+        assertEquals(listOf("c-123", "c-2"), runBlocking { lotteryRepository.getLottery(lotteryId)?.campsiteIds })
+    }
+
+    @Test
+    fun entrantJoiningFromBothIncludedCampsites_joinsSameLotteryWithoutDuplicates() {
+        val now = System.currentTimeMillis()
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as CampApp
+        val entrantId = "entrant-shared-1"
+        val sharedCampsites = FakeCampsiteRepository(
+            listOf(
+                Campsite(id = "c-123", ownerId = "owner-priya", name = "Banff Spot", maxOccupancy = 2),
+                Campsite(id = "c-456", ownerId = "owner-priya", name = "Jasper Pines", maxOccupancy = 4),
+            ),
+        )
+        val sharedLotteryRepo = FakeLotteryRepository()
+        val lotteryId = runBlocking {
+            sharedLotteryRepo.addLottery(
+                Lottery(
+                    ownerId = "owner-priya",
+                    campsiteIds = listOf("c-123", "c-456"),
+                    nightsOffered = listOf("2027-06-15"),
+                    nightsDescription = "Shared Banff & Jasper",
+                    registrationStart = now - 60_000,
+                    registrationEnd = now + 600_000,
+                    bookingStart = now + 1_200_000,
+                    bookingEnd = now + 2_400_000,
+                    winnersCount = 1,
+                ),
+            )
+        }
+        app.container = AppContainer(
+            deviceId = entrantId,
+            profileRepository = FakeProfileRepository(),
+            campsiteRepository = sharedCampsites,
+            lotteryRepository = sharedLotteryRepo,
+            reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
+            notificationRepository = FakeNotificationRepository(),
+            imageRepository = FakeImageRepository(),
+        )
+
+        startApp()
+
+        // 1. Open first included campsite (Banff Spot) and join the shared waiting list
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Banff Spot").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Banff Spot").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("join_lottery_button").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("join_lottery_button").performScrollTo().performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Join Waiting List").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Join Waiting List").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Group size").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Group size").performTextReplacement("3")
+        composeRule.onNodeWithText("Confirm").performClick()
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Successfully joined the waiting list!").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(1, runBlocking { sharedLotteryRepo.getEntries(lotteryId).size })
+
+        // 2. Return to Home and open the second included campsite (Jasper Pines)
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("joined_lottery_button").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Jasper Pines").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Jasper Pines").performClick()
+
+        // Second campsite shows the same shared lottery as already joined
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("joined_lottery_button").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("joined_lottery_button").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Group size: 3").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("On Waiting List").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Join Waiting List").assertCountEquals(0)
+
+        // 3. Repository-level duplicate guard creates no duplicate entry for the same device
+        val duplicateAttempt = runBlocking {
+            sharedLotteryRepo.joinWaitingList(
+                LotteryEntry(lotteryId = lotteryId, userId = entrantId, groupSize = 2, joinedAt = now + 1),
+                now + 1,
+            )
+        }
+        assertEquals(JoinWaitingListResult.AlreadyJoined, duplicateAttempt)
+        assertEquals(1, runBlocking { sharedLotteryRepo.getEntries(lotteryId).size })
+    }
+
+    @Test
+    fun createLottery_calendarLoadFailure_keepsDraftVisible_blocksLoadAndSave_andRecoversOnRetryOrUncheck() {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val nextMonthCal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, 1)
+        }
+        val nightACal = Calendar.getInstance().apply {
+            time = nextMonthCal.time
+            set(Calendar.DAY_OF_MONTH, 20)
+        }
+        val nightA = dateFormat.format(nightACal.time)
+
+        var failSecondSite = true
+        runBlocking {
+            campsiteRepository.addCampsite(Campsite(id = "c-2", ownerId = ownerId, name = "Jasper Spot"))
+            campsiteRepository.saveAvailability(AvailabilityCalendar(campsiteId = "c-2", openNights = listOf(nightA)))
+        }
+        val flakyCampsites = object : CampsiteRepository by campsiteRepository {
+            override suspend fun getAvailability(campsiteId: String): AvailabilityCalendar {
+                if (campsiteId == "c-2" && failSecondSite) {
+                    throw RuntimeException("Transient network error")
+                }
+                return campsiteRepository.getAvailability(campsiteId)
+            }
+        }
+        val controller = LotteryController(
+            campsiteRepository = flakyCampsites,
+            lotteryRepository = lotteryRepository,
+            ownerId = ownerId,
+            campsiteId = "c-123",
+        )
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(campsiteId = "c-123", onBack = {}, controller = controller)
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("campsite_checkbox_c-2").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().performTextInput("Draft nights description")
+        composeRule.onNodeWithTag("button_range_start").performScrollTo().performClick()
+        selectDate("20", advanceMonth = true)
+        composeRule.onNodeWithTag("button_range_end").performScrollTo().performClick()
+        clickNativeOk()
+
+        // Selecting c-2 with failing calendar shows inline error, preserves draft, and blocks Load/Save.
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("campsite_calendar_error_banner").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("campsite_calendar_error_banner").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().assertTextContains("Draft nights description")
+        composeRule.onNodeWithTag("button_load_nights").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().assertIsNotEnabled()
+
+        // Unchecking c-2 clears the inline error and re-enables Load/Save while keeping draft text.
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("campsite_calendar_error_banner").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithTag("tag_nights_offered").performScrollTo().assertTextContains("Draft nights description")
+        composeRule.onNodeWithTag("button_load_nights").performScrollTo().assertIsEnabled()
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().assertIsEnabled()
+
+        // Re-check c-2 (fails again), then flip repository to healthy and click Retry.
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("campsite_calendar_error_banner").fetchSemanticsNodes().isNotEmpty()
+        }
+        failSecondSite = false
+        composeRule.onNodeWithTag("button_retry_campsite_calendar").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("campsite_calendar_error_banner").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().assertIsOn()
+        composeRule.onNodeWithTag("button_load_nights").performScrollTo().assertIsEnabled()
+        composeRule.onNodeWithTag("button_save_lottery").performScrollTo().assertIsEnabled()
+    }
+
+    @Test
+    fun createLottery_campsiteSelectionChange_recalculatesNights_andKeepsUncheckedUnavailableOutOfSelectAll() {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val nextMonthCal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            add(Calendar.MONTH, 1)
+        }
+        val nightA = dateFormat.format(
+            Calendar.getInstance().apply {
+                time = nextMonthCal.time
+                set(Calendar.DAY_OF_MONTH, 20)
+            }.time,
+        )
+        val nightB = dateFormat.format(
+            Calendar.getInstance().apply {
+                time = nextMonthCal.time
+                set(Calendar.DAY_OF_MONTH, 21)
+            }.time,
+        )
+        val nightC = dateFormat.format(
+            Calendar.getInstance().apply {
+                time = nextMonthCal.time
+                set(Calendar.DAY_OF_MONTH, 22)
+            }.time,
+        )
+
+        runBlocking {
+            campsiteRepository.saveAvailability(
+                AvailabilityCalendar(campsiteId = "c-123", openNights = listOf(nightA, nightB, nightC)),
+            )
+            campsiteRepository.addCampsite(Campsite(id = "c-2", ownerId = ownerId, name = "Jasper Spot"))
+            campsiteRepository.saveAvailability(
+                AvailabilityCalendar(
+                    campsiteId = "c-2",
+                    openNights = listOf(nightA, nightB, nightC),
+                    heldNights = listOf(nightB, nightC),
+                ),
+            )
+        }
+
+        composeRule.setContent {
+            VipersTheme {
+                LotteryFormScreen(campsiteId = "c-123", onBack = {})
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("campsite_checkbox_c-123").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("button_range_start").performScrollTo().performClick()
+        selectDate("20", advanceMonth = true)
+        composeRule.onNodeWithTag("button_range_end").performScrollTo().performClick()
+        selectDate("22", advanceMonth = false)
+        composeRule.onNodeWithTag("button_load_nights").performScrollTo().performClick()
+
+        // Check nightA and nightB, leaving nightC unchecked.
+        composeRule.onNodeWithTag("night_checkbox_$nightA").performScrollTo().performClick()
+        composeRule.onNodeWithTag("night_checkbox_$nightB").performScrollTo().performClick()
+        composeRule.onNodeWithTag("night_checkbox_$nightC").performScrollTo().assertIsOff()
+
+        // Selecting c-2 immediately drops unchecked nightC and marks checked nightB conflicting/removable.
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("nights_conflict_banner").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("night_checkbox_$nightC").assertCountEquals(0)
+        composeRule.onNodeWithTag("night_checkbox_$nightB").performScrollTo().assertIsOn()
+
+        // Unchecking conflicting nightB drops it and clears the conflict banner; Select All ignores nightB/nightC.
+        composeRule.onNodeWithTag("night_checkbox_$nightB").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("nights_conflict_banner").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onAllNodesWithTag("night_checkbox_$nightB").assertCountEquals(0)
+
+        composeRule.onNodeWithTag("button_select_all").performScrollTo().performClick() // Deselect All
+        composeRule.onNodeWithTag("night_checkbox_$nightA").performScrollTo().assertIsOff()
+        composeRule.onNodeWithTag("button_select_all").performScrollTo().performClick() // Select All
+        composeRule.onNodeWithTag("night_checkbox_$nightA").performScrollTo().assertIsOn()
+        composeRule.onAllNodesWithTag("night_checkbox_$nightB").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("night_checkbox_$nightC").assertCountEquals(0)
+
+        // Unchecking c-2 makes nightB and nightC eligible again and Select All includes all three.
+        composeRule.onNodeWithTag("campsite_checkbox_c-2").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("night_checkbox_$nightB").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("night_checkbox_$nightC").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("button_select_all").performScrollTo().performClick()
+        composeRule.onNodeWithTag("night_checkbox_$nightA").performScrollTo().assertIsOn()
+        composeRule.onNodeWithTag("night_checkbox_$nightB").performScrollTo().assertIsOn()
+        composeRule.onNodeWithTag("night_checkbox_$nightC").performScrollTo().assertIsOn()
     }
 }

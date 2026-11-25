@@ -19,6 +19,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
@@ -26,6 +28,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
+import com.example.vipers.ui.lottery.LotteryDrawer
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -34,6 +37,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
+import java.util.Random
 
 class RequireRulesAcceptanceTest {
 
@@ -98,6 +102,14 @@ class RequireRulesAcceptanceTest {
             ),
         )
         val res = FakeReservationRepository(campsiteRepository = camps, lotteryRepository = lots)
+        val notifs = FakeNotificationRepository()
+        val drawer = LotteryDrawer(
+            lotteryRepository = lots,
+            notificationRepository = notifs,
+            campsiteRepository = camps,
+            profileRepository = FakeProfileRepository(),
+            random = Random(42),
+        )
         val controller = ReserveController(
             campsiteRepository = camps,
             lotteryRepository = lots,
@@ -105,6 +117,7 @@ class RequireRulesAcceptanceTest {
             lotteryId = "lot-summer",
             campsiteId = campsite.id,
             reservationRepository = res,
+            lotteryDrawer = drawer,
         )
         composeRule.setContent {
             VipersTheme {
@@ -134,7 +147,7 @@ class RequireRulesAcceptanceTest {
     fun noRules_displaysNoSpecificRulesFallbackAndCheckboxStillRequired() {
         openReserve(hintonWithoutRules)
 
-        composeRule.onNodeWithText("No specific rules").performScrollTo()
+        composeRule.onNodeWithText("Rules: No specific rules").performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithText("Cancellation: Free up to 7 days before").performScrollTo()
             .assertIsDisplayed()

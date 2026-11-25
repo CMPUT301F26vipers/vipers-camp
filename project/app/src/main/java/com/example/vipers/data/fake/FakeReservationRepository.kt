@@ -3,7 +3,8 @@
  * An in-memory ReservationRepository for unit and intent tests (test double for Repository).
  * Supports atomic reservation transactions with conflict checks (T-03), sends confirmation
  * notifications to the entrant's inbox (US 01.05.01), and records rules acceptance time
- * (US 02.11.01).
+ * (US 02.11.01). Cancelling or rejecting gives the nights back to the campsite's calendar
+ * if a campsite repository is attached (US 01.07.01).
  * Known issues: none.
  */
 package com.example.vipers.data.fake
@@ -88,6 +89,9 @@ class FakeReservationRepository(
         now: Long,
     ): ReserveResult = mutex.withLock {
         if (nights.isEmpty()) return ReserveResult.Error("No nights selected")
+        if (rulesAcceptedAt <= 0L) {
+            return ReserveResult.Error("Rules must be accepted before reserving")
+        }
         val sortedNights = nights.distinct().sorted()
 
         val campsiteRepo = campsiteRepository
@@ -178,5 +182,36 @@ class FakeReservationRepository(
         notificationRepository?.saveNotification(notice)
 
         ReserveResult.Success(reservation)
+    }
+
+    override suspend fun changeStatus(
+        id: String,
+        status: ReservationStatus,
+        reason: String?,
+        now: Long,
+        sendNotice: Boolean,
+    ): Boolean = mutex.withLock {
+        require(status != ReservationStatus.CONFIRMED) { "Can only cancel or reject" }
+        val reservation = reservations[id]
+        if (reservation == null || reservation.status != ReservationStatus.CONFIRMED) {
+            return false
+        }
+        val changed = reservation.copy(
+            status = status,
+            statusChangedAt = now,
+            rejectionReason = if (status == ReservationStatus.REJECTED) reason else null,
+        )
+        reservations[id] = changed
+
+        // give the nights back so other winners can book them
+        campsiteRepository?.let { campsites ->
+            val calendar = campsites.getAvailability(reservation.campsiteId)
+            campsites.saveAvailability(
+                calendar.copy(heldNights = calendar.heldNights - reservation.nights().toSet())
+            )
+        }
+
+        if (sendNotice) notificationRepository?.saveNotification(changed.statusNotice(now))
+        true
     }
 }

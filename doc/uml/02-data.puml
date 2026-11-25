@@ -24,6 +24,9 @@ package "domain.repository" {
   interface ProfileRepository {
     suspend getProfile(id: String): UserProfile?
     suspend saveProfile(profile: UserProfile)
+    suspend setNotificationsEnabled(id: String, enabled: Boolean)
+    suspend setPhoto(id: String, newImage: ImageAsset?, oldImageId: String?): String?
+    suspend deleteProfile(id: String, imageId: String?)
     suspend getDisplayName(id: String): String
   }
 
@@ -31,6 +34,7 @@ package "domain.repository" {
     suspend addCampsite(campsite: Campsite): String
     suspend getCampsite(id: String): Campsite?
     suspend updateCampsite(campsite: Campsite)
+    suspend removeCampsite(id: String)
     suspend getCampsitesByOwner(ownerId: String): List<Campsite>
     suspend getAllCampsites(): List<Campsite>
     suspend getAvailability(campsiteId: String): AvailabilityCalendar
@@ -41,12 +45,17 @@ package "domain.repository" {
     suspend addLottery(lottery: Lottery): String
     suspend getLottery(id: String): Lottery?
     suspend getLotteriesForCampsite(campsiteId: String): List<Lottery>
+    suspend getLotteriesToDraw(now: Long): List<Lottery>
+    suspend closeRegistration(lotteryId: String, now: Long): Boolean
     suspend joinWaitingList(entry: LotteryEntry, now: Long): JoinWaitingListResult
     suspend leaveWaitingList(lotteryId: String, userId: String)
     suspend updateEntry(entry: LotteryEntry)
-    suspend declineTransaction(lotteryId: String, userId: String): Boolean
+    suspend declineTransaction(lotteryId, userId, candidateUserId, replacementNotice, now): DeclineTransactionResult
     suspend getEntry(lotteryId: String, userId: String): LotteryEntry?
     suspend getEntries(lotteryId: String): List<LotteryEntry>
+    suspend getEntriesForUser(userId: String): List<LotteryEntry>
+    suspend removeEntry(lotteryId: String, userId: String): Boolean
+    suspend removeLottery(id: String)
     observeEntries(lotteryId: String): Flow<List<LotteryEntry>>
     suspend stageManifestChunks(lotteryId: String, chunks: List<DrawManifestChunk>)
     suspend loadManifestChunks(lotteryId: String, drawId: String): List<DrawManifestChunk>
@@ -61,6 +70,7 @@ package "domain.repository" {
     suspend getReservationsForUser(userId: String): List<Reservation>
     suspend getReservationsForOwner(ownerId: String): List<Reservation>
     suspend createReservation(lotteryId, campsiteId, userId, nights, groupSize, now): ReserveResult
+    suspend changeStatus(id, status, reason, now, sendNotice): Boolean
   }
 
   interface NotificationRepository {
@@ -78,8 +88,9 @@ package "domain.repository" {
     suspend getAllThreads()
   }
 
-  interface ImageRepository <<planned>> #EEEEEE;line:999999;line.dashed;text:777777 {
-    suspend uploadImage(...): ImageAsset
+  interface ImageRepository {
+    suspend addImage(image: ImageAsset): String
+    suspend getImage(id: String): ImageAsset?
     suspend getAllImages(): List<ImageAsset>
     suspend deleteImage(id: String)
   }
@@ -105,6 +116,12 @@ package "domain.repository" {
     AlreadyDrawn(lottery)
     VersionMismatch
     Error(message)
+  }
+
+  abstract class DeclineTransactionResult <<sealed>> {
+    Declined(promotedUserId)
+    CandidateStale
+    NotDeclined
   }
 
   interface ReserveResult <<sealed>> {
@@ -137,6 +154,7 @@ package "data.firestore" {
 package "data.fake" {
   class FakeProfileRepository {
     initial: List<UserProfile>
+    images: ImageRepository?
   }
   class FakeCampsiteRepository {
     initial: List<Campsite>
@@ -144,6 +162,7 @@ package "data.fake" {
   class FakeLotteryRepository {
     initialLotteries: List<Lottery>
     initialEntries: List<LotteryEntry>
+    notificationRepository: NotificationRepository?
   }
   class FakeReservationRepository {
     campsiteRepository: CampsiteRepository?
@@ -156,6 +175,7 @@ package "data.fake" {
 }
 
 FirestoreProfileRepository ..|> ProfileRepository
+FakeProfileRepository ..> ImageRepository : saves and deletes photos
 FirestoreCampsiteRepository ..|> CampsiteRepository
 FirestoreLotteryRepository ..|> LotteryRepository
 FirestoreReservationRepository ..|> ReservationRepository
@@ -169,6 +189,7 @@ FakeNotificationRepository ..|> NotificationRepository
 
 LotteryRepository ..> JoinWaitingListResult
 LotteryRepository ..> DrawTransactionResult
+LotteryRepository ..> DeclineTransactionResult
 ReservationRepository ..> ReserveResult
 NotificationRepository ..> InboxListener : calls on every change
 NotificationRepository ..> Subscription : returns
@@ -177,8 +198,10 @@ note top of LotteryRepository
   Firestore transactions: joinWaitingList
   (refuses duplicates, a full list and joins
   outside registration), declineTransaction
-  and runDrawTransaction (the draw runs once
-  even if several phones start it).
+  (declines, promotes replacement, and saves
+  replacement notice atomically), and
+  runDrawTransaction (the draw runs once even
+  if several phones start it).
 end note
 
 note top of ReservationRepository
@@ -187,6 +210,10 @@ note top of ReservationRepository
   RESERVED, saves the reservation and its
   RESERVATION_CONFIRMED notification, or
   returns Conflict if the nights were taken.
+  changeStatus (cancel or reject) is one
+  transaction too: it sets the status, gives
+  the nights back and saves the notice
+  (unless sendNotice is false).
 end note
 
 note bottom of NotificationRepository

@@ -33,7 +33,7 @@ fun RulesAndPolicySection(
     if (campsite.hasRules) {
         LabelledText("Rules", campsite.rules)
     } else if (emptyRulesText != null) {
-        Text(emptyRulesText)
+        LabelledText("Rules", emptyRulesText)
     }
     if (campsite.hasCancellationPolicy) {
         LabelledText("Cancellation", campsite.cancellationPolicy)

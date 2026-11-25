@@ -1,7 +1,8 @@
 /*
  * LotteryDetailsScreen.kt
- * The screen to view details of a lottery (mockup O09).
- * Known issues: none.
+ * The screen to view details of a lottery (mockup O09). The owner can draw it any time with Draw
+ * now, and is asked to confirm first while registration is still open (US 02.05.01b).
+ * Known issues: mockup O09 doesn't show the Draw now button yet.
  */
 package com.example.vipers.ui.lottery
 
@@ -31,12 +32,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -63,11 +68,26 @@ fun LotteryDetailsScreen(
     lotteryId: String,
     onBack: () -> Unit,
     onViewWaitingList: () -> Unit = {},
+    onEditLottery: () -> Unit = {},
     controller: LotteryDetailsController = viewModel(factory = LotteryDetailsController.factory(lotteryId))
 ) {
     var showJoinDialog by remember { mutableStateOf(false) }
     var showLeaveDialog by remember { mutableStateOf(false) }
+    var showDrawDialog by remember { mutableStateOf(false) }
     var groupSizeText by remember { mutableStateOf("1") }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                controller.loadData()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -177,7 +197,7 @@ fun LotteryDetailsScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     OutlinedButton(
-                                        onClick = { /* O10 Edit Lottery reserved for edit story */ },
+                                        onClick = onEditLottery,
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Text("Edit Lottery")
@@ -189,6 +209,42 @@ fun LotteryDetailsScreen(
                                     ) {
                                         Text("View Waiting List")
                                     }
+                                }
+
+                                if (controller.canDraw(now)) {
+                                    Button(
+                                        onClick = {
+                                            // drawing early closes registration, so ask first
+                                            if (status == LotteryStatus.OPEN) {
+                                                showDrawDialog = true
+                                            } else {
+                                                controller.drawNow()
+                                            }
+                                        },
+                                        enabled = !controller.isDrawing,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp)
+                                            .testTag("button_draw_now")
+                                    ) {
+                                        Text(if (controller.isDrawing) "Drawing..." else "Draw Now")
+                                    }
+                                }
+
+                                controller.drawMessage?.let { message ->
+                                    Text(
+                                        text = message,
+                                        color = if (controller.drawFailed) {
+                                            MaterialTheme.colorScheme.error
+                                        } else {
+                                            MaterialTheme.colorScheme.primary
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier
+                                            .padding(top = 8.dp)
+                                            .testTag("draw_message")
+                                    )
                                 }
                             } else {
                                 Column(
@@ -434,6 +490,36 @@ fun LotteryDetailsScreen(
             dismissButton = {
                 TextButton(onClick = { showLeaveDialog = false }) {
                     Text("Stay")
+                }
+            }
+        )
+    }
+
+    if (showDrawDialog) {
+        val registrationEnd = controller.lottery?.registrationEnd ?: 0L
+        AlertDialog(
+            onDismissRequest = { showDrawDialog = false },
+            title = { Text("Draw Now?") },
+            text = {
+                Text(
+                    "Registration is open until ${formatDate(registrationEnd)}. Drawing now " +
+                        "closes it, so nobody else can join."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDrawDialog = false
+                        controller.drawNow()
+                    },
+                    modifier = Modifier.testTag("confirm_draw_button")
+                ) {
+                    Text("Draw Now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDrawDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )

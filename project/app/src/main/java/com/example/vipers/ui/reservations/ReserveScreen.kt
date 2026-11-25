@@ -6,8 +6,7 @@
  * total, the group size selector, campsite rules and cancellation policy with acceptance checkbox
  * (US 02.11.01), the Reserve action button (T-03), the confirmation dialog (01.05.01), and a
  * Decline option (US 01.04.03, mockup E12). ReserveController does the work.
- * Known issues: choosing between several campsites (01.04.02) is added by that story. Declining
- * doesn't pick a replacement winner yet (T-12).
+ * Known issues: choosing between several campsites (01.04.02) is added by that story.
  */
 package com.example.vipers.ui.reservations
 
@@ -15,6 +14,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -193,19 +194,19 @@ fun ReserveScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = controller.offerState == OfferState.OPEN) {
-                            controller.onRulesAcceptedChange(!controller.rulesAccepted)
-                        }
-                        .testTag("row_accept_rules"),
+                        .toggleable(
+                            value = controller.rulesAccepted,
+                            enabled = controller.offerState == OfferState.OPEN,
+                            role = Role.Checkbox,
+                            onValueChange = { controller.onRulesAcceptedChange(it) },
+                        )
+                        .testTag("checkbox_accept_rules"),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Checkbox(
                         checked = controller.rulesAccepted,
-                        onCheckedChange = { checked ->
-                            controller.onRulesAcceptedChange(checked)
-                        },
+                        onCheckedChange = null,
                         enabled = controller.offerState == OfferState.OPEN,
-                        modifier = Modifier.testTag("checkbox_accept_rules"),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
@@ -265,7 +266,8 @@ fun ReserveScreen(
 }
 
 /**
- * The Decline button (mockup E11, marker 7), shown only while the win can be declined (US 01.04.03).
+ * The Decline button (mockup E11, marker 7), shown only while the win can be declined
+ * (US 01.04.03).
  * Tapping it opens [DeclineWinDialog]; once declined, it's replaced by "You declined this win.".
  */
 @Composable
@@ -425,7 +427,8 @@ private fun RowScope.NightChip(
                 shape,
             )
             .border(
-                if (state == "Free") BorderStroke(1.dp, Border) else BorderStroke(0.dp, Color.Transparent),
+                if (state == "Free") BorderStroke(1.dp, Border)
+                else BorderStroke(0.dp, Color.Transparent),
                 shape,
             )
             .clickable(enabled = free, onClick = onClick)

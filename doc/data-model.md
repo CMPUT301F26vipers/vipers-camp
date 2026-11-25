@@ -41,10 +41,32 @@ Document ID = **device ID**.
 | name | string | required |
 | email | string | optional, `""` if not given |
 | phone | string | optional, `""` if not given |
-| imageId | string? | profile photo, `null` if none |
-| notificationsEnabled | bool | default `true` |
+| imageId | string? | profile photo: the ID of its `images` document (US 01.08.02), `null` if none |
+| notificationsEnabled | bool | default `true`; the Settings switch (US 01.10.01) |
 | isAdmin | bool | set by hand in the Firebase console |
 | createdAt | number | ms |
+
+- `getAllProfiles()` lists every user profile for the admin profile browser (US 03.05.01).
+- **Deleting a profile (US 01.08.01):** `DeletionService.deleteProfile` first marks the user's
+  `WAITING`, `WON` and `LOST` entries `REMOVED` (`removeEntry`), cancels their confirmed
+  reservations without a notice (nights go back), and removes their campsites
+  (`removeCampsite`: confirmed reservations there are cancelled, with a notice to whoever
+  `NotificationService.optedIn` keeps; the owner's lotteries for it have their entries
+  `REMOVED` and are marked `removed` once none of their campsites are left; its photo is
+  deleted; and the campsite is marked `removed` last). Last of all, `deleteProfile` deletes the
+  `users` document and its photo in one batch, so a failed step keeps the profile and can be
+  retried.
+  Waiting lists and reservations then show "Deleted user" through `getDisplayName`.
+- **Profile photo (US 01.08.02):** Change photo on Profile saves the photo straight away, not
+  with the Save button. `ProfileRepository.setPhoto` saves it as an `images` document with
+  `ownerType = profile`, `ownerId` = the device ID and `label` = the user's name (so admins can
+  find it), changes only the profile's `imageId`, and deletes the old image, all in one
+  Firestore batch. If any part is rejected nothing changes, so the profile never points to a
+  missing or deleted image. Remove does the same with no new image and `imageId = null`. The
+  label is the name when the photo was saved; the admin image browser shows the user's current
+  name and only uses the label if the profile can't be found.
+- `setNotificationsEnabled` (the Settings switch) and `setPhoto` each change only their own
+  field, so flipping the switch while a photo saves can't undo either one.
 
 ### `campsites`: `Campsite` (`CampsiteRepository`)
 
@@ -60,15 +82,30 @@ Document ID = **device ID**.
 | pricePerNightCents | number | cents |
 | rules | string | |
 | cancellationPolicy | string | |
-| imageId | string? | promo photo |
-| lat, lng | number? | set by Find location |
+| imageId | string? | promo photo: the ID of its `images` document (US 02.01.02b), `null` if none |
+| lat, lng | number? | set by Find location (US 02.01.02c); both or neither, `null` if not set |
 | ratingSum, ratingCount | number | average = sum / count |
 | removed | bool | |
 
 Owners save changes with `updateCampsite(campsite)` (US 02.01.03). It writes only `name`, `address`,
-`region`, `description`, `maxOccupancy`, `tags`, `pricePerNightCents`, `rules` and
-`cancellationPolicy`, never `ownerId`, `ratingSum`, `ratingCount`, `imageId`, `lat`, `lng` or
-`removed`. It throws `NoSuchElementException` if the campsite ID doesn't exist.
+`region`, `description`, `maxOccupancy`, `tags`, `pricePerNightCents`, `rules`,
+`cancellationPolicy`, `lat` and `lng` (US 02.01.02c; `null` removes the map location) and `imageId`
+(US 02.01.02b; `null` removes the photo), never `ownerId`, `ratingSum`, `ratingCount` or `removed`.
+It throws `NoSuchElementException` if the campsite ID doesn't exist.
+
+`newCampsiteId()` makes a campsite ID without saving anything (Firestore makes it on the phone), and
+`addCampsite` saves a campsite under its own ID when it has one. The Add Campsite form uses this to
+save the photo for the new campsite's ID before the campsite itself (US 02.01.02b).
+
+**QR code link (US 02.02.01).** A campsite's QR code holds `vipers-camp://campsite/<campsiteId>`,
+made by `Campsite.qrLink()`. Nothing about the QR code is stored: the app draws it from the ID
+each time with ZXing, so it stays the same after edits and each campsite gets its own.
+`Campsite.idFromQrLink(link)` reads the ID back when a code is scanned (US 01.12.01) and returns
+`null` for anything that isn't exactly this format (another app's code, no ID, extra parts
+after the ID, or characters other than letters, digits, `-` and `_`, like `?` or `#`, which would
+break the Campsite Details route). Scanning uses Google's code scanner (`play-services-code-scanner`), which has its
+own camera screen, so the app never asks for camera permission. A scanned ID is loaded with
+`getCampsite` like any other; a removed campsite shows "Campsite not found." on Campsite Details.
 
 ### `availability`: `AvailabilityCalendar` (`CampsiteRepository`)
 Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvailability`.
@@ -76,7 +113,7 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | Field | Type | Notes |
 |---|---|---|
 | openNights | string[] | dates the owner opened |
-| heldNights | string[] | dates held by CONFIRMED reservations |
+| heldNights | string[] | dates held by CONFIRMED reservations; a cancel or reject removes them |
 
 ### `lotteries`: `Lottery` (`LotteryRepository`)
 
@@ -93,9 +130,22 @@ Document ID = **campsite ID**. Read and save with `getAvailability` / `saveAvail
 | drawnAt | number? | ms, `null` until the draw runs |
 | removed | bool | |
 | waitingUserIds | string[] | entrant device IDs currently on the waiting list |
+| entriesVersion | number | incremented on waiting-list join/leave |
+| committedDrawId | string? | ID of committed draw manifest |
+| manifestChunkCount | number | number of manifest chunks |
+| participantCount | number | total participants in draw |
+| winnerCount | number | total winners in draw |
 
-Operations rewriting an entire lottery document must preserve `waitingUserIds`, including Edit
-Lottery and US 02.04.06 (#18), otherwise the waiting-list count may be reset.
+Owners save changes with `updateLottery(lottery, callerId)` (US 02.04.02, 02.04.06). Using the stored lottery read inside the transaction as its baseline, it verifies ownership (`callerId` matches `stored.ownerId`) and edit eligibility (not drawn, removed, or closed), reads every submitted campsite document to confirm it exists, is active (`removed == false`), and belongs to `stored.ownerId`, and reads the availability calendars needed for any newly introduced `(campsiteId, night)` pairs before writing (reusing `validateLottery` / `conflictingOfferedNights` so unrelated edits preserve already-offered pairs while checking `waitingUserIds` capacity). It writes only `campsiteIds` (deduplicated), `nightsOffered`, `nightsDescription`, `registrationStart`, `registrationEnd`, `bookingStart`, `bookingEnd`, `winnersCount`, and `waitlistCapacity`, never overwriting `ownerId`, `drawnAt`, `removed`, `waitingUserIds`, `entriesVersion`, `committedDrawId`, `manifestChunkCount`, `participantCount`, or `winnerCount`.
+
+**Starting the draw (US 02.05.01b).** Whenever the app opens, `DrawAndNotifyWorker` calls
+`getLotteriesToDraw(now)` and draws each one. It returns the lotteries where `Lottery.isDueForDraw(now)`
+is true: registration has ended, `drawnAt` is `null`, not removed, and the booking period hasn't ended.
+Firestore is only asked for `drawnAt == null` and the dates are checked on the phone, so no composite
+index is needed. The owner's Draw now button can also draw while registration is open: it calls
+`closeRegistration(lotteryId, now)` first, which in one transaction sets `registrationEnd` to `now`
+(only if `Lottery.canOwnerDraw(now)`), so nobody can join after the winners are picked. The draw
+transaction still refuses to draw twice, so several phones running the check at once is safe.
 
 ### `lotteryEntries`: `LotteryEntry` (`LotteryRepository`)
 Document ID = **`lotteryId_userId`**, so a user can only have one entry per lottery.
@@ -108,11 +158,7 @@ Document ID = **`lotteryId_userId`**, so a user can only have one entry per lott
 | joinedAt | number | ms |
 | status | string | `WAITING`, `WON`, `LOST`, `DECLINED`, `RESERVED`, `EXPIRED`, `REMOVED` |
 
-A winner declines with `declineTransaction(lotteryId, userId)` (US 01.04.03). In one transaction it
-sets `status` to `DECLINED` only if the entry is still `WON`, and writes no other field. It returns
-`true` if it changed the entry, and `false` if the entry is missing or has any other status (already
-`DECLINED`, `RESERVED`…), so two quick taps can't decline twice. It doesn't pick a replacement
-winner; that is the replacement draw (T-12). Transactions need a connection, so it fails offline.
+A winner declines via `LotteryDrawer.declineAndDrawReplacement` (US 01.04.03, T-12), which shuffles the lottery's `LOST` user IDs once with its injected `Random`, prepares the replacement `WON` notice asynchronously for each candidate in turn outside the transaction (`NotificationService.prepareReplacementWinNotice`), and calls `declineTransaction(lotteryId, userId, candidateUserId, replacementNotice, now)`. In one atomic transaction it re-reads the lottery, declining entry, selected candidate entry, and deterministic replacement notice document before any write, checks `LotteryEntry.canDecline(lottery, now)` (entry still `WON`, lottery not removed, `now` within inclusive `bookingStart..bookingEnd`), and verifies the candidate is still `LOST` in the same lottery. If the candidate is stale, it writes nothing and returns `CandidateStale` so `LotteryDrawer` advances to the next shuffled candidate; if the decline is stale, it writes nothing and returns `NotDeclined`; if the pool is empty or exhausted, it commits the decline alone; otherwise it sets the declining entry to `DECLINED`, promotes the candidate entry to `WON`, and persists the prepared notice (preserving any existing notice's `read` and `shownOnDevice` flags). If the notice write fails, the transaction rolls back so the winner remains `WON` and the candidate remains `LOST` for retry. Cancelling or rejecting a reservation keeps the entry `RESERVED`, so no replacement winner is drawn. Transactions need a connection, so declining fails offline.
 
 ### `reservations`: `Reservation` (`ReservationRepository`)
 
@@ -132,6 +178,32 @@ winner; that is the replacement draw (T-12). Transactions need a connection, so 
 | rejectionReason | string? | only when `REJECTED` |
 
 **Active** = `CONFIRMED` and check-out is today or later. Everything else is **Past**.
+
+My Reservations (US 01.06.01) and the owner's Reservations screen (US 02.07.01) both list the
+Active ones sorted by check-in, soonest first: the entrant's come from
+`getReservationsForUser(userId)` and the owner's from `getReservationsForOwner(ownerId)`. A
+reservation whose dates can't be read is left out of both lists instead of breaking them.
+
+**Cancelling and rejecting** (US 01.07.01, 02.08.01) both use
+`changeStatus(id, status, reason, now)`, so there is one transaction for both. It only changes a
+`CONFIRMED` reservation (otherwise it returns `false` and writes nothing), and in the same
+transaction it:
+- sets `status` to `CANCELLED` or `REJECTED` and `statusChangedAt` to `now`; `rejectionReason` is
+  saved only for `REJECTED`,
+- removes the reservation's nights (check-in up to the night before check-out) from the
+  campsite's `heldNights`, so other winners can book them again,
+- writes the entrant's notice (`Reservation.statusNotice`): ID `cancelled_<reservationId>` or
+  `rejected_<reservationId>`, type `RESERVATION_CANCELLED` or `RESERVATION_REJECTED`, message
+  `<campsite name>: <check-in> to <check-out>` (plus `. Reason: <reason>` for a rejection with a
+  reason). A cancel is from `"system"`, a rejection from the owner.
+
+The entrant can cancel only while `Reservation.canCancel(today)` is true: `CONFIRMED` and check-in
+is today or later. The lottery entry stays `RESERVED` after a cancel or reject: the win was used,
+so the entrant can't reserve from it again and no replacement winner is drawn. The cancel notice
+is sent even if the entrant turned notifications off, the same as the confirmation, because it
+confirms something they just did. A rejection should respect the opt-out: check the entrant with
+`NotificationService.optedIn` first and pass `sendNotice = false` if they turned notifications
+off. Everything else in the transaction still happens.
 
 ### `notifications`: `Notification` (`NotificationRepository`)
 
@@ -170,8 +242,22 @@ set only when the lottery covers one campsite. A win is `WON` with the title "Yo
 the message "You won a spot at <campsite names>. Reserve your nights before <booking end>." A loss is
 `NOT_SELECTED` with the title "Not selected this time" and the message "You weren't selected for
 <campsite names> this time." Someone in both lists only gets the win. `NotificationService.sendDrawResults`
-builds them all and saves them in one `addAll`. `batchId` stays `null` for draws; it only groups owner
-broadcasts.
+builds them all and saves them in one `addAll`. When a winner declines and a `LOST` entrant is
+promoted (T-12), `NotificationService.prepareReplacementWinNotice` prepares a separate deterministic
+`WON` notice with ID `replacement_<lotteryId>_<userId>` and `createdAt = promotionTime` (returning
+`null` if the recipient opted out via `optedIn`), and `LotteryRepository.declineTransaction` commits
+it atomically with the decline and promotion—preserving `read` and `shownOnDevice` on any existing
+deterministic notice, leaving `draw_<lotteryId>_<userId>` (`NOT_SELECTED`) intact as the original
+draw record, and preventing original-manifest replays from overwriting the promotion. `batchId` stays
+`null` for draws; it only groups owner broadcasts.
+
+Users who turned notifications off on Settings (`notificationsEnabled = false`) get none
+(US 01.10.01). Before saving a notification for some users, call
+`NotificationService.optedIn(userIds)`: it returns the ones who still want notifications. A user
+with no profile, or whose profile can't be read, is kept. The draw already does this; owner
+broadcasts (02.10.01), messages (02.12.01, 01.14.01), rejections (02.08.01) and phone notifications
+(T-14) must too. A reservation's own "Reservation confirmed" notice is still written inside
+`createReservation`, since it confirms what the user just did.
 
 The inbox reads live with `listenToInbox(recipientId, listener)` (T-13): the `InboxListener` gets
 that user's notifications, newest first, straight away and on every change, until the returned
@@ -180,15 +266,36 @@ that user's notifications, newest first, straight away and on every change, unti
 the device, so no composite index is needed. `Subscription` keeps Firestore's
 `ListenerRegistration` out of `domain/`.
 
-### `messages`: `Message`
-Not used by a repository yet (added by the messaging story).
+### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |
 |---|---|---|
 | reservationId | string | one conversation per reservation |
-| senderId | string | |
+| senderId | string | device ID of the owner or the entrant |
 | text | string | must not be empty |
 | createdAt | number | ms |
+
+One conversation per reservation, between the reservation's entrant and the campsite's owner
+(US 02.12.01, 01.14.01). Only those two can open it: `Reservation.canMessage(userId)`, and
+`Reservation.otherSide(userId)` is the person to notify. Messaging works whatever the
+reservation's status, so an owner can still explain a rejection. `Message.canSend(text)` stops
+empty messages (only spaces counts as empty); the text is saved trimmed. Messages are never edited
+or deleted, so the admin message log (03.12.01) can always show them.
+
+- `addMessage(message)` saves a new message and returns its ID. Like `addCampsite`, it doesn't
+  wait for the server, so sending works offline.
+- `listenToThread(reservationId, listener)` sends the conversation, oldest first
+  (`Message.inOrder`: by `createdAt`, then by ID), to a `ThreadListener` straight away and on every
+  change, until the returned `Subscription` is cancelled; `onThreadError()` if it can't be read.
+  Firestore filters only by `reservationId` and sorts on the device, so no composite index is
+  needed. The fake re-sends the conversation after every `addMessage`, like Firestore.
+- `getAllThreads()` is for the admin message log: every conversation, each oldest first, the one
+  with the newest message first (`Message.threads`).
+
+Each new message adds a `NEW_MESSAGE` notification to the other side's inbox
+(`NotificationService.sendNewMessage`), unless they turned notifications off. Its ID is
+`message_<messageId>`, it has the reservation's `campsiteId` and `reservationId` (so a tap opens
+the conversation), the title "New message" and the message `<campsite name>: <text>`.
 
 ### `ratings`: `Rating`
 Document ID = **`campsiteId_userId`**, so rating again replaces the old rating. Not used by a
@@ -199,16 +306,31 @@ repository yet (added by the rating story).
 | campsiteId, userId | string | |
 | stars | number | 1–5 |
 
-### `images`: `ImageAsset`
-Not used by a repository yet (added by the photo story).
+### `images`: `ImageAsset` (`ImageRepository`)
+One document per uploaded photo (US 02.01.02b). The photo itself is saved **in the document** as
+Base64 text, so we need no file storage (Firebase Storage would need the paid Blaze plan) and no
+new library.
 
 | Field | Type | Notes |
 |---|---|---|
-| storagePath | string | where the file is stored |
-| uploaderId | string | |
-| ownerType | string | `campsite` or `profile` |
-| ownerId | string | |
-| label | string | shown in the admin image browser |
+| data | string | the JPEG as Base64 text; at most `ImageAsset.MAX_DATA_LENGTH` (900,000) characters, because a document can be at most 1 MB |
+| uploaderId | string | device ID of who uploaded it |
+| ownerType | string | `campsite` or `profile` (`ImageAsset.OWNER_CAMPSITE` / `OWNER_PROFILE`) |
+| ownerId | string | the campsite's or profile's ID |
+| label | string | shown in the admin image browser: the campsite name, or the user's name for a profile photo |
+| createdAt | number | ms |
+
+- **Saving a photo:** pick it with the phone's photo picker, then `PhotoReader.readJpeg(uri, ImageAsset.MAX_JPEG_BYTES)`
+  shrinks it (longest side 1024 px, JPEG quality lowered until it is at most 600 KB). Make the
+  record with `ImageAsset.fromJpeg(...)` and save it with `addImage`, which returns its ID; put that
+  ID in the campsite's or profile's `imageId`. `addImage` throws if the image is too big
+  (`isSmallEnough()`). Like `addCampsite`, it doesn't wait for the server, so it works offline.
+- **Showing a photo:** use `SavedPhoto(imageId, ...)` from `ui/common/Photo.kt`. It loads the image
+  through the app's `ImageRepository`, caches it, and shows a placeholder while there's none.
+- **Replacing or removing a photo:** save the new `imageId` (or `null`) first, then
+  `deleteImage(oldId)`. Profile photos use `ProfileRepository.setPhoto` instead, which does it
+  all in one batch. An image never changes once saved; a new photo gets a new ID.
+- `getAllImages()` lists every image, newest first, for the admin image browser (US 03.06.01).
 
 ## Adding to a repository
 
