@@ -1,8 +1,9 @@
 /*
  * ReserveControllerTest.kt
- * Unit tests for ReserveController (US 01.04.01, T-03, US 01.04.03): which nights a winner can
- * pick, where the win stands during and after the booking period, picking nights in a row, group
- * size, reserving nights and handling conflicts, and declining the win, using fake repositories.
+ * Unit tests for ReserveController (US 01.04.01, US 01.04.02, T-03, US 01.04.03): which nights a
+ * winner can pick, single-site vs multi-site campsite selection and switching races, where the win
+ * stands during and after the booking period, picking nights in a row, group size limits,
+ * reserving nights and handling conflicts, and declining the win, using fake repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -27,7 +28,10 @@ import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ReserveResult
 import com.example.vipers.ui.lottery.LotteryDrawer
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -144,11 +148,46 @@ class ReserveControllerTest {
     }
 
     @Test
-    fun fetchData_usesTheLotterysFirstCampsiteWhenNoneIsGiven() {
-        assertEquals("hinton", loaded(campsiteId = null).campsite?.id)
-        // a campsite this lottery doesn't cover can't be reserved with its win
-        assertEquals("hinton", loaded(campsiteId = "banff").campsite?.id)
-        assertEquals("jasper", loaded(campsiteId = "jasper").campsite?.id)
+    fun fetchData_usesSoleActiveSiteOrValidRouteHint_andLeavesMultiSiteUnselectedWithoutHint() = runBlocking {
+        // Multi-site lottery with valid hint preselects it
+        val hinted = loaded(campsiteId = "jasper")
+        assertTrue(hinted.isMultiSite)
+        assertEquals(listOf("hinton", "jasper"), hinted.availableCampsites.map { it.id })
+        assertEquals("jasper", hinted.campsite?.id)
+
+        // Multi-site lottery without hint or with invalid hint leaves campsite unselected
+        val unhinted = loaded(campsiteId = null)
+        assertTrue(unhinted.isMultiSite)
+        assertNull(unhinted.campsite)
+        assertTrue(unhinted.freeNights.isEmpty())
+
+        val invalidHint = loaded(campsiteId = "banff")
+        assertNull(invalidHint.campsite)
+        assertTrue(invalidHint.freeNights.isEmpty())
+
+        // Single-site lottery auto-selects its sole active campsite even without a valid hint
+        val singleSiteLottery = lottery.copy(campsiteIds = listOf("hinton"))
+        val single = loaded(campsiteId = null, theLottery = singleSiteLottery)
+        assertFalse(single.isMultiSite)
+        assertEquals("hinton", single.campsite?.id)
+        assertEquals("hinton", loaded(campsiteId = "banff", theLottery = singleSiteLottery).campsite?.id)
+
+        // Multi-site lottery with only one remaining active campsite falls back to single-site layout
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper.copy(removed = true)))
+        campsites.saveAvailability(hintonCalendar)
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val singleRemaining = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, campsites),
+        )
+        singleRemaining.fetchData(duringBooking)
+        assertFalse(singleRemaining.isMultiSite)
+        assertEquals("hinton", singleRemaining.campsite?.id)
     }
 
     @Test
@@ -770,5 +809,533 @@ class ReserveControllerTest {
         val otherLost = if (promotedId == "user-jo") "user-kim" else "user-jo"
         assertEquals(EntryStatus.LOST, entries[otherLost]?.status)
         assertTrue(realNotifications.getNotificationsFor(otherLost).isEmpty())
+    }
+
+    // US 01.04.02: choosing campsite and dates in a multi-campsite lottery
+
+    @Test
+    fun fetchData_loadsDistinctActiveCampsitesInStoredOrder_skippingMissingAndRemoved() = runBlocking {
+        val removed = Campsite(id = "banff", name = "Banff Creek", removed = true)
+        val multiLottery = lottery.copy(
+            campsiteIds = listOf("removed-id", "jasper", "banff", "hinton", "jasper"),
+        )
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper, removed))
+        val lotteries = FakeLotteryRepository(listOf(multiLottery), listOf(entry(EntryStatus.WON)))
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, campsites),
+        )
+
+        controller.fetchData(duringBooking)
+
+        assertEquals(listOf("jasper", "hinton"), controller.availableCampsites.map { it.id })
+        assertTrue(controller.isMultiSite)
+        assertNull(controller.campsite)
+
+        // When all covered campsites are missing or removed, no sites are available
+        val emptyCampsites = FakeCampsiteRepository(listOf(removed))
+        val emptyController = ReserveController(
+            campsiteRepository = emptyCampsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(emptyCampsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            lotteryDrawer = drawerFor(lotteries, emptyCampsites),
+        )
+        emptyController.fetchData(duringBooking)
+        assertTrue(emptyController.availableCampsites.isEmpty())
+        assertNull(emptyController.campsite)
+    }
+
+    @Test
+    fun fetchData_setsErrorWhenReadingCampsiteFails() = runBlocking {
+        val failingCampsites = object : CampsiteRepository by FakeCampsiteRepository(listOf(hinton)) {
+            override suspend fun getCampsite(id: String): Campsite? =
+                throw IllegalStateException("offline")
+        }
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val controller = ReserveController(
+            campsiteRepository = failingCampsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(failingCampsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, failingCampsites),
+        )
+
+        controller.fetchData(duringBooking)
+
+        assertEquals("Unable to load your win.", controller.error)
+        assertFalse(controller.loading)
+    }
+
+    @Test
+    fun selectCampsite_switchesDisjointCalendarsRulesAndPrice_andClearsPickedNightsAndError() = runBlocking {
+        val jasperWithRules = jasper.copy(
+            maxOccupancy = 6,
+            pricePerNightCents = 6500,
+            rules = "No campfires.",
+            cancellationPolicy = "No refunds within 48 hours.",
+        )
+        val jasperCalendar = AvailabilityCalendar(
+            campsiteId = "jasper",
+            openNights = (24..27).map { "2027-05-$it" },
+        )
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasperWithRules))
+        campsites.saveAvailability(hintonCalendar.copy(openNights = (17..23).map { "2027-05-$it" }))
+        campsites.saveAvailability(jasperCalendar)
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, campsites),
+        )
+
+        controller.fetchData(duringBooking)
+        assertNull(controller.campsite)
+        assertNull(controller.nightsTimesPriceText)
+        assertNull(controller.totalText)
+        assertFalse(controller.noNightsLeft)
+
+        // Selecting Hinton shows Hinton's free nights, pricing, and rules
+        controller.selectCampsite("hinton", duringBooking)
+        assertEquals("hinton", controller.campsite?.id)
+        assertEquals("Quiet hours 10 pm to 7 am.", controller.campsite?.rules)
+        assertEquals(listOf("2027-05-17", "2027-05-18", "2027-05-19", "2027-05-22", "2027-05-23"), controller.freeNights)
+        controller.onNightTap("2027-05-18")
+        controller.onNightTap("2027-05-19")
+        assertEquals("2 nights × $50", controller.nightsTimesPriceText)
+        assertEquals("Total $100", controller.totalText)
+
+        // Trigger a campsite-specific error while nights are picked, then switch sites
+        controller.onNightTap("2027-05-19")
+        controller.onNightTap("2027-05-18")
+        controller.reserveNights(duringBooking)
+        assertEquals("Please pick at least one night.", controller.reserveError)
+        controller.onNightTap("2027-05-18")
+
+        // Switching to Jasper clears picked nights and reserveError, and loads Jasper's calendar/price/rules
+        controller.selectCampsite("jasper", duringBooking)
+        assertEquals("jasper", controller.campsite?.id)
+        assertEquals("No campfires.", controller.campsite?.rules)
+        assertTrue(controller.selectedNights.isEmpty())
+        assertNull(controller.reserveError)
+        assertEquals((24..27).map { "2027-05-$it" }, controller.freeNights)
+        assertEquals("0 nights × $65", controller.nightsTimesPriceText)
+        assertEquals("Total $0", controller.totalText)
+
+        // Tapping the already-selected site does not clear picked nights
+        controller.onNightTap("2027-05-25")
+        controller.selectCampsite("jasper", duringBooking)
+        assertEquals(listOf("2027-05-25"), controller.selectedNights)
+    }
+
+    @Test
+    fun selectCampsite_preservesGroupSize_andBlocksOversizedGroupWithClearFeedback() = runBlocking {
+        val smallJasper = jasper.copy(maxOccupancy = 2)
+        val campsites = FakeCampsiteRepository(listOf(hinton, smallJasper))
+        campsites.saveAvailability(hintonCalendar)
+        campsites.saveAvailability(
+            AvailabilityCalendar(campsiteId = "jasper", openNights = listOf("2027-05-24", "2027-05-25")),
+        )
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val reservations = FakeReservationRepository(campsites, lotteries)
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = reservations,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            lotteryDrawer = drawerFor(lotteries, campsites),
+        )
+
+        controller.fetchData(duringBooking)
+        controller.incrementGroupSize()
+        assertEquals(5, controller.groupSize)
+
+        // Switching to smaller Jasper preserves groupSize = 5
+        controller.selectCampsite("jasper", duringBooking)
+        assertEquals(5, controller.groupSize)
+        controller.onNightTap("2027-05-24")
+
+        val blocked = controller.reserveNights(duringBooking)
+        assertEquals(ReserveResult.CapacityExceeded, blocked)
+        assertEquals("Group size cannot exceed the maximum occupancy of 2.", controller.reserveError)
+        assertNull(controller.confirmedReservation)
+        assertTrue(reservations.getReservationsForUser("user-sam").isEmpty())
+
+        // Reducing guest count down to maxOccupancy = 2 allows reserving
+        repeat(3) { controller.decrementGroupSize() }
+        assertEquals(2, controller.groupSize)
+        val succeeded = controller.reserveNights(duringBooking)
+        assertTrue(succeeded is ReserveResult.Success)
+        val res = (succeeded as ReserveResult.Success).reservation
+        assertEquals("jasper", res.campsiteId)
+        assertEquals(2, res.groupSize)
+    }
+
+    @Test
+    fun selectCampsite_ignoresStaleCalendarResponse_andKeepsSelectorUsableOnFailure() = runBlocking {
+        val slowHinton = CompletableDeferred<AvailabilityCalendar>()
+        var failJasper = false
+        val baseCampsites = FakeCampsiteRepository(listOf(hinton, jasper))
+        baseCampsites.saveAvailability(
+            AvailabilityCalendar(campsiteId = "jasper", openNights = listOf("2027-05-25", "2027-05-26")),
+        )
+        val racingCampsites = object : CampsiteRepository by baseCampsites {
+            override suspend fun getAvailability(campsiteId: String): AvailabilityCalendar =
+                when (campsiteId) {
+                    "hinton" -> slowHinton.await()
+                    "jasper" -> {
+                        if (failJasper) throw IllegalStateException("network down")
+                        baseCampsites.getAvailability("jasper")
+                    }
+                    else -> baseCampsites.getAvailability(campsiteId)
+                }
+        }
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val controller = ReserveController(
+            campsiteRepository = racingCampsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(racingCampsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, racingCampsites),
+        )
+        controller.fetchData(duringBooking)
+
+        // Start loading Hinton (suspends), then switch to Jasper before Hinton finishes
+        val hintonSwitch = async { controller.selectCampsite("hinton", duringBooking) }
+        yield()
+        assertTrue(controller.loadingAvailability)
+
+        controller.selectCampsite("jasper", duringBooking)
+        assertEquals("jasper", controller.campsite?.id)
+        assertFalse(controller.loadingAvailability)
+        assertEquals(listOf("2027-05-25", "2027-05-26"), controller.freeNights)
+        controller.onNightTap("2027-05-25")
+
+        // Stale Hinton response arrives late: must not overwrite Jasper's state
+        slowHinton.complete(hintonCalendar)
+        hintonSwitch.await()
+        assertEquals("jasper", controller.campsite?.id)
+        assertEquals(listOf("2027-05-25", "2027-05-26"), controller.freeNights)
+        assertEquals(listOf("2027-05-25"), controller.selectedNights)
+        assertNull(controller.availabilityError)
+        assertFalse(controller.loadingAvailability)
+
+        // Switching to a site whose availability fails isolates the error and recovers on retry
+        controller.selectCampsite("hinton", duringBooking)
+        assertEquals("hinton", controller.campsite?.id)
+        failJasper = true
+        controller.selectCampsite("jasper", duringBooking)
+        assertEquals(
+            "Unable to load campsite availability. Please try again.",
+            controller.availabilityError,
+        )
+        assertNull(controller.error)
+        assertFalse(controller.noNightsLeft)
+        assertEquals(2, controller.availableCampsites.size)
+
+        failJasper = false
+        controller.selectCampsite("jasper", duringBooking)
+        assertNull(controller.availabilityError)
+        assertEquals(listOf("2027-05-25", "2027-05-26"), controller.freeNights)
+    }
+
+    @Test
+    fun reserveInFlight_blocksCampsiteSwitchingAndDecline() = runBlocking {
+        val gate = CompletableDeferred<ReserveResult>()
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper))
+        campsites.saveAvailability(hintonCalendar)
+        campsites.saveAvailability(
+            AvailabilityCalendar(campsiteId = "jasper", openNights = listOf("2027-05-25")),
+        )
+        val lotteries = lotteriesWith(EntryStatus.WON)
+        val baseReservations = FakeReservationRepository(campsites, lotteries)
+        val gatedReservations = object : com.example.vipers.domain.repository.ReservationRepository by baseReservations {
+            override suspend fun createReservation(
+                lotteryId: String,
+                campsiteId: String,
+                userId: String,
+                nights: List<String>,
+                groupSize: Int,
+                now: Long,
+            ): ReserveResult {
+                gate.await()
+                return baseReservations.createReservation(
+                    lotteryId,
+                    campsiteId,
+                    userId,
+                    nights,
+                    groupSize,
+                    now,
+                )
+            }
+        }
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = gatedReservations,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            lotteryDrawer = drawerFor(lotteries, campsites),
+        )
+        controller.fetchData(duringBooking)
+        controller.onNightTap("2027-05-22")
+
+        val inFlight = async { controller.reserveNights(duringBooking) }
+        yield()
+        assertTrue(controller.isReserving)
+
+        // Switching and declining must be ignored while reserving
+        controller.selectCampsite("jasper", duringBooking)
+        controller.decline(duringBooking)
+        assertEquals("hinton", controller.campsite?.id)
+        assertEquals(0, lotteries.declineCalls)
+
+        gate.complete(ReserveResult.NotEligible)
+        val result = inFlight.await()
+        assertTrue(result is ReserveResult.Success)
+        assertFalse(controller.isReserving)
+        assertEquals("hinton", controller.confirmedReservation?.campsiteId)
+    }
+
+    @Test
+    fun decline_multiSiteBeforeSelectingCampsite_declinesAndPromotesReplacement() = runBlocking {
+        val notifications = FakeNotificationRepository()
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper))
+        val lotteries = lotteriesWith(
+            EntryStatus.WON,
+            extraEntries = listOf(entry(EntryStatus.LOST, userId = "user-jo")),
+            notifications = notifications,
+        )
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, campsites, notifications),
+        )
+        controller.fetchData(duringBooking)
+        assertNull(controller.campsite)
+        assertTrue(controller.canDecline)
+
+        controller.decline(duringBooking)
+
+        assertEquals(EntryStatus.DECLINED, lotteries.getEntry("lot-may", "user-sam")?.status)
+        assertEquals(OfferState.USED, controller.offerState)
+        assertFalse(controller.canDecline)
+        assertEquals(EntryStatus.WON, lotteries.getEntry("lot-may", "user-jo")?.status)
+        val notices = notifications.getNotificationsFor("user-jo")
+        assertEquals(1, notices.size)
+        assertEquals("replacement_lot-may_user-jo", notices[0].id)
+    }
+
+    @Test
+    fun reserveNights_conflictRefreshPreservesChosenSite_andOneWinCannotReserveTwoCampsites() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper.copy(maxOccupancy = 6)))
+        campsites.saveAvailability(hintonCalendar)
+        campsites.saveAvailability(
+            AvailabilityCalendar(campsiteId = "jasper", openNights = listOf("2027-05-25", "2027-05-26")),
+        )
+        val lotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val reservations = FakeReservationRepository(campsites, lotteries)
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = reservations,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, campsites),
+        )
+
+        controller.fetchData(duringBooking)
+        controller.selectCampsite("jasper", duringBooking)
+        controller.onNightTap("2027-05-25")
+
+        // Another winner takes May 25 at Jasper first
+        val cal = campsites.getAvailability("jasper")
+        campsites.saveAvailability(cal.copy(heldNights = cal.heldNights + "2027-05-25"))
+
+        val conflict = controller.reserveNights(duringBooking)
+        assertEquals(ReserveResult.Conflict, conflict)
+        assertEquals("jasper", controller.campsite?.id)
+        assertEquals(listOf("2027-05-26"), controller.freeNights)
+        assertTrue(controller.selectedNights.isEmpty())
+
+        // Now book May 26 at Jasper
+        controller.onNightTap("2027-05-26")
+        val success = controller.reserveNights(duringBooking)
+        assertTrue(success is ReserveResult.Success)
+        assertEquals("jasper", (success as ReserveResult.Success).reservation.campsiteId)
+
+        // Same win cannot produce a second reservation at Hinton
+        val secondAttempt = reservations.createReservation(
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            userId = "user-sam",
+            nights = listOf("2027-05-18"),
+            groupSize = 2,
+            now = duringBooking,
+        )
+        assertEquals(ReserveResult.NotEligible, secondAttempt)
+        assertEquals(1, reservations.getReservationsForUser("user-sam").size)
+    }
+
+    @Test
+    fun decline_withZeroActiveCampsitesAndOpenWin_keepsLotteryAndDeclinesSuccessfully() = runBlocking {
+        val removedHinton = hinton.copy(removed = true)
+        val removedJasper = jasper.copy(removed = true)
+        val campsites = FakeCampsiteRepository(listOf(removedHinton, removedJasper))
+        val notifications = FakeNotificationRepository()
+        val lotteries = lotteriesWith(
+            EntryStatus.WON,
+            extraEntries = listOf(entry(EntryStatus.LOST, userId = "user-jo")),
+            notifications = notifications,
+        )
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = null,
+            lotteryDrawer = drawerFor(lotteries, campsites, notifications),
+        )
+
+        controller.fetchData(duringBooking)
+        assertNotNull(controller.lottery)
+        assertTrue(controller.availableCampsites.isEmpty())
+        assertNull(controller.campsite)
+        assertEquals(OfferState.OPEN, controller.offerState)
+        assertTrue(controller.canDecline)
+
+        controller.decline(duringBooking)
+        assertEquals(EntryStatus.DECLINED, lotteries.getEntry("lot-may", "user-sam")?.status)
+        assertEquals(OfferState.USED, controller.offerState)
+        assertFalse(controller.canDecline)
+        assertEquals(EntryStatus.WON, lotteries.getEntry("lot-may", "user-jo")?.status)
+    }
+
+    @Test
+    fun decline_whilePostDeclineRefreshSuspended_blocksSwitchReserveAndRepeatDecline() = runBlocking {
+        val refreshStarted = CompletableDeferred<Unit>()
+        val refreshGate = CompletableDeferred<Lottery?>()
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper.copy(maxOccupancy = 6)))
+        campsites.saveAvailability(hintonCalendar)
+        campsites.saveAvailability(
+            AvailabilityCalendar(campsiteId = "jasper", openNights = listOf("2027-05-25")),
+        )
+        val baseLotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        val countingLotteries = CountingLotteryRepository(baseLotteries)
+        val gatedLotteries = object : LotteryRepository by countingLotteries {
+            override suspend fun getLottery(id: String): Lottery? {
+                if (countingLotteries.declineCalls >= 1) {
+                    refreshStarted.complete(Unit)
+                    return refreshGate.await()
+                }
+                return countingLotteries.getLottery(id)
+            }
+        }
+        val reservations = FakeReservationRepository(campsites, gatedLotteries)
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = gatedLotteries,
+            reservationRepository = reservations,
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            lotteryDrawer = drawerFor(gatedLotteries, campsites),
+        )
+
+        controller.fetchData(duringBooking)
+        controller.onNightTap("2027-05-22")
+
+        val inFlightDecline = async { controller.decline(duringBooking) }
+        refreshStarted.await()
+
+        assertTrue(controller.isDeclining)
+        assertEquals(1, countingLotteries.declineCalls)
+
+        // Switching, Reserve, and repeat Decline must all be rejected while post-decline refresh is suspended
+        controller.selectCampsite("jasper", duringBooking)
+        assertEquals("hinton", controller.campsite?.id)
+
+        val reserveAttempt = controller.reserveNights(duringBooking)
+        assertEquals(ReserveResult.Error("A request is already in progress."), reserveAttempt)
+        assertTrue(reservations.getReservationsForUser("user-sam").isEmpty())
+
+        controller.decline(duringBooking)
+        assertEquals(1, countingLotteries.declineCalls)
+
+        // Unblock refresh and verify refreshed offer state is applied
+        refreshGate.complete(lottery)
+        inFlightDecline.await()
+
+        assertFalse(controller.isDeclining)
+        assertEquals(OfferState.USED, controller.offerState)
+        assertEquals(EntryStatus.DECLINED, controller.entry?.status)
+        assertFalse(controller.canDecline)
+    }
+
+    @Test
+    fun decline_whenNotDeclinedAndRefreshFails_surfacesRefreshFailureWithoutInventingDeclinedStatus() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hinton))
+        campsites.saveAvailability(hintonCalendar)
+        val baseLotteries = FakeLotteryRepository(listOf(lottery), listOf(entry(EntryStatus.WON)))
+        var failRefresh = false
+        val lotteries = object : LotteryRepository by baseLotteries {
+            override suspend fun declineTransaction(
+                lotteryId: String,
+                userId: String,
+                candidateUserId: String?,
+                replacementNotice: Notification?,
+                now: Long,
+            ): DeclineTransactionResult {
+                failRefresh = true
+                return DeclineTransactionResult.NotDeclined
+            }
+
+            override suspend fun getLottery(id: String): Lottery? {
+                if (failRefresh) throw IllegalStateException("refresh failed")
+                return baseLotteries.getLottery(id)
+            }
+        }
+        val controller = ReserveController(
+            campsiteRepository = campsites,
+            lotteryRepository = lotteries,
+            reservationRepository = FakeReservationRepository(campsites, lotteries),
+            userId = "user-sam",
+            lotteryId = "lot-may",
+            campsiteId = "hinton",
+            lotteryDrawer = drawerFor(lotteries, campsites),
+        )
+
+        controller.fetchData(duringBooking)
+        controller.decline(duringBooking)
+
+        assertFalse(controller.isDeclining)
+        assertNull(controller.declineError)
+        assertEquals("Unable to load your win.", controller.error)
+        assertEquals(EntryStatus.WON, controller.entry?.status)
+        assertEquals(OfferState.OPEN, controller.offerState)
     }
 }

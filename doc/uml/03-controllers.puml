@@ -208,15 +208,20 @@ package "controllers (ViewModels)" {
 
   class ReserveController <<ViewModel>> {
     lottery: Lottery?
+    availableCampsites: List<Campsite>
     campsite: Campsite?
     offerState: OfferState
     freeNights: List<String>
     selectedNights: List<String>
     groupSize: Int
+    loadingAvailability: Boolean
+    availabilityError: String?
     confirmedReservation: Reservation?
     canDecline: Boolean
     totalText: String?
     suspend fetchData(now: Long)
+    onCampsiteSelect(campsiteId: String)
+    suspend selectCampsite(campsiteId: String, now: Long)
     onNightTap(night: String)
     onGroupSizeChange(newSize: Int)
     suspend reserveNights(now: Long): ReserveResult

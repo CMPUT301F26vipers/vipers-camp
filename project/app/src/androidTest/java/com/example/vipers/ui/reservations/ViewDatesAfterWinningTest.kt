@@ -1,9 +1,10 @@
 /*
  * ViewDatesAfterWinningTest.kt
- * Intent tests for US 01.04.01: a winner opens the Reserve screen (mockup E11) from Campsite
- * Details or from the win notification, and sees the reserve-by date, the lottery's nights with
- * taken ones greyed out, and the price and total for the nights they pick; plus the "no nights
- * left" and "offer expired" cases. Uses the fake repositories, so it doesn't touch Firestore.
+ * Intent tests for US 01.04.01 and US 01.04.02: a winner opens the Reserve screen (mockup E11)
+ * from Campsite Details or from the win notification, selects among campsites in a multi-site
+ * lottery, and sees the reserve-by date, the lottery's nights with taken ones greyed out, and the
+ * price and total for the nights they pick; plus the "no nights left" and "offer expired" cases.
+ * Uses the fake repositories, so it doesn't touch Firestore.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -261,5 +263,142 @@ class ViewDatesAfterWinningTest {
         night(0).assert(hasState("Taken"))
         night(0).performClick()
         composeRule.onNodeWithTag("reserve_total").assertTextEquals("Total $0")
+    }
+
+    // US 01.04.02: choosing campsite and dates in a multi-campsite lottery
+
+    private val jasper = Campsite(
+        id = "jasper",
+        ownerId = "owner-priya",
+        name = "Jasper Pines",
+        address = "Jasper, AB",
+        region = Region.JASPER,
+        maxOccupancy = 6,
+        pricePerNightCents = 6500,
+        rules = "No campfires during fire ban",
+        cancellationPolicy = "No refunds within 48 hours",
+    )
+
+    private val multiLottery = lottery.copy(campsiteIds = listOf("hinton", "jasper"))
+
+    private val hintonDisjointCalendar = AvailabilityCalendar(
+        campsiteId = "hinton",
+        openNights = nights.take(4),
+    )
+
+    private val jasperDisjointCalendar = AvailabilityCalendar(
+        campsiteId = "jasper",
+        openNights = nights.drop(5).take(4),
+    )
+
+    private fun startMultiSiteApp(
+        hintonCal: AvailabilityCalendar = hintonDisjointCalendar,
+        jasperCal: AvailabilityCalendar = jasperDisjointCalendar,
+    ) {
+        val campsites = FakeCampsiteRepository(listOf(hinton, jasper))
+        runBlocking {
+            campsites.saveAvailability(hintonCal)
+            campsites.saveAvailability(jasperCal)
+        }
+        val multiWinNotice = winNotification.copy(
+            campsiteId = null,
+            message = "You won a spot at Hinton Ridge Campground, Jasper Pines.",
+        )
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+            as CampApp
+        app.container = AppContainer(
+            deviceId = "test-device",
+            profileRepository = FakeProfileRepository(
+                listOf(UserProfile(id = "test-device", name = "Sam Patel")),
+            ),
+            campsiteRepository = campsites,
+            lotteryRepository = FakeLotteryRepository(
+                listOf(multiLottery),
+                listOf(samsEntry(EntryStatus.WON)),
+            ),
+            reservationRepository = FakeReservationRepository(campsites, FakeLotteryRepository()),
+            messageRepository = FakeMessageRepository(),
+            notificationRepository = FakeNotificationRepository(listOf(multiWinNotice)),
+            imageRepository = FakeImageRepository(),
+        )
+        composeRule.setContent {
+            VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) }
+        }
+    }
+
+    @Test
+    fun multiSite_fromCampsiteDetailsHint_preselectsSiteAndShowsSelector() {
+        startMultiSiteApp()
+
+        composeRule.onNodeWithTag("search_field").performTextInput("Jasper")
+        composeRule.onNodeWithText("Jasper Pines").performClick()
+        composeRule.onNodeWithTag("reserve_button").performScrollTo().performClick()
+
+        composeRule.onNodeWithTag("reserve_campsite_selector").assertIsDisplayed()
+        composeRule.onNodeWithTag("reserve_campsite_option_jasper").assert(hasState("Selected"))
+        composeRule.onNodeWithTag("reserve_campsite_option_hinton").assert(hasState("Unselected"))
+        night(5).assert(hasState("Free"))
+        night(0).assert(hasState("Taken"))
+        composeRule.onNodeWithText("Rules: No campfires during fire ban").performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun multiSite_fromWinNotification_listsSitesFirst_andSwitchingClearsPickedNights() {
+        startMultiSiteApp()
+
+        composeRule.onNodeWithTag("tab_${Routes.NOTIFICATIONS}").performClick()
+        composeRule.onNodeWithText("You won the lottery!").performClick()
+
+        composeRule.onNodeWithTag("reserve_campsite_selector").assertIsDisplayed()
+        composeRule.onNodeWithTag("reserve_campsite_option_hinton").assert(hasState("Unselected"))
+        composeRule.onNodeWithTag("reserve_campsite_option_jasper").assert(hasState("Unselected"))
+        composeRule.onNodeWithTag("reserve_choose_campsite_prompt").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_reserve").assertDoesNotExist()
+
+        // Choose Hinton first and pick a night
+        composeRule.onNodeWithTag("reserve_campsite_option_hinton").performClick()
+        composeRule.onNodeWithTag("reserve_campsite_option_hinton").assert(hasState("Selected"))
+        night(0).assert(hasState("Free"))
+        night(5).assert(hasState("Taken"))
+        night(0).performClick()
+        composeRule.onNodeWithTag("reserve_nights_price").assertTextEquals("1 night × $50")
+        composeRule.onNodeWithTag("reserve_total").assertTextEquals("Total $50")
+        composeRule.onNodeWithText("Rules: Quiet hours 10 pm to 7 am").performScrollTo()
+            .assertIsDisplayed()
+
+        // Switch to Jasper: picked night clears, disjoint calendar and rules update
+        composeRule.onNodeWithTag("reserve_campsite_option_jasper").performScrollTo().performClick()
+        composeRule.onNodeWithTag("reserve_campsite_option_jasper").assert(hasState("Selected"))
+        night(0).assert(hasState("Taken"))
+        night(5).assert(hasState("Free"))
+        composeRule.onNodeWithTag("reserve_nights_price").assertTextEquals("0 nights × $65")
+        composeRule.onNodeWithTag("reserve_total").assertTextEquals("Total $0")
+        composeRule.onNodeWithText("Rules: No campfires during fire ban").performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun multiSite_noNightsLeftAtChosenSite_promptsOtherChoicesAndCanSwitch() {
+        startMultiSiteApp(
+            hintonCal = hintonDisjointCalendar.copy(heldNights = hintonDisjointCalendar.openNights),
+            jasperCal = jasperDisjointCalendar,
+        )
+
+        composeRule.onNodeWithTag("tab_${Routes.NOTIFICATIONS}").performClick()
+        composeRule.onNodeWithText("You won the lottery!").performClick()
+
+        composeRule.onNodeWithTag("reserve_campsite_option_hinton").performClick()
+        composeRule.onNodeWithTag("reserve_no_nights").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "No nights are left at this campsite. Choose another campsite or decline your win " +
+                "so someone else gets a chance.",
+        ).assertIsDisplayed()
+
+        composeRule.onNodeWithTag("reserve_campsite_option_jasper").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("reserve_no_nights").fetchSemanticsNodes().isEmpty()
+        }
+        night(5).assert(hasState("Free"))
     }
 }
