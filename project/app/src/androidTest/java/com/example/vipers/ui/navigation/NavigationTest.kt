@@ -253,7 +253,7 @@ class NavigationTest {
         composeRule.onNodeWithText("Notification Log").performClick()
         assertShown("Logs")
         composeRule.onNodeWithTag("logs_tab_notification_log").assertIsSelected()
-        assertShown("Notification Log (03.08.01)")
+        assertShown("No notifications yet")
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("Profiles")
 
@@ -482,7 +482,7 @@ class NavigationTest {
         composeRule.onNodeWithText("Notification Log").performClick()
         assertShown("Logs")
         composeRule.onNodeWithTag("logs_tab_notification_log").assertIsSelected()
-        assertShown("Notification Log (03.08.01)")
+        assertShown("No notifications yet")
 
         // Switch to Message Log tab
         composeRule.onNodeWithTag("logs_tab_message_log").performClick()
