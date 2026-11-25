@@ -1,7 +1,7 @@
 /*
  * LogsScreen.kt
- * Displays admin logs (Notification Log and Message Log) (US 03.12.01, mockup A09).
- * Known issues: Notification Log is added in US 03.08.01.
+ * Displays admin logs (Notification Log and Message Log) (US 03.08.01, US 03.12.01, mockup A09).
+ * Known issues: none. The Notification Log is read-only.
  */
 package com.example.vipers.ui.admin
 
@@ -47,7 +47,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
-import com.example.vipers.ui.common.Placeholder
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.messages.messageTime
 import com.example.vipers.ui.theme.Border
@@ -63,12 +62,12 @@ enum class LogsTab(val label: String) {
 }
 
 /**
- * Admin logs screen (mockup A09) with Notification Log and Message Log tabs (US 03.12.01).
+ * Admin logs screen (mockup A09) with Notification Log (US 03.08.01) and Message Log (US 03.12.01) tabs.
  *
  * @param onBack Called when the back button is tapped.
  * @param onOpenConversation Called with the reservation ID when a conversation is tapped.
  * @param initialTab The tab to open initially (defaults to [LogsTab.MESSAGE_LOG]).
- * @param controller Loads the message logs; tests can pass their own instance.
+ * @param controller Loads the notification log and the message logs; tests can pass their own instance.
  */
 @Composable
 fun LogsScreen(
@@ -82,6 +81,9 @@ fun LogsScreen(
     LaunchedEffect(Unit) {
         if (controller.messageLogs.isEmpty()) {
             controller.loadMessageLogs()
+        }
+        if (controller.notificationLog.isEmpty()) {
+            controller.loadNotificationLog()
         }
     }
 
@@ -109,10 +111,7 @@ fun LogsScreen(
         }
 
         when (selectedTab) {
-            LogsTab.NOTIFICATION_LOG -> Placeholder(
-                "Notification Log (03.08.01)",
-                modifier = Modifier.padding(16.dp),
-            )
+            LogsTab.NOTIFICATION_LOG -> NotificationLogTab(controller = controller)
             LogsTab.MESSAGE_LOG -> MessageLogTab(
                 controller = controller,
                 onOpenConversation = onOpenConversation,
@@ -147,6 +146,105 @@ private fun TabPill(
             textAlign = TextAlign.Center,
             maxLines = 1,
         )
+    }
+}
+
+/** The read-only Notification Log tab: every send, newest first (US 03.08.01). */
+@Composable
+private fun NotificationLogTab(controller: AdminController) {
+    when {
+        controller.isNotificationLogLoading && controller.notificationLog.isEmpty() -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        controller.notificationLogLoadFailed && controller.notificationLog.isEmpty() -> {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = controller.notificationLogError ?: "Unable to load notification log.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { controller.loadNotificationLog() }) {
+                    Text("Retry")
+                }
+            }
+        }
+        controller.notificationLog.isEmpty() -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "No notifications yet",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        else -> {
+            LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("notification_log_list"),
+            ) {
+                items(controller.notificationLog, key = { it.key }) { row ->
+                    NotificationLogRowItem(row = row)
+                }
+            }
+        }
+    }
+}
+
+/** One send: type, sender → recipient · time · campsite, and the text in quotes. Not clickable. */
+@Composable
+private fun NotificationLogRowItem(row: NotificationLogRow) {
+    val details = buildString {
+        append("${row.senderName} → ${row.recipientLabel} · ${row.time}")
+        row.campsiteLabel?.let { append(" · $it") }
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("notification_log_row"),
+        color = MaterialTheme.colorScheme.surface,
+        shape = Shapes.medium,
+        border = BorderStroke(1.dp, Border),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = row.typeLabel,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = details,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "\u201C${row.text}\u201D",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
     }
 }
 
