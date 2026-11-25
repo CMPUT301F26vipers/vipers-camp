@@ -274,6 +274,21 @@ isn't the lottery's `ownerId`), which save nothing. A failed save (e.g. offline)
 Notification screen keeps its `batchId` until a send works, so sending again writes the same IDs and
 nobody gets a second copy.
 
+The owner's Sent Notifications list (US 02.10.02, opened from My Campsites) reads them back with
+`getOwnerBroadcasts(senderId)`. It returns only the `OWNER_BROADCAST` notifications that sender
+saved, one per recipient. Firestore is asked for `senderId` and `type` with two equality filters,
+so no composite index is needed, and they are sorted newest first on the device.
+`SentNotification.fromNotifications` groups them into one row per send by `batchId` (a notification
+without one is a row of its own). Its recipient count is the number of different recipients saved,
+so entrants who opted out (and were never sent it) aren't counted, and its time is the send's
+`createdAt`. `SentNotification` is computed, never stored, and doesn't check the type or sender, so
+the admin log (03.08.01) can group the same way. `NotificationService.sentNotifications(ownerId)`
+adds the labels the screen shows: the campsite's name when `campsiteId` is set, otherwise the names
+of all the lottery's campsites in order, joined with ", "; and the lottery's `nightsDescription`,
+or its first offered night when it has none. A campsite or lottery that is missing, removed or
+can't be read shows as "Removed campsite" or "Removed lottery" instead of hiding the row, and each
+one is loaded once however many sends share it.
+
 Users who turned notifications off on Settings (`notificationsEnabled = false`) get none
 (US 01.10.01). Before saving a notification for some users, call
 `NotificationService.optedIn(userIds)`: it returns the ones who still want notifications. A user
