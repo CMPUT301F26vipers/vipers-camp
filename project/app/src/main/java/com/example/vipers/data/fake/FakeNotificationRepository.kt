@@ -64,6 +64,9 @@ class FakeNotificationRepository(initial: List<Notification> = emptyList()) : No
         return Subscription { listeners.remove(entry) }
     }
 
+    override suspend fun getAllNotifications(): List<Notification> =
+        notifications.values.sortedByDescending { it.createdAt }
+
     private fun inboxOf(recipientId: String): List<Notification> =
         notifications.values.filter { it.recipientId == recipientId }.sortedByDescending { it.createdAt }
 

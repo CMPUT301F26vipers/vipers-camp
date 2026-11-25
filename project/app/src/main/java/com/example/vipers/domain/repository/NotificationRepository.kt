@@ -41,4 +41,12 @@ interface NotificationRepository {
      * change, until the returned [Subscription] is cancelled (T-13).
      */
     fun listenToInbox(recipientId: String, listener: InboxListener): Subscription
+
+    /**
+     * Loads every notification in the app, for every recipient and sender, newest first, for the
+     * admin Notification Log (US 03.08.01). A one-time load, not a live listener.
+     *
+     * @throws Exception if they can't be loaded, e.g. offline with nothing cached or permission denied.
+     */
+    suspend fun getAllNotifications(): List<Notification>
 }

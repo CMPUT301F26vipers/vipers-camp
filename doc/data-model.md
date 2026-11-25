@@ -289,6 +289,10 @@ that user's notifications, newest first, straight away and on every change, unti
 the device, so no composite index is needed. `Subscription` keeps Firestore's
 `ListenerRegistration` out of `domain/`.
 
+The admin Notification Log (US 03.08.01) loads every notification once with `getAllNotifications()`:
+every recipient's and sender's, newest first. Firestore reads the whole collection and sorts by
+`createdAt` on the device, so no index is needed. It isn't a live listener.
+
 ### `messages`: `Message` (`MessageRepository`)
 
 | Field | Type | Notes |
