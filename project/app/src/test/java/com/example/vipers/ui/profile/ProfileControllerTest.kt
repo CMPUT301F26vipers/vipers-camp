@@ -6,6 +6,7 @@
  */
 package com.example.vipers.ui.profile
 
+import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.ProfileRepository
@@ -29,11 +30,15 @@ class ProfileControllerTest {
     private val repo = FakeProfileRepository()
     private lateinit var controller: ProfileController
 
+    // the profile photo isn't used here, so it gets a fake photo reader
+    private fun profileController(repository: ProfileRepository, deviceId: String) =
+        ProfileController(repository, deviceId, FakePhotoReader())
+
     @Before
     fun setUp() {
         // run viewModelScope work straight away in tests
         Dispatchers.setMain(Dispatchers.Unconfined)
-        controller = ProfileController(repo, deviceId = "my-phone")
+        controller = profileController(repo, "my-phone")
     }
 
     @After
@@ -99,7 +104,7 @@ class ProfileControllerTest {
         val failing = object : ProfileRepository by FakeProfileRepository() {
             override suspend fun saveProfile(profile: UserProfile) = throw Exception("rejected")
         }
-        val failingController = ProfileController(failing, deviceId = "my-phone")
+        val failingController = profileController(failing, "my-phone")
         failingController.save(UserProfile(id = "my-phone", name = "Maya"))
 
         assertTrue(failingController.saveFailed)
@@ -118,7 +123,7 @@ class ProfileControllerTest {
             phone = "7805551234"
         )
         val fakeRepo = FakeProfileRepository(listOf(profile))
-        val testController = ProfileController(fakeRepo, "user1")
+        val testController = profileController(fakeRepo, "user1")
 
         assertEquals("Sam", testController.name)
         assertEquals("sam@example.com", testController.email)
@@ -130,7 +135,7 @@ class ProfileControllerTest {
     fun saveProfile_updatesInformation() = runBlocking {
         val profile = UserProfile(id = "user1", name = "Sam")
         val fakeRepo = FakeProfileRepository(listOf(profile))
-        val testController = ProfileController(fakeRepo, "user1")
+        val testController = profileController(fakeRepo, "user1")
 
         testController.onNameChange("Sam Patel")
         testController.onEmailChange("sam@example.com")
@@ -148,7 +153,7 @@ class ProfileControllerTest {
     fun saveProfile_rejectsBlankName() = runBlocking {
         val profile = UserProfile(id = "user1", name = "Sam")
         val fakeRepo = FakeProfileRepository(listOf(profile))
-        val testController = ProfileController(fakeRepo, "user1")
+        val testController = profileController(fakeRepo, "user1")
 
         testController.onNameChange("")
         testController.saveProfile()
@@ -161,7 +166,7 @@ class ProfileControllerTest {
     fun saveProfile_rejectsInvalidEmail() = runBlocking {
         val profile = UserProfile(id = "user1", name = "Sam")
         val fakeRepo = FakeProfileRepository(listOf(profile))
-        val testController = ProfileController(fakeRepo, "user1")
+        val testController = profileController(fakeRepo, "user1")
 
         testController.onEmailChange("not-an-email")
         testController.saveProfile()
@@ -174,7 +179,7 @@ class ProfileControllerTest {
     fun saveProfile_rejectsInvalidPhone() = runBlocking {
         val profile = UserProfile(id = "user1", name = "Sam")
         val fakeRepo = FakeProfileRepository(listOf(profile))
-        val testController = ProfileController(fakeRepo, "user1")
+        val testController = profileController(fakeRepo, "user1")
 
         testController.onPhoneChange("123")
         testController.saveProfile()
@@ -194,7 +199,7 @@ class ProfileControllerTest {
             createdAt = 1000L
         )
         val fakeRepo = FakeProfileRepository(listOf(profile))
-        val testController = ProfileController(fakeRepo, "user1")
+        val testController = profileController(fakeRepo, "user1")
 
         testController.onNameChange("Sam Patel")
         testController.saveProfile()
@@ -210,7 +215,7 @@ class ProfileControllerTest {
     @Test
     fun init_withMissingProfile_showsError() {
         val fakeRepo = FakeProfileRepository()
-        val testController = ProfileController(fakeRepo, "missing")
+        val testController = profileController(fakeRepo, "missing")
 
         assertTrue(testController.loadFailed)
     }
@@ -218,13 +223,13 @@ class ProfileControllerTest {
     @Test
     fun saveProfile_trimsFieldsAndReloadsUpdatedDisplayName() = runBlocking {
         val repository = FakeProfileRepository(listOf(UserProfile(id = "user1", name = "Sam")))
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
         testController.onNameChange("  Sam Patel  ")
         testController.onEmailChange("  sam@example.com  ")
         testController.onPhoneChange("  +1 (780) 555-1234  ")
         testController.saveProfile()
 
-        val reloaded = ProfileController(repository, "user1")
+        val reloaded = profileController(repository, "user1")
         assertEquals("Sam Patel", reloaded.name)
         assertEquals("sam@example.com", reloaded.email)
         assertEquals("+1 (780) 555-1234", reloaded.phone)
@@ -236,7 +241,7 @@ class ProfileControllerTest {
         val repository = FakeProfileRepository(listOf(
             UserProfile(id = "user1", name = "Sam", email = "sam@example.com", phone = "7805551234")
         ))
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
         testController.onEmailChange("   ")
         testController.onPhoneChange("")
         testController.saveProfile()
@@ -256,7 +261,7 @@ class ProfileControllerTest {
                 return fake.getProfile(id)
             }
         }
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
         assertTrue(testController.loadFailed)
         assertFalse(testController.isLoading)
 
@@ -277,7 +282,7 @@ class ProfileControllerTest {
                 fake.saveProfile(profile)
             }
         }
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
         testController.onNameChange("Sam Patel")
         testController.saveProfile()
         assertTrue(testController.saveFailed)
@@ -302,7 +307,7 @@ class ProfileControllerTest {
                 fake.saveProfile(profile)
             }
         }
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
         testController.onNameChange("Sam Patel")
         testController.saveProfile()
         assertTrue(testController.isSaving)
@@ -327,7 +332,7 @@ class ProfileControllerTest {
 
     @Test
     fun loadProfile_newProfile_hasNotificationsOn() {
-        val testController = ProfileController(FakeProfileRepository(listOf(sam)), "user1")
+        val testController = profileController(FakeProfileRepository(listOf(sam)), "user1")
 
         assertTrue(testController.notificationsEnabled)
     }
@@ -335,7 +340,7 @@ class ProfileControllerTest {
     @Test
     fun loadProfile_showsNotificationsOffWhenTheProfileSaysSo() {
         val repository = FakeProfileRepository(listOf(sam.copy(notificationsEnabled = false)))
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
 
         assertFalse(testController.notificationsEnabled)
     }
@@ -343,7 +348,7 @@ class ProfileControllerTest {
     @Test
     fun saveNotificationsEnabled_off_savesItAndKeepsTheOtherFields() = runBlocking {
         val repository = FakeProfileRepository(listOf(sam))
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
 
         testController.saveNotificationsEnabled(false)
 
@@ -355,16 +360,16 @@ class ProfileControllerTest {
     @Test
     fun saveNotificationsEnabled_off_isStillOffAfterRestarting() = runBlocking {
         val repository = FakeProfileRepository(listOf(sam))
-        ProfileController(repository, "user1").saveNotificationsEnabled(false)
+        profileController(repository, "user1").saveNotificationsEnabled(false)
 
         // a new controller is what the app makes after a restart
-        assertFalse(ProfileController(repository, "user1").notificationsEnabled)
+        assertFalse(profileController(repository, "user1").notificationsEnabled)
     }
 
     @Test
     fun saveNotificationsEnabled_backOn_savesItAgain() = runBlocking {
         val repository = FakeProfileRepository(listOf(sam.copy(notificationsEnabled = false)))
-        val testController = ProfileController(repository, "user1")
+        val testController = profileController(repository, "user1")
 
         testController.saveNotificationsEnabled(true)
 
@@ -376,11 +381,11 @@ class ProfileControllerTest {
     fun saveNotificationsEnabled_saveFails_setsTheSwitchBack() = runBlocking {
         val fake = FakeProfileRepository(listOf(sam))
         val failing = object : ProfileRepository by fake {
-            override suspend fun saveProfile(profile: UserProfile) {
+            override suspend fun setNotificationsEnabled(id: String, enabled: Boolean) {
                 throw IllegalStateException("Write failed")
             }
         }
-        val testController = ProfileController(failing, "user1")
+        val testController = profileController(failing, "user1")
 
         testController.saveNotificationsEnabled(false)
 
@@ -392,7 +397,7 @@ class ProfileControllerTest {
     @Test
     fun saveNotificationsEnabled_noProfile_setsTheSwitchBackAndSavesNothing() = runBlocking {
         val repository = FakeProfileRepository()
-        val testController = ProfileController(repository, "missing")
+        val testController = profileController(repository, "missing")
 
         testController.saveNotificationsEnabled(false)
 
@@ -404,7 +409,7 @@ class ProfileControllerTest {
     @Test
     fun saveNotificationsEnabled_keepsANameSavedFromProfileAfterThisLoaded() = runBlocking {
         val repository = FakeProfileRepository(listOf(sam))
-        val settings = ProfileController(repository, "user1")
+        val settings = profileController(repository, "user1")
         repository.saveProfile(sam.copy(name = "Sam P."))
 
         settings.saveNotificationsEnabled(false)
@@ -416,9 +421,9 @@ class ProfileControllerTest {
     @Test
     fun saveProfile_keepsNotificationsOffSavedFromSettingsAfterThisLoaded() = runBlocking {
         val repository = FakeProfileRepository(listOf(sam))
-        val profileScreen = ProfileController(repository, "user1")
+        val profileScreen = profileController(repository, "user1")
         // the user opens Settings from Profile and turns notifications off
-        ProfileController(repository, "user1").saveNotificationsEnabled(false)
+        profileController(repository, "user1").saveNotificationsEnabled(false)
 
         profileScreen.onNameChange("Sam Patel-Lee")
         profileScreen.saveProfile()

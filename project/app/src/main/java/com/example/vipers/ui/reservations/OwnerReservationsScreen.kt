@@ -2,9 +2,9 @@
  * OwnerReservationsScreen.kt
  * The owner's Reservations screen (mockup O14), with Active, Past and Cancelled tabs. The Active
  * tab lists the confirmed reservations at the owner's campsites whose check-out is today or later
- * (US 02.07.01).
+ * (US 02.07.01). The Past tab lists the completed stays, most recent first (US 02.07.02).
  * Tapping a row opens the reservation's details (mockup O15).
- * Known issues: the Past tab (US 02.07.02) and the Cancelled tab (US 02.07.03) are placeholders.
+ * Known issues: the Cancelled tab (US 02.07.03) is a placeholder.
  */
 package com.example.vipers.ui.reservations
 
@@ -60,7 +60,8 @@ private enum class ReservationTab(val label: String) {
 }
 
 /**
- * The owner's reservations, split into Active, Past and Cancelled tabs (mockup O14, US 02.07.01).
+ * The owner's reservations, split into Active, Past and Cancelled tabs (mockup O14, US 02.07.01,
+ * US 02.07.02).
  *
  * @param onBack Called when the back arrow is tapped.
  * @param onOpenReservation Called with the reservation's ID when its row is tapped.
@@ -75,7 +76,7 @@ fun OwnerReservationsScreen(
     var selectedTab by rememberSaveable { mutableStateOf(ReservationTab.ACTIVE) }
 
     // here rather than in the Active tab, so switching tabs doesn't load the list again
-    LaunchedEffect(Unit) { controller.loadOwnerActive() }
+    LaunchedEffect(Unit) { controller.loadOwnerReservations() }
 
     Column(
         modifier = Modifier
@@ -101,8 +102,20 @@ fun OwnerReservationsScreen(
         }
 
         when (selectedTab) {
-            ReservationTab.ACTIVE -> ActiveTab(controller, onOpenReservation)
-            ReservationTab.PAST -> Placeholder("Past reservations are added in US 02.07.02.")
+            ReservationTab.ACTIVE ->
+                ReservationListTab(
+                    rows = controller.activeRows,
+                    emptyText = "No active reservations",
+                    controller = controller,
+                    onOpenReservation = onOpenReservation,
+                )
+            ReservationTab.PAST ->
+                ReservationListTab(
+                    rows = controller.pastRows,
+                    emptyText = "No past reservations",
+                    controller = controller,
+                    onOpenReservation = onOpenReservation,
+                )
             ReservationTab.CANCELLED -> Placeholder("Cancelled reservations are added in US 02.07.03.")
         }
     }
@@ -137,22 +150,31 @@ private fun TabPill(
     }
 }
 
-/** The Active tab: a loading indicator, a message, or the list of reservations (US 02.07.01). */
+/**
+ * One tab's list: a loading indicator, a message, [emptyText] if [rows] is empty, or the [rows]
+ * themselves. Used by the Active tab (US 02.07.01) and the Past tab (US 02.07.02); the loading and
+ * error state come from [controller], which loads every tab at once.
+ */
 @Composable
-private fun ActiveTab(controller: ReservationController, onOpenReservation: (String) -> Unit) {
+private fun ReservationListTab(
+    rows: List<ReservationRow>,
+    emptyText: String,
+    controller: ReservationController,
+    onOpenReservation: (String) -> Unit,
+) {
     when {
         controller.isLoading ->
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         controller.loadFailed -> TabMessage("Couldn't load reservations")
-        controller.activeRows.isEmpty() -> TabMessage("No active reservations")
+        rows.isEmpty() -> TabMessage(emptyText)
         else ->
             LazyColumn(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(controller.activeRows, key = { it.reservationId }) { row ->
+                items(rows, key = { it.reservationId }) { row ->
                     ReservationRowItem(row, onClick = { onOpenReservation(row.reservationId) })
                 }
             }

@@ -654,6 +654,7 @@ class LotteryDrawerTest {
             notificationRepository,
             campsiteRepository,
             profileRepository,
+            lotteryRepository,
             formatDate = { "time $it" },
         )
         val fixedDrawer = LotteryDrawer(

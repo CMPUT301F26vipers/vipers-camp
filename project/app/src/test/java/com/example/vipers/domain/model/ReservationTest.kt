@@ -1,7 +1,8 @@
 /*
  * ReservationTest.kt
- * Unit tests for the Active / Past rule on reservations, for which ones can be cancelled
- * (US 01.07.01), and for which ones can be rejected and with what reason (US 02.08.01).
+ * Unit tests for the Active / Past rule on reservations, for the completed-stay rule the owner's
+ * Past tab uses (US 02.07.02), for which ones can be cancelled (US 01.07.01), and for which ones
+ * can be rejected and with what reason (US 02.08.01).
  * Known issues: none.
  */
 package com.example.vipers.domain.model
@@ -79,6 +80,44 @@ class ReservationTest {
     fun isPast_whenCancelledOrRejected() {
         assertFalse(mayEightToTen.copy(status = ReservationStatus.CANCELLED).isActive(today))
         assertFalse(mayEightToTen.copy(status = ReservationStatus.REJECTED).isActive(today))
+    }
+
+    @Test
+    fun isCompleted_afterCheckOut() {
+        assertTrue(mayEightToTen.isCompleted(LocalDate.parse("2027-05-11")))
+    }
+
+    @Test
+    fun isNotCompleted_onCheckOutDay() {
+        assertFalse(mayEightToTen.isCompleted(LocalDate.parse("2027-05-10")))
+    }
+
+    @Test
+    fun isNotCompleted_duringTheStayOrBeforeCheckIn() {
+        assertFalse(mayEightToTen.isCompleted(today))
+        assertFalse(mayEightToTen.isCompleted(LocalDate.parse("2027-05-01")))
+    }
+
+    @Test
+    fun isNotCompleted_whenCancelledOrRejected() {
+        val afterCheckOut = LocalDate.parse("2027-05-11")
+        assertFalse(mayEightToTen.copy(status = ReservationStatus.CANCELLED).isCompleted(afterCheckOut))
+        assertFalse(mayEightToTen.copy(status = ReservationStatus.REJECTED).isCompleted(afterCheckOut))
+    }
+
+    @Test
+    fun isCompletedAndIsActive_areNeverBothTrue() {
+        for (status in ReservationStatus.entries) {
+            val reservation = mayEightToTen.copy(status = status)
+            var day = LocalDate.parse("2027-05-01")
+            while (!day.isAfter(LocalDate.parse("2027-05-20"))) {
+                assertFalse(
+                    "$status on $day",
+                    reservation.isCompleted(day) && reservation.isActive(day),
+                )
+                day = day.plusDays(1)
+            }
+        }
     }
 
     @Test

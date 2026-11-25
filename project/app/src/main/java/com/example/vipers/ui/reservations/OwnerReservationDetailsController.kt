@@ -217,6 +217,7 @@ class OwnerReservationDetailsController(
                         app.container.notificationRepository,
                         app.container.campsiteRepository,
                         app.container.profileRepository,
+                        app.container.lotteryRepository,
                     ),
                     ownerId = app.container.deviceId,
                     reservationId = reservationId,

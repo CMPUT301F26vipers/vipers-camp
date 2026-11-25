@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -60,6 +61,7 @@ class OwnerReservationDetailsTest {
                 FakeNotificationRepository(),
                 FakeCampsiteRepository(),
                 profiles,
+                FakeLotteryRepository(),
             ),
             ownerId = ownerId,
             reservationId = "res-1",

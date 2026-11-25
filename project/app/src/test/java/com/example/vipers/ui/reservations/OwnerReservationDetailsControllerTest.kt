@@ -34,7 +34,8 @@ class OwnerReservationDetailsControllerTest {
     private val notifications = FakeNotificationRepository()
     private val campsites =
         FakeCampsiteRepository(listOf(Campsite(id = "hinton", name = "Hinton Ridge Campground")))
-    private val notificationService = NotificationService(notifications, campsites, profiles)
+    private val notificationService =
+        NotificationService(notifications, campsites, profiles, FakeLotteryRepository())
     private val today = LocalDate.parse("2027-05-09")
 
     private val reservation = Reservation(

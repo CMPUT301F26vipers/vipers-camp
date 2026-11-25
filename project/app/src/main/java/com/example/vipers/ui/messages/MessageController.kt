@@ -217,6 +217,7 @@ class MessageController(
                         app.container.notificationRepository,
                         app.container.campsiteRepository,
                         app.container.profileRepository,
+                        app.container.lotteryRepository,
                     ),
                     userId = app.container.deviceId,
                     reservationId = reservationId,

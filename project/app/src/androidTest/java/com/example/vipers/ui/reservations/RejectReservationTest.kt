@@ -81,7 +81,7 @@ class RejectReservationTest {
         val controller = OwnerReservationDetailsController(
             reservationRepository = reservations,
             profileRepository = profiles,
-            notificationService = NotificationService(inbox, campsites, profiles),
+            notificationService = NotificationService(inbox, campsites, profiles, FakeLotteryRepository()),
             ownerId = "owner-priya",
             reservationId = reservation.id,
         )

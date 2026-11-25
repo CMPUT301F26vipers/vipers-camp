@@ -93,6 +93,7 @@ package "Controllers (see 03-controllers)" {
   class MyCampsitesController <<ViewModel>>
   class NotificationsController <<ViewModel>>
   class ProfileController <<ViewModel>>
+  class DeleteProfileController <<ViewModel>>
   class CampsiteDetailsController <<ViewModel>>
   class ReserveController <<ViewModel>>
   class ReservationDetailsController <<ViewModel>>
@@ -132,6 +133,7 @@ HomeScreen ..> CampsiteSearchController
 MyCampsitesScreen ..> MyCampsitesController
 NotificationsScreen ..> NotificationsController
 ProfileScreen ..> ProfileController
+ProfileScreen ..> DeleteProfileController
 WelcomeScreen ..> ProfileController
 CampsiteDetailsScreen ..> CampsiteDetailsController
 ReserveScreen ..> ReserveController

@@ -51,6 +51,13 @@ class FirestoreCampsiteRepository(
         doc.update(campsite.toEditableFields())
     }
 
+    override suspend fun removeCampsite(id: String) {
+        val doc = collection.document(id)
+        if (!doc.get().await().exists()) return
+        // Not awaited, for the same reason as addCampsite.
+        doc.update("removed", true)
+    }
+
     override suspend fun getCampsitesByOwner(ownerId: String): List<Campsite> =
         collection
             .whereEqualTo("ownerId", ownerId)

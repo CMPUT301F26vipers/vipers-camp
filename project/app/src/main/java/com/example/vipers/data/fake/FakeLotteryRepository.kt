@@ -229,6 +229,31 @@ class FakeLotteryRepository(
         publish()
     }
 
+    override suspend fun getEntriesForUser(userId: String): List<LotteryEntry> = mutex.withLock {
+        entries.values.filter { it.userId == userId }
+    }
+
+    override suspend fun removeLottery(id: String): Unit = mutex.withLock {
+        val lottery = lotteries[id] ?: return@withLock
+        lotteries[id] = lottery.copy(removed = true)
+    }
+
+    override suspend fun removeEntry(lotteryId: String, userId: String): Boolean = mutex.withLock {
+        val id = LotteryEntry.idFor(lotteryId, userId)
+        val entry = entries[id]
+        if (entry == null || entry.status == EntryStatus.REMOVED) return@withLock false
+        entries[id] = entry.copy(status = EntryStatus.REMOVED)
+        val lottery = lotteries[lotteryId]
+        if (entry.status == EntryStatus.WAITING && lottery != null) {
+            lotteries[lotteryId] = lottery.copy(
+                entriesVersion = lottery.entriesVersion + 1,
+                waitingUserIds = lottery.waitingUserIds.filter { it != userId },
+            )
+        }
+        publish()
+        true
+    }
+
     override suspend fun declineTransaction(
         lotteryId: String,
         userId: String,
