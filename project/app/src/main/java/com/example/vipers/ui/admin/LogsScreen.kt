@@ -149,7 +149,6 @@ private fun TabPill(
     }
 }
 
-/** The read-only Notification Log tab: every send, newest first (US 03.08.01). */
 @Composable
 private fun NotificationLogTab(controller: AdminController) {
     when {
@@ -212,7 +211,6 @@ private fun NotificationLogTab(controller: AdminController) {
     }
 }
 
-/** One send: type, sender → recipient · time · campsite, and the text in quotes. Not clickable. */
 @Composable
 private fun NotificationLogRowItem(row: NotificationLogRow) {
     val details = buildString {
