@@ -388,13 +388,8 @@ private fun CancelReservationDialog(
                             .padding(12.dp)
                             .testTag("dialog_cancellation_policy"),
                     ) {
-                        Text(
-                            "Cancellation policy",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Primary,
-                        )
-                        Text(policy, style = MaterialTheme.typography.bodyMedium)
+                        Text("Cancellation policy", fontWeight = FontWeight.SemiBold)
+                        Text(policy)
                     }
                 }
             }
@@ -402,21 +397,15 @@ private fun CancelReservationDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                shape = ButtonShape,
                 colors = ButtonDefaults.buttonColors(containerColor = Error),
-                modifier = Modifier.testTag("button_confirm_cancel"),
+                modifier = Modifier.testTag("cancel_confirm"),
             ) {
-                Text("Yes, cancel reservation")
+                Text("Cancel")
             }
         },
         dismissButton = {
-            OutlinedButton(
-                onClick = onKeep,
-                shape = ButtonShape,
-                border = BorderStroke(1.dp, Primary),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
-            ) {
-                Text("Keep reservation")
+            OutlinedButton(onClick = onKeep, modifier = Modifier.testTag("cancel_keep")) {
+                Text("Keep it")
             }
         },
     )

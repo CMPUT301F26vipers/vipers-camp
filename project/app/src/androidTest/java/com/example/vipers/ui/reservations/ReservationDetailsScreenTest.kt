@@ -97,6 +97,7 @@ class ReservationDetailsScreenTest {
         composeRule.onNodeWithTag("detail_campsite_rules")
             .assertTextEquals("Quiet hours after 10 PM")
         composeRule.onNodeWithTag("button_download_csv")
+            .performScrollTo()
             .assertIsDisplayed()
             .assertTextEquals("Download CSV")
     }
