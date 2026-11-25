@@ -1,6 +1,7 @@
 /*
  * LotteryDetailsController.kt
  * The controller (a ViewModel) handling data fetching, states, joining, and leaving logic for a specific lottery's detail screen.
+ * The owner's Draw now button runs the draw through it, even while registration is open (US 02.05.01b).
  * Known issues: none. Waiting-list capacity and leaving are enforced atomically in a Firestore transaction via LotteryRepository.
  */
 package com.example.vipers.ui.lottery
@@ -70,6 +71,18 @@ class LotteryDetailsController(
     var leaveSuccess by mutableStateOf(false)
         private set
 
+    /** True while the owner's Draw now is running, so the button can't start it twice. */
+    var isDrawing by mutableStateOf(false)
+        private set
+
+    /** What happened after the owner tapped Draw now, or null before that (US 02.05.01b). */
+    var drawMessage by mutableStateOf<String?>(null)
+        private set
+
+    /** True when [drawMessage] is an error, so the screen can show it in red. */
+    var drawFailed by mutableStateOf(false)
+        private set
+
     /** True if the current user is already on the waiting list. */
     val isJoined: Boolean
         get() = userEntry?.status == EntryStatus.WAITING
@@ -89,11 +102,54 @@ class LotteryDetailsController(
     val isOwner: Boolean
         get() = currentUserId.isNotBlank() && lottery?.ownerId == currentUserId
 
-    init {
-        loadData()
+    /** True if the current user owns this lottery and can draw it at [now] (US 02.05.01b). */
+    fun canDraw(now: Long = System.currentTimeMillis()): Boolean =
+        isOwner && lottery?.canOwnerDraw(now) == true
+
+    /** Runs the owner's Draw now in the background (US 02.05.01b). */
+    fun drawNow() {
+        viewModelScope.launch { performDrawNow() }
     }
 
-    /** Loads lottery details and resolves waitlist entry user display names in the background. */
+    /**
+     * Runs the draw at [now], closing registration first if it's still open, then sets
+     * [drawMessage] and reloads so the screen shows the lottery as drawn. Unit tests call this
+     * directly.
+     */
+    suspend fun performDrawNow(now: Long = System.currentTimeMillis()) {
+        val drawer = lotteryDrawer
+        if (isDrawing || drawer == null || !canDraw(now)) return
+        isDrawing = true
+        // don't leave an old error on screen while trying again
+        drawMessage = null
+        drawFailed = false
+        val result = try {
+            drawer.drawNow(lotteryId, now)
+        } catch (e: CancellationException) {
+            isDrawing = false
+            throw e
+        } catch (e: Exception) {
+            LotteryDrawResult.Error(e.message ?: "Draw failed")
+        }
+        isDrawing = false
+        fetchData()
+        // another phone's automatic draw may have finished just before the owner tapped
+        val drawnElsewhere = result is LotteryDrawResult.Error && lottery?.drawnAt != null
+        drawFailed = result is LotteryDrawResult.Error && !drawnElsewhere
+        drawMessage = when {
+            drawnElsewhere -> "This lottery has already been drawn"
+            result is LotteryDrawResult.Success ->
+                "Draw done: ${result.winnerCount} of ${result.totalCount} " +
+                    (if (result.totalCount == 1) "entrant" else "entrants") + " won"
+            result is LotteryDrawResult.EmptyList -> "Draw done: nobody had joined the waiting list"
+            else -> "Couldn't run the draw. Try again."
+        }
+    }
+
+    /**
+     * Loads lottery details and resolves waitlist entry user display names in the background.
+     * Triggered by [LotteryDetailsScreen]'s lifecycle observer on ON_RESUME.
+     */
     fun loadData() {
         viewModelScope.launch { fetchData() }
     }
@@ -162,22 +218,38 @@ class LotteryDetailsController(
             return false
         }
 
-        val currentLottery = lottery ?: run {
-            actionError = "Lottery not found."
-            joinSuccess = false
-            return false
-        }
-
-        if (currentLottery.ownerId == currentUserId) {
-            actionError = "Owners cannot join their own lottery."
-            joinSuccess = false
-            return false
-        }
-
         isJoining = true
         actionError = null
         joinSuccess = false
         leaveSuccess = false
+
+        val currentLottery = try {
+            lotteryRepository.getLottery(lotteryId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            isJoining = false
+            joinSuccess = false
+            actionError = "Unable to join waiting list. Please try again."
+            return false
+        }
+
+        if (currentLottery == null) {
+            lottery = null
+            maxOccupancy = null
+            isJoining = false
+            actionError = "Lottery not found."
+            joinSuccess = false
+            return false
+        }
+        lottery = currentLottery
+
+        if (currentLottery.ownerId == currentUserId) {
+            isJoining = false
+            actionError = "Owners cannot join their own lottery."
+            joinSuccess = false
+            return false
+        }
 
         val existing = try {
             userEntry ?: lotteryRepository.getEntry(lotteryId, currentUserId)
@@ -190,14 +262,14 @@ class LotteryDetailsController(
             return false
         }
 
-        val limit = maxOccupancy ?: resolveMaxOccupancy(currentLottery)
+        val limit = resolveMaxOccupancy(currentLottery)
+        maxOccupancy = limit
         if (limit == null) {
             isJoining = false
             joinSuccess = false
             actionError = "Campsite occupancy information is unavailable. Please try again."
             return false
         }
-        maxOccupancy = limit
 
         val validationErrors = validateJoinLottery(
             lottery = currentLottery,
@@ -342,8 +414,9 @@ class LotteryDetailsController(
     }
 
     /**
-     * Resolves the maximum occupancy across all campsites covered by [lottery].
-     * Returns null if any campsite lookup fails or is missing, ensuring incomplete data is not used.
+     * Resolves the maximum occupancy across all active (non-removed) campsites covered by [lottery].
+     * Returns null if any campsite lookup fails or is missing, or if every included campsite is removed,
+     * ensuring incomplete or removed-site data is not used to bypass occupancy limits.
      */
     private suspend fun resolveMaxOccupancy(lottery: Lottery?): Int? {
         val repo = campsiteRepository ?: return null
@@ -354,7 +427,9 @@ class LotteryDetailsController(
         for (cid in ids) {
             try {
                 val campsite = repo.getCampsite(cid) ?: return null
-                occupancies.add(campsite.maxOccupancy)
+                if (!campsite.removed) {
+                    occupancies.add(campsite.maxOccupancy)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

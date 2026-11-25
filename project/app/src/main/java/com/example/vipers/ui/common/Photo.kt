@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -101,6 +102,9 @@ fun FullPhoto(
 private fun rememberSavedPhoto(imageId: String?): ImageBitmap? {
     val app = LocalContext.current.applicationContext as? CampApp
     val photo by produceState(imageId?.let { PhotoCache.get(it) }, imageId) {
+        // produceState keeps the last value when imageId changes, so a replaced or removed photo
+        // (e.g. on Profile, US 01.08.02) would stay on screen without this
+        value = imageId?.let { PhotoCache.get(it) }
         if (imageId == null || value != null || app == null) return@produceState
         value = try {
             val image = app.container.imageRepository.getImage(imageId)
@@ -144,7 +148,12 @@ private fun PhotoBox(
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            Icon(painterResource(placeholderIcon), contentDescription = null, tint = Primary)
+            Icon(
+                painterResource(placeholderIcon),
+                contentDescription = null,
+                tint = Primary,
+                modifier = Modifier.testTag("photo_placeholder"),
+            )
         }
     }
 }

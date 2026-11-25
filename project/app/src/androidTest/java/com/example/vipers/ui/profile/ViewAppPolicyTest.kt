@@ -21,6 +21,7 @@ import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -65,6 +66,7 @@ class ViewAppPolicyTest {
             campsiteRepository = FakeCampsiteRepository(),
             lotteryRepository = FakeLotteryRepository(),
             reservationRepository = FakeReservationRepository(reservations),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(),
             imageRepository = FakeImageRepository(),
         )
@@ -76,7 +78,8 @@ class ViewAppPolicyTest {
     /** Goes Profile > Settings > Policy and Guidelines. */
     private fun openPolicyFromSettings() {
         composeRule.onNodeWithTag("tab_${Routes.PROFILE}").performClick()
-        composeRule.onNodeWithText("Settings").performClick()
+        // Settings is at the bottom of Profile, below the screen on small phones
+        composeRule.onNodeWithText("Settings").performScrollTo().performClick()
         composeRule.onNodeWithText("Policy and Guidelines").performClick()
         composeRule.waitForIdle()
     }
@@ -142,7 +145,7 @@ class ViewAppPolicyTest {
     fun policyAlsoOpensFromProfile() {
         startApp()
         composeRule.onNodeWithTag("tab_${Routes.PROFILE}").performClick()
-        composeRule.onNodeWithText("Policy").performClick()
+        composeRule.onNodeWithText("Policy").performScrollTo().performClick()
 
         composeRule.onNodeWithText("How the lottery works").assertIsDisplayed()
     }

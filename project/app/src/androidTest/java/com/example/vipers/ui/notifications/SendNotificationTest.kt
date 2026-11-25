@@ -29,6 +29,7 @@ import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -117,6 +118,7 @@ class SendNotificationTest {
             campsiteRepository = campsites,
             lotteryRepository = lotteries,
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = notifications,
             imageRepository = FakeImageRepository(),
         )

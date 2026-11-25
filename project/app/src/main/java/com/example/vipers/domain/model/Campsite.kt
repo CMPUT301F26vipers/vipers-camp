@@ -2,7 +2,6 @@
  * Campsite.kt
  * A campsite an owner lists so entrants can find it and join its lotteries.
  * Stored in the Firestore "campsites" collection.
- * Known issues: photo and map location are stored but not yet filled in by the Add Campsite form.
  */
 package com.example.vipers.domain.model
 
@@ -91,7 +90,35 @@ data class Campsite(
         return "$${dollarsText(totalPriceCents(nights))}"
     }
 
+    /**
+     * The link stored in this campsite's QR code (US 02.02.01), e.g. "vipers-camp://campsite/abc".
+     * It only uses [id], so the code stays the same when the owner edits the campsite.
+     */
+    fun qrLink(): String {
+        return QR_LINK_PREFIX + id
+    }
+
     companion object {
+        /** The start of every campsite QR link; the campsite ID follows it. */
+        const val QR_LINK_PREFIX = "vipers-camp://campsite/"
+
+        /**
+         * The campsite ID in a scanned QR [link] made by [qrLink], or null if it isn't one of our
+         * campsite links (another app's QR code, an empty ID, or extra parts after the ID).
+         * Scanning (US 01.12.01) uses this. Campsite IDs only use letters, digits, - and _, so
+         * anything else (like ?, # or %) means it isn't ours, and it can't break the screen route.
+         */
+        fun idFromQrLink(link: String): String? {
+            val text = link.trim()
+            if (!text.startsWith(QR_LINK_PREFIX)) return null
+            val id = text.removePrefix(QR_LINK_PREFIX)
+            if (!QR_ID_PATTERN.matches(id)) return null
+            return id
+        }
+
+        // Firestore IDs are letters and digits; our test and seed IDs also use - and _
+        private val QR_ID_PATTERN = Regex("[A-Za-z0-9_-]+")
+
         /** An amount in cents as dollars: "50" or "65.50". Cents only show when there are some. */
         fun dollarsText(amountCents: Long): String {
             val dollars = amountCents / 100

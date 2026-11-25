@@ -40,6 +40,12 @@ interface CampsiteRepository {
      */
     suspend fun updateCampsite(campsite: Campsite)
 
+    /**
+     * Marks the campsite with this [id] as removed, so it's hidden everywhere (e.g. when its
+     * owner deletes their profile, US 01.08.01). Does nothing if there is none.
+     */
+    suspend fun removeCampsite(id: String)
+
     /** Loads the campsites listed by [ownerId] that haven't been removed (My Campsites). */
     suspend fun getCampsitesByOwner(ownerId: String): List<Campsite>
 

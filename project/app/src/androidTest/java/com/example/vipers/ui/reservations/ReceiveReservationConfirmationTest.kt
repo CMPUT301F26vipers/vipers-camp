@@ -26,6 +26,7 @@ import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -41,6 +42,7 @@ import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.ReserveResult
+import com.example.vipers.ui.lottery.LotteryDrawer
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
@@ -108,6 +110,12 @@ class ReceiveReservationConfirmationTest {
             userId = "sam",
             lotteryId = "lottery-may",
             campsiteId = "hinton",
+            lotteryDrawer = LotteryDrawer(
+                lotteries,
+                notifications,
+                campsites,
+                FakeProfileRepository(),
+            ),
         )
 
         composeRule.setContent {
@@ -168,6 +176,12 @@ class ReceiveReservationConfirmationTest {
             userId = "sam",
             lotteryId = "lottery-may",
             campsiteId = "hinton",
+            lotteryDrawer = LotteryDrawer(
+                lotteries,
+                notifications,
+                campsites,
+                FakeProfileRepository(),
+            ),
         )
         controller.fetchData(now)
         controller.onNightTap("2027-05-22")
@@ -229,6 +243,7 @@ class ReceiveReservationConfirmationTest {
             campsiteRepository = FakeCampsiteRepository(listOf(hinton)),
             lotteryRepository = FakeLotteryRepository(listOf(lottery)),
             reservationRepository = FakeReservationRepository(listOf(reservation)),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(listOf(notice)),
             imageRepository = FakeImageRepository(),
         )
@@ -291,6 +306,7 @@ class ReceiveReservationConfirmationTest {
                 ReservationDetailsScreen(
                     reservationId = "res-202",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }

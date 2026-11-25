@@ -1,8 +1,9 @@
 /*
  * AppNavigation.kt
  * Puts the bottom bar and the screens together, and decides which screen each route shows (T-02).
- * The app always opens on Home, and Back returns to the previous screen.
- * Known issues: the Welcome screen on first launch is added in T-01.
+ * The app always opens on Home, and Back returns to the previous screen. A scanned campsite QR
+ * code opens that campsite's details, like tapping it on Home (US 01.12.01).
+ * Known issues: none.
  */
 package com.example.vipers.ui.navigation
 
@@ -22,12 +23,21 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
+import com.example.vipers.ui.admin.BrowseImagesScreen
+import com.example.vipers.ui.admin.BrowseProfilesScreen
+import com.example.vipers.ui.admin.ImageDetailsScreen
+import com.example.vipers.ui.admin.LogsScreen
+import com.example.vipers.ui.admin.LogsTab
+import com.example.vipers.ui.admin.MessageLogConversationScreen
+import com.example.vipers.ui.admin.ProfileDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
 import com.example.vipers.ui.campsites.CampsiteFormScreen
 import com.example.vipers.ui.campsites.MyCampsitesScreen
 import com.example.vipers.ui.campsites.OwnerCampsiteScreen
 import com.example.vipers.ui.campsites.AvailabilityScreen
 import com.example.vipers.ui.home.HomeScreen
+import com.example.vipers.ui.home.QrScanResult
+import com.example.vipers.ui.messages.MessagesScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SendNotificationScreen
 import com.example.vipers.ui.notifications.SentScreen
@@ -43,23 +53,22 @@ import com.example.vipers.ui.lottery.LotteryFormScreen
 import com.example.vipers.ui.lottery.LotteryDetailsScreen
 import com.example.vipers.ui.lottery.WaitingListScreen
 
-import androidx.compose.foundation.layout.Column
-import com.example.vipers.ui.common.Placeholder
-import com.example.vipers.ui.common.TopBar
-
 // The bottom bar only shows on these screens, like in the mockups.
 private val tabRoutes = listOf(
     Routes.HOME, Routes.RESERVATIONS, Routes.CAMPSITES, Routes.NOTIFICATIONS, Routes.PROFILE, Routes.ADMIN,
 )
 
 /**
- * The whole app's navigation. [isAdmin] shows the Admin tab, and [onLoadDemoData] is called
- * by the button on Settings.
+ * The whole app's navigation. [isAdmin] shows the Admin tab, [onLoadDemoData] is called
+ * by the button on Settings, [onScanQr] opens the QR scanner from Home, and [onProfileDeleted]
+ * is called once the user deletes their profile on Profile (US 01.08.01).
  */
 @Composable
 fun AppNavigation(
     isAdmin: Boolean,
     onLoadDemoData: () -> Unit,
+    onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
+    onProfileDeleted: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -81,6 +90,7 @@ fun AppNavigation(
                         val route = Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId)
                         navController.navigate(route)
                     },
+                    onScanQr = onScanQr,
                 )
             }
             composable(
@@ -141,6 +151,9 @@ fun AppNavigation(
                 ReservationDetailsScreen(
                     reservationId = reservationId,
                     onBack = { navController.popBackStack() },
+                    onMessage = { id ->
+                        navController.navigate(Routes.MESSAGES.replace("{reservationId}", id))
+                    },
                 )
             }
             composable(Routes.CAMPSITES) {
@@ -173,6 +186,19 @@ fun AppNavigation(
                 arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
             ) { backStackEntry ->
                 OwnerReservationDetailsScreen(
+                    reservationId = backStackEntry.arguments?.getString("reservationId") ?: "",
+                    onBack = { navController.popBackStack() },
+                    onMessage = { reservationId ->
+                        val route = Routes.MESSAGES.replace("{reservationId}", reservationId)
+                        navController.navigate(route)
+                    },
+                )
+            }
+            composable(
+                route = Routes.MESSAGES,
+                arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                MessagesScreen(
                     reservationId = backStackEntry.arguments?.getString("reservationId") ?: "",
                     onBack = { navController.popBackStack() },
                 )
@@ -245,6 +271,19 @@ fun AppNavigation(
                     onViewWaitingList = {
                         navController.navigate(Routes.WAITING_LIST.replace("{lotteryId}", lotteryId))
                     },
+                    onEditLottery = {
+                        navController.navigate(Routes.EDIT_LOTTERY.replace("{lotteryId}", lotteryId))
+                    },
+                )
+            }
+            composable(
+                route = Routes.EDIT_LOTTERY,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
+                LotteryFormScreen(
+                    lotteryId = lotteryId,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(
@@ -292,14 +331,18 @@ fun AppNavigation(
                         )
                         navController.navigate(route)
                     },
-                    // no message thread screen yet
-                    onOpenThread = {},
+                    // the reservation's conversation (US 02.12.01)
+                    onOpenThread = { reservationId ->
+                        val route = Routes.MESSAGES.replace("{reservationId}", reservationId)
+                        navController.navigate(route)
+                    },
                 )
             }
             composable(Routes.PROFILE) {
                 ProfileScreen(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenPolicy = { navController.navigate(Routes.POLICY) },
+                    onProfileDeleted = onProfileDeleted,
                 )
             }
             composable(Routes.SETTINGS) {
@@ -343,33 +386,76 @@ fun AppNavigation(
                 }
 
                 composable(Routes.ADMIN_PROFILES) {
-                    AdminPlaceholderScreen(
-                        "All Profiles",
-                        "Browse Profiles (03.05.01)",
+                    BrowseProfilesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenProfile = { profileId ->
+                            val route = Routes.ADMIN_PROFILE_DETAILS.replace("{profileId}", profileId)
+                            navController.navigate(route)
+                        }
+                    )
+                }
+
+                composable(
+                    route = Routes.ADMIN_PROFILE_DETAILS,
+                    arguments = listOf(navArgument("profileId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val profileId = backStackEntry.arguments?.getString("profileId") ?: ""
+                    ProfileDetailsScreen(
+                        profileId = profileId,
                         onBack = { navController.popBackStack() }
                     )
                 }
 
                 composable(Routes.ADMIN_IMAGES) {
-                    AdminPlaceholderScreen(
-                        "All Images",
-                        "Browse Images (03.06.01)",
+                    BrowseImagesScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenImage = { imageId ->
+                            val route = Routes.ADMIN_IMAGE_DETAILS.replace("{imageId}", imageId)
+                            navController.navigate(route)
+                        }
+                    )
+                }
+
+                composable(
+                    route = Routes.ADMIN_IMAGE_DETAILS,
+                    arguments = listOf(navArgument("imageId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val imageId = backStackEntry.arguments?.getString("imageId") ?: ""
+                    ImageDetailsScreen(
+                        imageId = imageId,
                         onBack = { navController.popBackStack() }
                     )
                 }
 
                 composable(Routes.ADMIN_NOTIFICATION_LOG) {
-                    AdminPlaceholderScreen(
-                        "Logs",
-                        "Notification Log (03.08.01)",
-                        onBack = { navController.popBackStack() }
+                    LogsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenConversation = { reservationId ->
+                            val route = Routes.ADMIN_MESSAGE_LOG_CONVERSATION.replace("{reservationId}", reservationId)
+                            navController.navigate(route)
+                        },
+                        initialTab = LogsTab.NOTIFICATION_LOG,
                     )
                 }
 
                 composable(Routes.ADMIN_MESSAGE_LOG) {
-                    AdminPlaceholderScreen(
-                        "Logs",
-                        "Message Log (03.12.01)",
+                    LogsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenConversation = { reservationId ->
+                            val route = Routes.ADMIN_MESSAGE_LOG_CONVERSATION.replace("{reservationId}", reservationId)
+                            navController.navigate(route)
+                        },
+                        initialTab = LogsTab.MESSAGE_LOG,
+                    )
+                }
+
+                composable(
+                    route = Routes.ADMIN_MESSAGE_LOG_CONVERSATION,
+                    arguments = listOf(navArgument("reservationId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val reservationId = backStackEntry.arguments?.getString("reservationId") ?: ""
+                    MessageLogConversationScreen(
+                        reservationId = reservationId,
                         onBack = { navController.popBackStack() }
                     )
                 }
@@ -388,20 +474,6 @@ private fun NavHostController.openTab(route: String) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
-    }
-}
-
-
-/** Temporary screen for admin features that are not implemented yet. */
-@Composable
-private fun AdminPlaceholderScreen(
-    title: String,
-    message: String,
-    onBack: () -> Unit
-) {
-    Column {
-        TopBar(title = title, onBack = onBack)
-        Placeholder(message)
     }
 }
 

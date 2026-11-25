@@ -13,6 +13,7 @@ object Routes {
     const val CAMPSITES = "campsites"
     const val ADD_CAMPSITE = "add_campsite"
     const val CREATE_LOTTERY = "create_lottery/{campsiteId}"
+    const val EDIT_LOTTERY = "edit_lottery/{lotteryId}"
     const val LOTTERY_DETAILS = "lottery_details/{lotteryId}"
     const val WAITING_LIST = "waiting_list/{lotteryId}"
     const val SEND_NOTIFICATION = "send_notification/{lotteryId}"
@@ -24,13 +25,18 @@ object Routes {
 
     const val ADMIN_CAMPSITES = "admin_campsites"
     const val ADMIN_PROFILES = "admin_profiles"
+    const val ADMIN_PROFILE_DETAILS = "admin_profile/{profileId}"
     const val ADMIN_IMAGES = "admin_images"
+    const val ADMIN_IMAGE_DETAILS = "admin_image/{imageId}"
     const val ADMIN_NOTIFICATION_LOG = "admin_notification_log"
     const val ADMIN_MESSAGE_LOG = "admin_message_log"
+    const val ADMIN_MESSAGE_LOG_CONVERSATION = "admin_message_log/{reservationId}"
 
 
     const val OWNER_RESERVATIONS = "owner_reservations"
     const val OWNER_RESERVATION_DETAILS = "owner_reservation/{reservationId}"
+    // one reservation's conversation, for its owner and its entrant (02.12.01, 01.14.01)
+    const val MESSAGES = "messages/{reservationId}"
 
     const val OWNER_SENT = "owner_sent"
 

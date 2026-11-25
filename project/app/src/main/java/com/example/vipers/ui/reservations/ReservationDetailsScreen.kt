@@ -3,6 +3,7 @@
  * The entrant's view of their reservation (US 01.05.01): shows the reservation number,
  * campsite name, stay dates, group size, total price, and status. Before check-in the entrant
  * can cancel it after confirming in a dialog (US 01.07.01, mockups E15 and E16).
+ * Message Owner opens this reservation's conversation (US 01.14.01).
  * Known issues: the "Cancelled on …" banner from mockup E15b comes with US 01.07.02.
  */
 package com.example.vipers.ui.reservations
@@ -59,12 +60,14 @@ import com.example.vipers.ui.theme.TextMuted
  *
  * @param reservationId ID of the reservation to load and view.
  * @param onBack Called when the top bar back button is tapped.
+ * @param onMessage Opens the conversation for the displayed reservation.
  * @param controller Controller that loads the reservation and campsite details.
  */
 @Composable
 fun ReservationDetailsScreen(
     reservationId: String,
     onBack: () -> Unit,
+    onMessage: (String) -> Unit,
     controller: ReservationDetailsController =
         viewModel(factory = ReservationDetailsController.factory(reservationId)),
 ) {
@@ -121,6 +124,8 @@ fun ReservationDetailsScreen(
                 ReservationContent(
                     reservation = reservation,
                     rules = controller.campsite?.rules,
+                    onMessage = { onMessage(reservation.id) },
+                    showMessageOwner = reservation.canMessageOwner(controller.userId),
                     canCancel = controller.canCancel(),
                     cancelling = controller.cancelling,
                     cancelError = controller.cancelError,
@@ -139,6 +144,8 @@ fun ReservationDetailsScreen(
 private fun ReservationContent(
     reservation: Reservation,
     rules: String?,
+    onMessage: () -> Unit,
+    showMessageOwner: Boolean,
     canCancel: Boolean,
     cancelling: Boolean,
     cancelError: String?,
@@ -240,6 +247,21 @@ private fun ReservationContent(
                 color = TextMuted,
                 modifier = Modifier.testTag("detail_campsite_rules"),
             )
+        }
+
+        if (showMessageOwner) {
+            OutlinedButton(
+                onClick = onMessage,
+                shape = ButtonShape,
+                border = BorderStroke(1.5.dp, Primary),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(ButtonHeight)
+                    .testTag("button_message_owner"),
+            ) {
+                Text("Message Owner", fontWeight = FontWeight.SemiBold)
+            }
         }
 
         if (canCancel) {
