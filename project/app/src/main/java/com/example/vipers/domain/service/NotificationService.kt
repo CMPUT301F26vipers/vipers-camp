@@ -3,8 +3,8 @@
  * The app's notification logic, between the screens and NotificationRepository. It passes the
  * inbox and marking read through to the repository (T-13), builds and saves a draw's "You won"
  * (US 01.03.01), "Not selected" (US 01.03.02), and replacement win (US 01.04.03, T-12) notices
- * and the "New message" notice (US 02.12.01), and skips users who turned notifications off in
- * Settings (US 01.10.01).
+ * and the "New message" notice (US 02.12.01), lists an owner's sent notifications (US 02.10.02),
+ * and skips users who turned notifications off in Settings (US 01.10.01).
  * Known issues: showing notifications on the phone is left to T-14.
  */
 package com.example.vipers.domain.service
@@ -15,6 +15,7 @@ import com.example.vipers.domain.model.Message
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.SentNotification
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.LotteryRepository
@@ -167,6 +168,57 @@ class NotificationService(
         return OwnerBroadcastResult.Sent(batchId, notices.size)
     }
 
+    /**
+     * The owner [ownerId]'s sent notifications for the Sent Notifications list (O13, US 02.10.02):
+     * one [SentNotificationItem] per send of an owner broadcast, newest first
+     * ([SentNotification.fromNotifications]), with the number of entrants it was saved for.
+     * Each item names the campsite, or all of the lottery's campsites in order when the send
+     * isn't about one, and the lottery's nights description, or its first offered night when it
+     * has none. A campsite or lottery that is missing, removed or fails to load shows as
+     * "Removed campsite" or "Removed lottery" instead of hiding the send. Each lottery and
+     * campsite is loaded once, however many sends share it.
+     *
+     * @throws Exception if the owner's broadcasts can't be loaded, e.g. offline.
+     */
+    suspend fun sentNotifications(ownerId: String): List<SentNotificationItem> {
+        val sends = SentNotification.fromNotifications(notificationRepository.getOwnerBroadcasts(ownerId))
+        val lotteries = sends.mapNotNull { it.lotteryId }.distinct()
+            .associateWith { id -> loadOrNull { lotteryRepository.getLottery(id) }?.takeUnless { it.removed } }
+        val campsiteIdsBySend = sends.associate { send ->
+            send.batchId to (send.campsiteId?.let { listOf(it) }
+                ?: send.lotteryId?.let { lotteries[it]?.campsiteIds }.orEmpty())
+        }
+        val campsiteNames = campsiteIdsBySend.values.flatten().distinct()
+            .associateWith { id -> loadOrNull { campsiteRepository.getCampsite(id) }?.takeUnless { it.removed }?.name }
+        return sends.map { send ->
+            val campsiteIds = campsiteIdsBySend.getValue(send.batchId)
+            val lottery = send.lotteryId?.let { lotteries[it] }
+            SentNotificationItem(
+                sent = send,
+                campsiteLabel = if (campsiteIds.isEmpty()) {
+                    REMOVED_CAMPSITE
+                } else {
+                    campsiteIds.joinToString(", ") { campsiteNames[it] ?: REMOVED_CAMPSITE }
+                },
+                lotteryLabel = lottery?.let { nightsLabel(it) } ?: REMOVED_LOTTERY,
+            )
+        }
+    }
+
+    private fun nightsLabel(lottery: Lottery): String =
+        lottery.nightsDescription?.takeIf { it.isNotBlank() }
+            ?: lottery.nightsOffered.firstOrNull()
+            ?: "Unknown dates"
+
+    private suspend fun <T> loadOrNull(load: suspend () -> T?): T? =
+        try {
+            load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+
     private suspend fun wantsOwnerMessages(userId: String): Boolean =
         try {
             profileRepository.getProfile(userId)?.notificationsEnabled ?: false
@@ -251,6 +303,8 @@ class NotificationService(
 
     companion object {
         private const val WON_TITLE = "You won the lottery!"
+        private const val REMOVED_CAMPSITE = "Removed campsite"
+        private const val REMOVED_LOTTERY = "Removed lottery"
 
         /** Deterministic ID for a replacement win notice, distinct from the original draw notice. */
         fun replacementNoticeId(lotteryId: String, userId: String): String =

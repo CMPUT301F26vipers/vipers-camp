@@ -4,7 +4,7 @@
  * "Not selected" notices a draw adds to inboxes, using the fake repositories and a fixed date format.
  * Also tests optedIn and that the draw skips users who turned notifications off (US 01.10.01),
  * and the "New message" notice sendNewMessage sends to the other side of a conversation
- * (US 02.12.01).
+ * (US 02.12.01), and the owner's sent notifications sentNotifications lists (US 02.10.02).
  * Known issues: none. The inbox and markRead pass-throughs are covered by NotificationsControllerTest.
  */
 package com.example.vipers.domain.service
@@ -23,14 +23,18 @@ import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.CampsiteRepository
+import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 import java.util.Random
 
 class NotificationServiceTest {
@@ -768,5 +772,211 @@ class NotificationServiceTest {
         assertNull(notice)
         assertFalse(addAllCalled)
         assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+    }
+
+    private fun sentBroadcast(
+        recipientId: String,
+        batchId: String,
+        lotteryId: String,
+        campsiteId: String?,
+        createdAt: Long,
+        senderId: String = "owner-priya",
+        message: String = "The cookhouse reopens next week.",
+    ) = Notification(
+        id = "broadcast_${batchId}_$recipientId",
+        recipientId = recipientId,
+        senderId = senderId,
+        campsiteId = campsiteId,
+        lotteryId = lotteryId,
+        type = NotificationType.OWNER_BROADCAST,
+        title = "Message from owner",
+        message = message,
+        batchId = batchId,
+        createdAt = createdAt,
+    )
+
+    private val mayWeekends = ownersLottery.copy(nightsDescription = "May weekends", nightsOffered = listOf("2027-05-08"))
+
+    private fun sentService(
+        vararg saved: Notification,
+        lotteries: List<Lottery> = listOf(mayWeekends, twoCampsiteLottery),
+        campsiteRepo: CampsiteRepository = campsites,
+        lotteryRepo: LotteryRepository = FakeLotteryRepository(lotteries),
+        repo: NotificationRepository = FakeNotificationRepository(saved.toList()),
+    ) = NotificationService(repo, campsiteRepo, entrantProfiles, lotteryRepo)
+
+    @Test
+    fun sentNotifications_twoSends_comeBackNewestFirstWithTheirRecipientCounts() = runBlocking {
+        val lotteries = FakeLotteryRepository(
+            listOf(mayWeekends),
+            listOf(entry("sam", 1), entry("jo", 2), entry("riley", 3)),
+        )
+        val service = NotificationService(notifications, campsites, entrantProfiles, lotteries)
+        service.sendOwnerBroadcast("owner-priya", "june", "First.", "b1", now = 100L)
+        service.sendOwnerBroadcast("owner-priya", "june", "Second.", "b2", now = 200L)
+
+        val items = service.sentNotifications("owner-priya")
+
+        assertEquals(listOf("Second.", "First."), items.map { it.sent.message })
+        assertEquals(listOf(200L, 100L), items.map { it.sent.sentAt })
+        assertEquals(listOf(2, 2), items.map { it.sent.recipientCount })
+    }
+
+    @Test
+    fun sentNotifications_otherOwnersSendsAndNonBroadcasts_areLeftOut() = runBlocking {
+        val items = sentService(
+            sentBroadcast("sam", "b1", "june", "hinton", 100),
+            sentBroadcast("sam", "b2", "june", "hinton", 200, senderId = "owner-daniel"),
+            Notification(
+                id = "rejected_r1", recipientId = "sam", senderId = "owner-priya",
+                type = NotificationType.RESERVATION_REJECTED, createdAt = 300,
+            ),
+            Notification(
+                id = "message_m1", recipientId = "sam", senderId = "owner-priya",
+                type = NotificationType.NEW_MESSAGE, createdAt = 400,
+            ),
+        ).sentNotifications("owner-priya")
+
+        assertEquals(listOf("b1"), items.map { it.sent.batchId })
+    }
+
+    @Test
+    fun sentNotifications_oneCampsiteLottery_isLabelledWithTheCampsiteName() = runBlocking {
+        val item = sentService(sentBroadcast("sam", "b1", "june", "hinton", 100))
+            .sentNotifications("owner-priya").single()
+
+        assertEquals("Hinton Ridge Campground", item.campsiteLabel)
+    }
+
+    @Test
+    fun sentNotifications_twoCampsiteLottery_namesBothCampsitesInOrder() = runBlocking {
+        val item = sentService(sentBroadcast("sam", "b1", "summer", null, 100))
+            .sentNotifications("owner-priya").single()
+
+        assertEquals("Hinton Ridge Campground, Bow River Sites", item.campsiteLabel)
+    }
+
+    @Test
+    fun sentNotifications_lotteryLabel_usesTheNightsDescription() = runBlocking {
+        val item = sentService(sentBroadcast("sam", "b1", "june", "hinton", 100))
+            .sentNotifications("owner-priya").single()
+
+        assertEquals("May weekends", item.lotteryLabel)
+    }
+
+    @Test
+    fun sentNotifications_noOrBlankNightsDescription_usesTheNightsLabel() = runBlocking {
+        val items = sentService(
+            sentBroadcast("sam", "b1", "june", "hinton", 200),
+            sentBroadcast("sam", "b2", "summer", null, 100),
+            lotteries = listOf(
+                mayWeekends.copy(nightsDescription = null),
+                twoCampsiteLottery.copy(nightsDescription = "  ", nightsOffered = listOf("2027-07-03", "2027-07-04")),
+            ),
+        ).sentNotifications("owner-priya")
+
+        assertEquals(listOf("2027-05-08", "2027-07-03"), items.map { it.lotteryLabel })
+    }
+
+    @Test
+    fun sentNotifications_removedOrMissingCampsite_isLabelledRemovedCampsite() = runBlocking {
+        val campsitesWithRemoved = FakeCampsiteRepository(
+            listOf(
+                Campsite(id = "hinton", name = "Hinton Ridge Campground", removed = true),
+                Campsite(id = "banff", name = "Bow River Sites"),
+            ),
+        )
+        val items = sentService(
+            sentBroadcast("sam", "b1", "june", "hinton", 300),
+            sentBroadcast("sam", "b2", "summer", null, 200),
+            sentBroadcast("sam", "b3", "june", "gone", 100),
+            campsiteRepo = campsitesWithRemoved,
+        ).sentNotifications("owner-priya")
+
+        assertEquals(
+            listOf("Removed campsite", "Removed campsite, Bow River Sites", "Removed campsite"),
+            items.map { it.campsiteLabel },
+        )
+    }
+
+    @Test
+    fun sentNotifications_missingLottery_isLabelledRemovedLotteryAndStillListed() = runBlocking {
+        val item = sentService(
+            sentBroadcast("sam", "b1", "deleted", "hinton", 100),
+            lotteries = emptyList(),
+        ).sentNotifications("owner-priya").single()
+
+        assertEquals("b1", item.sent.batchId)
+        assertEquals("Removed lottery", item.lotteryLabel)
+        assertEquals("Hinton Ridge Campground", item.campsiteLabel)
+    }
+
+    @Test
+    fun sentNotifications_campsiteOrLotteryReadFails_stillListsTheSend() = runBlocking {
+        val failingCampsites = object : CampsiteRepository by campsites {
+            override suspend fun getCampsite(id: String): Campsite? = throw IOException("offline")
+        }
+        val failingLotteries = object : LotteryRepository by FakeLotteryRepository(listOf(mayWeekends)) {
+            override suspend fun getLottery(id: String): Lottery? = throw IOException("offline")
+        }
+        val item = sentService(
+            sentBroadcast("sam", "b1", "june", "hinton", 100),
+            campsiteRepo = failingCampsites,
+            lotteryRepo = failingLotteries,
+        ).sentNotifications("owner-priya").single()
+
+        assertEquals("Removed campsite", item.campsiteLabel)
+        assertEquals("Removed lottery", item.lotteryLabel)
+    }
+
+    @Test
+    fun sentNotifications_sendsSharingALotteryAndCampsites_loadEachOnce() = runBlocking {
+        val campsiteCalls = mutableListOf<String>()
+        val lotteryCalls = mutableListOf<String>()
+        val countingCampsites = object : CampsiteRepository by campsites {
+            override suspend fun getCampsite(id: String): Campsite? {
+                campsiteCalls.add(id)
+                return campsites.getCampsite(id)
+            }
+        }
+        val fakeLotteries = FakeLotteryRepository(listOf(mayWeekends, twoCampsiteLottery))
+        val countingLotteries = object : LotteryRepository by fakeLotteries {
+            override suspend fun getLottery(id: String): Lottery? {
+                lotteryCalls.add(id)
+                return fakeLotteries.getLottery(id)
+            }
+        }
+        sentService(
+            sentBroadcast("sam", "b1", "june", "hinton", 100),
+            sentBroadcast("jo", "b1", "june", "hinton", 100),
+            sentBroadcast("sam", "b2", "june", "hinton", 200),
+            sentBroadcast("sam", "b3", "summer", null, 300),
+            sentBroadcast("sam", "b4", "summer", null, 400),
+            campsiteRepo = countingCampsites,
+            lotteryRepo = countingLotteries,
+        ).sentNotifications("owner-priya")
+
+        assertEquals(listOf("june", "summer"), lotteryCalls.sorted())
+        assertEquals(listOf("banff", "hinton"), campsiteCalls.sorted())
+    }
+
+    @Test
+    fun sentNotifications_ownerWithNoSends_isEmpty() = runBlocking {
+        val items = sentService(sentBroadcast("sam", "b1", "june", "hinton", 100))
+            .sentNotifications("owner-daniel")
+
+        assertTrue(items.isEmpty())
+    }
+
+    @Test
+    fun sentNotifications_broadcastsReadFails_throws() {
+        val offline = object : NotificationRepository by notifications {
+            override suspend fun getOwnerBroadcasts(senderId: String): List<Notification> =
+                throw IOException("offline")
+        }
+
+        assertThrows(IOException::class.java) {
+            runBlocking { sentService(repo = offline).sentNotifications("owner-priya") }
+        }
     }
 }
