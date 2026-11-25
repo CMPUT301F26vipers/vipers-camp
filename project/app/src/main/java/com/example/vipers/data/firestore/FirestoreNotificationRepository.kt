@@ -63,6 +63,14 @@ class FirestoreNotificationRepository(
             .documents.map { it.toNotification() }
             .sortedByDescending { it.createdAt }
 
+    override suspend fun getOwnerBroadcasts(senderId: String): List<Notification> =
+        collection
+            .whereEqualTo("senderId", senderId)
+            .whereEqualTo("type", NotificationType.OWNER_BROADCAST.name)
+            .get().await()
+            .documents.map { it.toNotification() }
+            .sortedByDescending { it.createdAt }
+
     override suspend fun markRead(id: String) {
         collection.document(id).update("read", true).await()
     }

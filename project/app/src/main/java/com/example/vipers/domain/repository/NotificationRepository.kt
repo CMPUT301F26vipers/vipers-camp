@@ -7,6 +7,7 @@
 package com.example.vipers.domain.repository
 
 import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 
 /** Saves and loads [Notification]s. */
 interface NotificationRepository {
@@ -32,6 +33,15 @@ interface NotificationRepository {
 
     /** Loads [recipientId]'s inbox, newest first. */
     suspend fun getNotificationsFor(recipientId: String): List<Notification>
+
+    /**
+     * Loads every [NotificationType.OWNER_BROADCAST] that [senderId] sent, newest first
+     * (US 02.10.02): one notification per recipient, not grouped into sends. Group them with
+     * [com.example.vipers.domain.model.SentNotification.fromNotifications].
+     *
+     * @throws Exception if they can't be loaded, e.g. offline with nothing cached or permission denied.
+     */
+    suspend fun getOwnerBroadcasts(senderId: String): List<Notification>
 
     /** Marks the notification with this [id] as read. */
     suspend fun markRead(id: String)
