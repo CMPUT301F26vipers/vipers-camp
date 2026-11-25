@@ -1,6 +1,6 @@
 /*
  * AdminController.kt
- * Loads campsites, user profiles, images, and owner-entrant message logs for admin browsing (US 03.04.01, US 03.05.01, US 03.06.01, US 03.12.01).
+ * Loads campsites, user profiles, images, the notification log, and owner-entrant message logs for admin browsing (US 03.04.01, US 03.05.01, US 03.06.01, US 03.08.01, US 03.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
@@ -16,14 +16,20 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.vipers.CampApp
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.ImageAsset
+import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.Message
+import com.example.vipers.domain.model.NotificationLogEntry
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ImageRepository
+import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.MessageRepository
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
+import com.example.vipers.ui.messages.messageTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -66,13 +72,41 @@ data class MessageLogConversation(
     }
 }
 
-/** Loads campsites, user profiles, images, and owner-entrant message logs for admin browsing. */
+/**
+ * One row of the admin Notification Log (US 03.08.01, mockup A09), ready to show.
+ *
+ * @property key The row's [NotificationLogEntry.key], unique within the log.
+ * @property typeLabel What kind of notification it is, e.g. "Won" or "Owner message".
+ * @property senderName "System" for automatic notifications, otherwise the sender's current name.
+ * @property recipientLabel The recipient's name when there is one, otherwise "Waiting list" for an
+ * owner message or "<n> entrants".
+ * @property campsiteLabel The campsite's name, or the lottery's campsite names joined with ", ";
+ * null when the notification isn't about a campsite or lottery.
+ * @property time When it was sent, e.g. "Apr 2 · 9:15 AM".
+ * @property text The notification's message.
+ * @property entry The grouped notifications this row shows.
+ */
+data class NotificationLogRow(
+    val key: String,
+    val typeLabel: String,
+    val senderName: String,
+    val recipientLabel: String,
+    val campsiteLabel: String?,
+    val time: String,
+    val text: String,
+    val entry: NotificationLogEntry,
+)
+
+/** Loads campsites, user profiles, images, the notification log, and owner-entrant message logs for admin browsing. */
 class AdminController(
     private val campsiteRepository: CampsiteRepository,
     private val profileRepository: ProfileRepository,
     private val imageRepository: ImageRepository? = null,
     private val messageRepository: MessageRepository? = null,
     private val reservationRepository: ReservationRepository? = null,
+    private val notificationRepository: NotificationRepository? = null,
+    private val lotteryRepository: LotteryRepository? = null,
+    private val formatTime: (Long) -> String = { messageTime(it) },
 ) : ViewModel() {
 
     var campsites by mutableStateOf<List<Campsite>>(emptyList())
@@ -175,6 +209,22 @@ class AdminController(
     /** Alias for [messageLogsError]. */
     val conversationsError: String?
         get() = messageLogsError
+
+    /** The admin Notification Log (US 03.08.01): one row per send, newest first. */
+    var notificationLog by mutableStateOf<List<NotificationLogRow>>(emptyList())
+        private set
+
+    /** Whether the notification log is being loaded. */
+    var isNotificationLogLoading by mutableStateOf(false)
+        private set
+
+    /** Whether the most recent attempt to load the notification log failed. */
+    var notificationLogLoadFailed by mutableStateOf(false)
+        private set
+
+    /** Error message if loading the notification log failed. */
+    var notificationLogError by mutableStateOf<String?>(null)
+        private set
 
     init {
         loadCampsites()
@@ -435,7 +485,116 @@ class AdminController(
         }
     }
 
+    /** Loads the admin Notification Log in the background (US 03.08.01). */
+    fun loadNotificationLog() {
+        notificationLogJob?.cancel()
+        notificationLogJob = viewModelScope.launch { fetchNotificationLog() }
+    }
+
+    private var notificationLogJob: Job? = null
+    private var notificationLogRequestId = 0
+
+    /**
+     * Loads every notification, groups it into one row per send ([NotificationLogEntry.fromNotifications]),
+     * and looks up the names each row shows (US 03.08.01). Each user, campsite and lottery is loaded
+     * once however many rows share it, and removed campsites still show their names. A name that
+     * can't be loaded shows as "Deleted user" or "Unknown campsite" instead of failing the log.
+     * Can be called directly from unit tests using runBlocking or runTest.
+     */
+    suspend fun fetchNotificationLog() {
+        val requestId = ++notificationLogRequestId
+        isNotificationLogLoading = true
+        notificationLogLoadFailed = false
+        notificationLogError = null
+
+        try {
+            val repo = notificationRepository
+                ?: throw IllegalStateException("NotificationRepository not configured")
+            val entries = NotificationLogEntry.fromNotifications(repo.getAllNotifications())
+
+            val userIds = entries.flatMap { entry ->
+                listOfNotNull(
+                    entry.senderId.takeUnless { it == SYSTEM_SENDER },
+                    entry.recipientIds.singleOrNull(),
+                )
+            }.distinct()
+            val names = userIds.associateWith { id -> displayNameOrDeleted(id) }
+
+            val lotteries = entries.filter { it.campsiteId == null }.mapNotNull { it.lotteryId }.distinct()
+                .associateWith { id -> loadOrNull { lotteryRepository?.getLottery(id) } }
+            val campsiteIds = (entries.mapNotNull { it.campsiteId } +
+                lotteries.values.filterNotNull().flatMap { it.campsiteIds }).distinct()
+            val campsiteNames = campsiteIds.associateWith { id ->
+                loadOrNull { campsiteRepository.getCampsite(id) }?.name?.trim()?.ifBlank { null }
+            }
+
+            val rows = entries.map { entry ->
+                NotificationLogRow(
+                    key = entry.key,
+                    typeLabel = entry.typeLabel,
+                    senderName = if (entry.senderId == SYSTEM_SENDER) "System" else names.getValue(entry.senderId),
+                    recipientLabel = recipientLabel(entry, names),
+                    campsiteLabel = campsiteLabel(entry, lotteries, campsiteNames),
+                    time = formatTime(entry.time),
+                    text = entry.message,
+                    entry = entry,
+                )
+            }
+
+            if (requestId == notificationLogRequestId) {
+                notificationLog = rows
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (requestId == notificationLogRequestId) {
+                notificationLogLoadFailed = true
+                notificationLogError = "Unable to load notification log."
+            }
+        } finally {
+            if (requestId == notificationLogRequestId) {
+                isNotificationLogLoading = false
+            }
+        }
+    }
+
+    private fun recipientLabel(entry: NotificationLogEntry, names: Map<String, String>): String {
+        val only = entry.recipientIds.singleOrNull()
+        return when {
+            only != null -> names.getValue(only)
+            entry.type == NotificationType.OWNER_BROADCAST -> "Waiting list"
+            else -> "${entry.recipientCount} entrants"
+        }
+    }
+
+    private fun campsiteLabel(
+        entry: NotificationLogEntry,
+        lotteries: Map<String, Lottery?>,
+        campsiteNames: Map<String, String?>,
+    ): String? {
+        entry.campsiteId?.let { return campsiteNames[it] ?: UNKNOWN_CAMPSITE }
+        val lotteryId = entry.lotteryId ?: return null
+        val ids = lotteries[lotteryId]?.campsiteIds.orEmpty()
+        if (ids.isEmpty()) return UNKNOWN_CAMPSITE
+        return ids.joinToString(", ") { campsiteNames[it] ?: UNKNOWN_CAMPSITE }
+    }
+
+    private suspend fun displayNameOrDeleted(id: String): String =
+        loadOrNull { profileRepository.getDisplayName(id) } ?: "Deleted user"
+
+    private suspend fun <T> loadOrNull(load: suspend () -> T?): T? =
+        try {
+            load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+
     companion object {
+        private const val SYSTEM_SENDER = "system"
+        private const val UNKNOWN_CAMPSITE = "Unknown campsite"
+
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application =
@@ -447,6 +606,8 @@ class AdminController(
                     imageRepository = application.container.imageRepository,
                     messageRepository = application.container.messageRepository,
                     reservationRepository = application.container.reservationRepository,
+                    notificationRepository = application.container.notificationRepository,
+                    lotteryRepository = application.container.lotteryRepository,
                 )
             }
         }

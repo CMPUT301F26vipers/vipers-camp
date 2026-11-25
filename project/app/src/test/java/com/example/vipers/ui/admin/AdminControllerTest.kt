@@ -1,25 +1,32 @@
 /*
  * AdminControllerTest.kt
- * Unit tests for AdminController (US 03.04.01, US 03.05.01, US 03.06.01, US 03.12.01).
+ * Unit tests for AdminController (US 03.04.01, US 03.05.01, US 03.06.01, US 03.08.01, US 03.12.01).
  * Known issues: none.
  */
 package com.example.vipers.ui.admin
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeImageRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeMessageRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.ImageAsset
+import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.Message
+import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.MessageRepository
+import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
+import com.example.vipers.ui.messages.messageTime
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,6 +42,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AdminControllerTest {
@@ -1165,5 +1173,264 @@ class AdminControllerTest {
 
         assertEquals("res-1", found?.reservationId)
         assertNull(missing)
+    }
+
+    private val logTime = 1_806_657_300_000L
+    private val logMinute = 60_000L
+
+    private val logProfiles = listOf(
+        UserProfile(id = "seed-owner-priya", name = "Priya Sharma"),
+        UserProfile(id = "seed-owner-daniel", name = "Daniel Okafor"),
+        UserProfile(id = "seed-entrant-sam", name = "Sam Patel"),
+        UserProfile(id = "user-alex", name = "Alex Chen"),
+        UserProfile(id = "user-kim", name = "Kim Lee"),
+    )
+
+    private val logCampsites = listOf(
+        Campsite(id = "hinton-ridge", ownerId = "seed-owner-priya", name = "Hinton Ridge Campground"),
+        Campsite(id = "bow-river", ownerId = "seed-owner-daniel", name = "Bow River Sites"),
+        Campsite(id = "maligne-lake", ownerId = "seed-owner-priya", name = "Maligne Lake Camp", removed = true),
+    )
+
+    private val logLotteries = listOf(
+        Lottery(id = "lottery-banff", ownerId = "seed-owner-daniel", campsiteIds = listOf("bow-river")),
+        Lottery(id = "lottery-hinton", ownerId = "seed-owner-priya", campsiteIds = listOf("hinton-ridge", "maligne-lake")),
+    )
+
+    private fun drawNotice(userId: String, type: NotificationType, lotteryId: String = "lottery-banff") = Notification(
+        id = "draw_${lotteryId}_$userId",
+        recipientId = userId,
+        senderId = "system",
+        lotteryId = lotteryId,
+        campsiteId = if (lotteryId == "lottery-banff") "bow-river" else null,
+        type = type,
+        message = if (type == NotificationType.WON) {
+            "You won a spot at Bow River Sites. Reserve your nights before May 10, 2027."
+        } else {
+            "You weren't selected for Bow River Sites this time."
+        },
+        createdAt = logTime,
+    )
+
+    private fun ownerBroadcast(userId: String) = Notification(
+        id = "broadcast_batch-1_$userId",
+        recipientId = userId,
+        senderId = "seed-owner-priya",
+        lotteryId = "lottery-hinton",
+        type = NotificationType.OWNER_BROADCAST,
+        message = "Hinton Ridge Campground: Bring bear spray.",
+        batchId = "batch-1",
+        createdAt = logTime + logMinute,
+    )
+
+    private val rejection = Notification(
+        id = "rejected_res-20431",
+        recipientId = "seed-entrant-sam",
+        senderId = "seed-owner-daniel",
+        campsiteId = "bow-river",
+        reservationId = "res-20431",
+        type = NotificationType.RESERVATION_REJECTED,
+        message = "Bow River Sites: 2027-06-01 to 2027-06-04. Reason: Fire warning",
+        createdAt = logTime + 2 * logMinute,
+    )
+
+    private fun logController(
+        notifications: NotificationRepository = FakeNotificationRepository(),
+        campsites: CampsiteRepository = FakeCampsiteRepository(logCampsites),
+    ) = AdminController(
+        campsiteRepository = campsites,
+        profileRepository = FakeProfileRepository(logProfiles),
+        notificationRepository = notifications,
+        lotteryRepository = FakeLotteryRepository(logLotteries),
+        formatTime = { messageTime(it, ZoneOffset.UTC) },
+    )
+
+    @Test
+    fun fetchNotificationLog_drawBroadcastAndReservation_listsRowsNewestFirstWithDisplayValues() = runBlocking {
+        val notifications = FakeNotificationRepository(
+            listOf(
+                drawNotice("seed-entrant-sam", NotificationType.WON),
+                drawNotice("user-alex", NotificationType.WON),
+                drawNotice("user-kim", NotificationType.NOT_SELECTED),
+                ownerBroadcast("seed-entrant-sam"),
+                ownerBroadcast("user-alex"),
+                rejection,
+            ),
+        )
+        val viewModel = logController(notifications)
+
+        viewModel.fetchNotificationLog()
+
+        val rows = viewModel.notificationLog
+        assertEquals(
+            listOf("Reservation rejected", "Owner message", "Not selected", "Won"),
+            rows.map { it.typeLabel },
+        )
+        assertEquals(listOf("Daniel Okafor", "Priya Sharma", "System", "System"), rows.map { it.senderName })
+        assertEquals(listOf("Sam Patel", "Waiting list", "Kim Lee", "2 entrants"), rows.map { it.recipientLabel })
+        assertEquals(
+            listOf(
+                "Bow River Sites",
+                "Hinton Ridge Campground, Maligne Lake Camp",
+                "Bow River Sites",
+                "Bow River Sites",
+            ),
+            rows.map { it.campsiteLabel },
+        )
+        assertEquals("Bow River Sites: 2027-06-01 to 2027-06-04. Reason: Fire warning", rows[0].text)
+        assertEquals("Hinton Ridge Campground: Bring bear spray.", rows[1].text)
+        assertEquals("Apr 2 · 9:15 AM", rows[2].time)
+        assertEquals("Apr 2 · 9:17 AM", rows[0].time)
+        assertFalse(viewModel.notificationLogLoadFailed)
+        assertNull(viewModel.notificationLogError)
+        assertFalse(viewModel.isNotificationLogLoading)
+    }
+
+    @Test
+    fun fetchNotificationLog_senderAndRecipientLabels_useSystemNamesCountsAndWaitingList() = runBlocking {
+        val notifications = FakeNotificationRepository(
+            listOf(
+                drawNotice("seed-entrant-sam", NotificationType.NOT_SELECTED),
+                drawNotice("user-alex", NotificationType.WON),
+                drawNotice("user-kim", NotificationType.WON),
+                drawNotice("seed-entrant-sam", NotificationType.WON, lotteryId = "lottery-hinton"),
+                ownerBroadcast("user-kim"),
+                ownerBroadcast("user-alex"),
+                ownerBroadcast("seed-entrant-sam"),
+                ownerBroadcast("user-gone"),
+            ),
+        )
+        val viewModel = logController(notifications)
+
+        viewModel.fetchNotificationLog()
+
+        val byKey = viewModel.notificationLog.associateBy { it.key }
+        assertEquals("System", byKey.getValue("draw:lottery-banff:NOT_SELECTED").senderName)
+        assertEquals("Sam Patel", byKey.getValue("draw:lottery-banff:NOT_SELECTED").recipientLabel)
+        assertEquals("2 entrants", byKey.getValue("draw:lottery-banff:WON").recipientLabel)
+        assertEquals("Sam Patel", byKey.getValue("draw:lottery-hinton:WON").recipientLabel)
+        assertEquals("Waiting list", byKey.getValue("batch:batch-1").recipientLabel)
+        assertEquals(4, byKey.getValue("batch:batch-1").entry.recipientCount)
+        assertEquals("Priya Sharma", byKey.getValue("batch:batch-1").senderName)
+    }
+
+    @Test
+    fun fetchNotificationLog_deletedSender_showsDeletedUser() = runBlocking {
+        val notifications = FakeNotificationRepository(listOf(rejection.copy(senderId = "user-gone")))
+        val viewModel = logController(notifications)
+
+        viewModel.fetchNotificationLog()
+
+        assertEquals("Deleted user", viewModel.notificationLog.single().senderName)
+    }
+
+    @Test
+    fun fetchNotificationLog_removedCampsiteAndMultiCampsiteLottery_showCampsiteNames() = runBlocking {
+        val notifications = FakeNotificationRepository(
+            listOf(
+                rejection.copy(id = "cancelled_res-19882", campsiteId = "maligne-lake", senderId = "system"),
+                drawNotice("user-kim", NotificationType.NOT_SELECTED, lotteryId = "lottery-hinton"),
+            ),
+        )
+        val viewModel = logController(notifications)
+
+        viewModel.fetchNotificationLog()
+
+        val byKey = viewModel.notificationLog.associateBy { it.key }
+        assertEquals("Maligne Lake Camp", byKey.getValue("notification:cancelled_res-19882").campsiteLabel)
+        assertEquals(
+            "Hinton Ridge Campground, Maligne Lake Camp",
+            byKey.getValue("draw:lottery-hinton:NOT_SELECTED").campsiteLabel,
+        )
+    }
+
+    @Test
+    fun fetchNotificationLog_noCampsiteOrLottery_hasNoCampsiteLabel() = runBlocking {
+        val notifications = FakeNotificationRepository(
+            listOf(rejection.copy(campsiteId = null, type = NotificationType.NEW_MESSAGE, id = "message_m1")),
+        )
+        val viewModel = logController(notifications)
+
+        viewModel.fetchNotificationLog()
+
+        assertNull(viewModel.notificationLog.single().campsiteLabel)
+    }
+
+    @Test
+    fun fetchNotificationLog_loadsEachCampsiteOnce() = runBlocking {
+        val loaded = mutableListOf<String>()
+        val countingCampsites = object : CampsiteRepository by FakeCampsiteRepository(logCampsites) {
+            override suspend fun getCampsite(id: String): Campsite? {
+                loaded.add(id)
+                return logCampsites.firstOrNull { it.id == id }
+            }
+        }
+        val notifications = FakeNotificationRepository(
+            listOf(
+                drawNotice("seed-entrant-sam", NotificationType.WON),
+                drawNotice("user-kim", NotificationType.NOT_SELECTED),
+                rejection,
+                ownerBroadcast("user-alex"),
+            ),
+        )
+        val viewModel = logController(notifications, countingCampsites)
+
+        viewModel.fetchNotificationLog()
+
+        assertEquals(loaded.distinct(), loaded)
+        assertEquals(setOf("bow-river", "hinton-ridge", "maligne-lake"), loaded.toSet())
+    }
+
+    @Test
+    fun fetchNotificationLog_noNotifications_isEmptyWithoutError() = runBlocking {
+        val viewModel = logController()
+
+        viewModel.fetchNotificationLog()
+
+        assertTrue(viewModel.notificationLog.isEmpty())
+        assertFalse(viewModel.notificationLogLoadFailed)
+        assertNull(viewModel.notificationLogError)
+        assertFalse(viewModel.isNotificationLogLoading)
+    }
+
+    @Test
+    fun fetchNotificationLog_whenRepositoryFails_setsLoadFailedAndError() = runBlocking {
+        val failing = object : NotificationRepository by FakeNotificationRepository() {
+            override suspend fun getAllNotifications(): List<Notification> {
+                throw IllegalStateException("Permission denied")
+            }
+        }
+        val viewModel = logController(failing)
+
+        viewModel.fetchNotificationLog()
+
+        assertTrue(viewModel.notificationLogLoadFailed)
+        assertEquals("Unable to load notification log.", viewModel.notificationLogError)
+        assertFalse(viewModel.isNotificationLogLoading)
+        assertTrue(viewModel.notificationLog.isEmpty())
+        assertFalse(viewModel.loadFailed)
+    }
+
+    @Test
+    fun loadNotificationLog_canRetryAfterFailure() = runBlocking {
+        val fake = FakeNotificationRepository(listOf(rejection))
+        var shouldFail = true
+        val flaky = object : NotificationRepository by fake {
+            override suspend fun getAllNotifications(): List<Notification> {
+                if (shouldFail) throw IllegalStateException("Offline")
+                return fake.getAllNotifications()
+            }
+        }
+        val viewModel = logController(flaky)
+
+        viewModel.loadNotificationLog()
+        assertTrue(viewModel.notificationLogLoadFailed)
+
+        shouldFail = false
+        viewModel.loadNotificationLog()
+
+        assertFalse(viewModel.notificationLogLoadFailed)
+        assertNull(viewModel.notificationLogError)
+        assertEquals(listOf("notification:rejected_res-20431"), viewModel.notificationLog.map { it.key })
     }
 }
