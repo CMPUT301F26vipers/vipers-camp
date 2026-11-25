@@ -178,6 +178,8 @@ A winner declines via `LotteryDrawer.declineAndDrawReplacement` (US 01.04.03, T-
 | rejectionReason | string? | only when `REJECTED` |
 
 **Active** = `CONFIRMED` and check-out is today or later. Everything else is **Past**.
+**Completed** = `CONFIRMED` and check-out is before today (`isCompleted`); the owner's Past tab
+lists only completed stays, while cancelled and rejected reservations go in the owner's Cancelled tab.
 
 My Reservations (US 01.06.01) and the owner's Reservations screen (US 02.07.01) both list the
 Active ones sorted by check-in, soonest first: the entrant's come from

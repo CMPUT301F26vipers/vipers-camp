@@ -1,9 +1,10 @@
 /*
  * ReservationController.kt
  * The controller (a ViewModel) behind the lists of reservations: the entrant's My Reservations
- * (US 01.06.01) and the owner's active reservations (US 02.07.01). It loads the reservations,
- * keeps the active ones, and for the owner looks up each entrant's current name.
- * Known issues: none.
+ * (US 01.06.01) and the owner's Reservations screen. For the owner it loads the reservations at
+ * their campsites once, splits them into the Active list (US 02.07.01) and the Past list of
+ * completed stays (US 02.07.02), and looks up each entrant's current name.
+ * Known issues: the owner's Cancelled list (US 02.07.03) is not built yet.
  */
 package com.example.vipers.ui.reservations
 
@@ -26,7 +27,10 @@ import kotlinx.coroutines.launch
 
 /**
  * Loads the reservation lists for this device's user: the ones they made as an entrant
- * (US 01.06.01) and the ones at their campsites as an owner (US 02.07.01).
+ * (US 01.06.01), and the ones at their campsites as an owner, split into the tabs of the owner's
+ * Reservations screen: active ones (US 02.07.01) and completed stays (US 02.07.02). The owner's
+ * tabs are built from the same load, so switching tabs doesn't load again and the tabs never
+ * disagree.
  * Takes the repositories in its constructor so tests can pass fake ones.
  *
  * @param userId This device's ID, the entrant for My Reservations and the owner for the owner list.
@@ -43,6 +47,10 @@ class ReservationController(
 
     /** The owner's active reservations, soonest check-in first. */
     var activeRows by mutableStateOf(emptyList<ReservationRow>())
+        private set
+
+    /** The owner's completed stays, most recent check-out first (US 02.07.02). */
+    var pastRows by mutableStateOf(emptyList<ReservationRow>())
         private set
 
     /** True while the reservations are loading. */
@@ -82,36 +90,46 @@ class ReservationController(
         }
     }
 
-    /** Loads the owner's active reservations in the background (US 02.07.01). */
-    fun loadOwnerActive() {
-        viewModelScope.launch { fetchOwnerActive() }
+    /** Loads the owner's reservations in the background (US 02.07.01, 02.07.02). */
+    fun loadOwnerReservations() {
+        viewModelScope.launch { fetchOwnerReservations() }
     }
 
     /**
-     * Gets the reservations active on [today] at the owner's campsites into [activeRows], and sets
-     * [isLoading] and [loadFailed] (US 02.07.01). Reservations whose dates can't be read are left
-     * out, so one bad document doesn't stop the rest from showing.
-     * [loadOwnerActive] runs this in the background; unit tests call it directly with a fixed date.
+     * Gets the reservations at the owner's campsites once and fills [activeRows] with the ones
+     * active on [today] and [pastRows] with the stays completed before [today], and sets
+     * [isLoading] and [loadFailed] (US 02.07.01, 02.07.02). Reservations whose dates can't be read
+     * are left out of every list, so one bad document doesn't stop the rest from showing. If the
+     * load fails, every list is emptied.
+     * [loadOwnerReservations] runs this in the background; unit tests call it directly with a
+     * fixed date.
      */
-    suspend fun fetchOwnerActive(today: LocalDate = LocalDate.now()) {
+    suspend fun fetchOwnerReservations(today: LocalDate = LocalDate.now()) {
         isLoading = true
         loadFailed = false
         try {
             val reservations = reservationRepository.getReservationsForOwner(userId)
-            activeRows = activeSoonestFirst(reservations, today).map { reservation ->
-                ReservationRow(
-                    reservationId = reservation.id,
-                    entrantName = profileRepository.getDisplayName(reservation.userId),
-                    campsiteName = reservation.campsiteName,
-                    checkIn = reservation.checkIn,
-                    checkOut = reservation.checkOut,
-                    groupSize = reservation.groupSize,
+                .filter { hasReadableDates(it) }
+
+            val active = reservations
+                .filter { it.isActive(today) }
+                .sortedBy { it.checkIn }
+            val past = reservations
+                .filter { it.isCompleted(today) }
+                .sortedWith(
+                    compareByDescending<Reservation> { it.checkOut }.thenByDescending { it.checkIn }
                 )
-            }
+
+            val names = (active + past).map { it.userId }.distinct()
+                .associateWith { profileRepository.getDisplayName(it) }
+
+            activeRows = active.map { toRow(it, names) }
+            pastRows = past.map { toRow(it, names) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             activeRows = emptyList()
+            pastRows = emptyList()
             loadFailed = true
         } finally {
             isLoading = false
@@ -119,7 +137,7 @@ class ReservationController(
     }
 
     // the active ones on today, soonest check-in first, skipping any with dates that can't be read
-    // so one bad document doesn't stop the rest from showing (both lists use this)
+    // so one bad document doesn't stop the rest from showing (My Reservations uses this)
     private fun activeSoonestFirst(
         reservations: List<Reservation>,
         today: LocalDate,
@@ -134,6 +152,24 @@ class ReservationController(
                 }
             }
             .sortedBy { it.checkIn }
+
+    private fun hasReadableDates(reservation: Reservation): Boolean =
+        try {
+            LocalDate.parse(reservation.checkIn)
+            LocalDate.parse(reservation.checkOut)
+            true
+        } catch (e: DateTimeParseException) {
+            false
+        }
+
+    private fun toRow(reservation: Reservation, names: Map<String, String>) = ReservationRow(
+        reservationId = reservation.id,
+        entrantName = names.getValue(reservation.userId),
+        campsiteName = reservation.campsiteName,
+        checkIn = reservation.checkIn,
+        checkOut = reservation.checkOut,
+        groupSize = reservation.groupSize,
+    )
 
     companion object {
         /** Makes the controller with the app's real repositories and this device's ID. */
