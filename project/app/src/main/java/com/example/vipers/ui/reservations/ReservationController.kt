@@ -120,7 +120,6 @@ class ReservationController(
                     compareByDescending<Reservation> { it.checkOut }.thenByDescending { it.checkIn }
                 )
 
-            // look each entrant up once, so a repeat guest doesn't cost another read
             val names = (active + past).map { it.userId }.distinct()
                 .associateWith { profileRepository.getDisplayName(it) }
 
@@ -154,7 +153,6 @@ class ReservationController(
             }
             .sortedBy { it.checkIn }
 
-    /** True if [reservation]'s check-in and check-out are both readable "yyyy-MM-dd" dates. */
     private fun hasReadableDates(reservation: Reservation): Boolean =
         try {
             LocalDate.parse(reservation.checkIn)
@@ -164,7 +162,6 @@ class ReservationController(
             false
         }
 
-    /** The list row for [reservation], with the entrant's current name from [names]. */
     private fun toRow(reservation: Reservation, names: Map<String, String>) = ReservationRow(
         reservationId = reservation.id,
         entrantName = names.getValue(reservation.userId),

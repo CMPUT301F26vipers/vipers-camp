@@ -50,13 +50,11 @@ class ReservationControllerTest {
         return activeRows.map { it.reservationId }
     }
 
-    /** Loads on [today] and returns the IDs of the Past rows, in order. */
     private fun ReservationController.pastIds(): List<String> {
         runBlocking { fetchOwnerReservations(today) }
         return pastRows.map { it.reservationId }
     }
 
-    /** A confirmed stay by Sam at owner-1's campsite that checked out before [today]. */
     private fun pastReservation(id: String) =
         reservation(id).copy(checkIn = "2027-04-20", checkOut = "2027-04-22")
 
@@ -300,7 +298,6 @@ class ReservationControllerTest {
 
     @Test
     fun fetchOwnerReservations_whenTheRepositoryFails_emptiesBothLists() = runBlocking {
-        // works on the first load, then fails, e.g. the phone went offline
         var offline = false
         val fake = FakeReservationRepository(listOf(reservation("active"), pastReservation("past")))
         val repository = object : ReservationRepository by fake {
@@ -506,7 +503,6 @@ class ReservationControllerTest {
 
     @Test
     fun fetchOwnerReservations_withRepeatGuests_looksEachNameUpOnce() = runBlocking {
-        // counts the name lookups, each of which is a Firestore read in the real app
         val lookups = mutableListOf<String>()
         val countingProfiles = object : ProfileRepository by profiles {
             override suspend fun getDisplayName(id: String): String {

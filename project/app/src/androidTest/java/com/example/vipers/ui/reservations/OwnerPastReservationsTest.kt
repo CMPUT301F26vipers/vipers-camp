@@ -55,7 +55,6 @@ class OwnerPastReservationsTest {
         ),
     )
 
-    // the screen uses today's date, so this stay ended long ago
     private val completed = Reservation(
         id = "completed",
         userId = "sam",
@@ -67,7 +66,6 @@ class OwnerPastReservationsTest {
         rulesAcceptedAt = 1_700_000_000_000,
     )
 
-    // and this one is far in the future
     private val active = completed.copy(
         id = "active",
         userId = "alex",
@@ -77,7 +75,6 @@ class OwnerPastReservationsTest {
 
     private var openedId = ""
 
-    /** Shows the Reservations screen with [reservations] saved, and opens the Past tab. */
     private fun openPastTab(vararg reservations: Reservation) {
         val controller = ReservationController(
             reservationRepository = FakeReservationRepository(reservations.toList()),
