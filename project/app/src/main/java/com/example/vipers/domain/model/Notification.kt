@@ -71,4 +71,13 @@ data class Notification(
             NotificationType.NEW_MESSAGE -> "Message"
             NotificationType.CAMPSITE_REMOVED -> "Campsite removed"
         }
+
+    companion object {
+        /**
+         * The text an owner's message to a waiting list is saved with (US 02.10.01): [text]
+         * without the spaces and blank lines around it. Returns null if nothing is left, so an
+         * empty or whitespace-only owner message is rejected and can't be sent.
+         */
+        fun ownerMessageText(text: String): String? = text.trim().ifEmpty { null }
+    }
 }

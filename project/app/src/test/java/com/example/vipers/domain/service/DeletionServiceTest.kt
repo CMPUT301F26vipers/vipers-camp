@@ -100,7 +100,7 @@ class DeletionServiceTest {
         lotteryRepository: LotteryRepository = lotteries,
     ) = DeletionService(
         profileRepository, campsites, lotteryRepository, reservations, images,
-        NotificationService(notifications, campsites, profileRepository),
+        NotificationService(notifications, campsites, profileRepository, lotteryRepository),
     )
 
     private lateinit var samsBooking: String

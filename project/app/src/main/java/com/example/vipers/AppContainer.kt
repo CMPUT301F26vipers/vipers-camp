@@ -45,7 +45,7 @@ class AppContainer(
     val deletionService = DeletionService(
         profileRepository, campsiteRepository, lotteryRepository, reservationRepository,
         imageRepository,
-        NotificationService(notificationRepository, campsiteRepository, profileRepository),
+        NotificationService(notificationRepository, campsiteRepository, profileRepository, lotteryRepository),
     )
 
     /** Starts the draws that are due whenever the app is opened (US 02.05.01b). */

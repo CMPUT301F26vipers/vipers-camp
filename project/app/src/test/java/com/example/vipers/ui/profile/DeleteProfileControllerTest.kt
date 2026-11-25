@@ -63,7 +63,7 @@ class DeleteProfileControllerTest {
     ) = DeleteProfileController(
         DeletionService(
             profileRepository, campsiteRepository, lotteries, reservations, images,
-            NotificationService(FakeNotificationRepository(), campsiteRepository, profileRepository),
+            NotificationService(FakeNotificationRepository(), campsiteRepository, profileRepository, lotteries),
         ),
         campsiteRepository,
         "sam",
