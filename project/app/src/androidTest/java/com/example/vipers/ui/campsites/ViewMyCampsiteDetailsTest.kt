@@ -10,7 +10,7 @@ package com.example.vipers.ui.campsites
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -21,7 +21,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -119,7 +121,9 @@ class ViewMyCampsiteDetailsTest {
             campsiteRepository = FakeCampsiteRepository(listOf(hinton)),
             lotteryRepository = FakeLotteryRepository(lotteries),
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(),
+            imageRepository = FakeImageRepository(),
         )
         composeRule.setContent { VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) } }
 
@@ -161,8 +165,8 @@ class ViewMyCampsiteDetailsTest {
         assertEquals("reservations", opened)
         tap("button_create_lottery")
         assertEquals("create lottery", opened)
-        // QR codes come with 02.02.01
-        composeRule.onNodeWithTag("button_qr_code").assertIsDisplayed().assertIsNotEnabled()
+        // the QR code itself is tested in GenerateCampsiteQrCodeTest
+        composeRule.onNodeWithTag("button_qr_code").assertIsDisplayed().assertIsEnabled()
     }
 
     @Test

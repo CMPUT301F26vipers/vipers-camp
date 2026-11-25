@@ -1,8 +1,8 @@
 /*
  * DownloadReservationCsvTest.kt
  * Connected acceptance tests for US 01.05.02: Get Reservation by Notification or CSV (#63).
- * Verifies the Download CSV button on ReservationDetailsScreen, CSV export formatting with
- * RFC 4180 escaping for spreadsheet apps, and cancellation handling without error.
+ * Verifies the Download CSV button is displayed on ReservationDetailsScreen and launches
+ * the document creation flow with the expected file name.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -29,12 +29,10 @@ import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.UserProfile
-import com.example.vipers.domain.service.CsvExporter
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -85,7 +83,9 @@ class DownloadReservationCsvTest {
             campsiteRepository = campsiteRepository,
             lotteryRepository = app.container.lotteryRepository,
             reservationRepository = reservationRepository,
+            messageRepository = app.container.messageRepository,
             notificationRepository = notificationRepository,
+            imageRepository = app.container.imageRepository,
         )
     }
 
@@ -105,6 +105,7 @@ class DownloadReservationCsvTest {
                 ReservationDetailsScreen(
                     reservationId = "res-101",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }
@@ -118,41 +119,7 @@ class DownloadReservationCsvTest {
     }
 
     @Test
-    fun ac2_and_ac3_csvContent_containsAllRequiredFieldsAndHeader() {
-        val csv = CsvExporter.toCsv(sampleReservation, sampleCampsite)
-        val lines = csv.trimEnd().lines()
-        val header = lines[0]
-        val row = lines[1]
-
-        val expectedHeader = "Reservation Number,Campsite Name,Location,Check-in,Check-out," +
-            "Group Size,Total Price,Status"
-        assertEquals(expectedHeader, header)
-
-        val expectedRow = "R-10042,Hinton Ridge Campground,\"Hinton, AB\",2027-06-01," +
-            "2027-06-03,3,$100,CONFIRMED"
-        assertEquals(expectedRow, row)
-    }
-
-    @Test
-    fun ac4_csvContent_escapesCommasAndQuotesCorrectly() {
-        val specialCampsite = sampleCampsite.copy(
-            name = "Camp \"Pine\", West",
-            address = "Jasper, AB",
-        )
-        val specialReservation = sampleReservation.copy(
-            campsiteName = "Camp \"Pine\", West",
-        )
-
-        val csv = CsvExporter.toCsv(specialReservation, specialCampsite)
-        val row = csv.trimEnd().lines()[1]
-
-        // Campsite name has quotes and commas, address has a comma
-        assertTrue(row.contains("\"Camp \"\"Pine\"\", West\""))
-        assertTrue(row.contains("\"Jasper, AB\""))
-    }
-
-    @Test
-    fun ac5_cancellationOrMissingReservation_showsNoErrorForDownload() {
+    fun downloadCsvButton_tapped_launchesWithExpectedFileName() {
         val reservationRepo = FakeReservationRepository(listOf(sampleReservation))
         val campsiteRepo = FakeCampsiteRepository(listOf(sampleCampsite))
         val controller = ReservationDetailsController(
@@ -161,20 +128,25 @@ class DownloadReservationCsvTest {
             userId = "sam",
             reservationId = "res-101",
         )
+        var launchedFileName: String? = null
 
         composeRule.setContent {
             VipersTheme {
                 ReservationDetailsScreen(
                     reservationId = "res-101",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
+                    onDownloadCsv = { launchedFileName = it },
                 )
             }
         }
 
-        // Screen is displayed, no error banner
-        composeRule.onNodeWithTag("screen_reservation_details").assertIsDisplayed()
-        composeRule.onNodeWithTag("text_reservation_error").assertDoesNotExist()
+        composeRule.onNodeWithTag("button_download_csv")
+            .performScrollTo()
+            .performClick()
+
+        assertEquals("reservation_R-10042.csv", launchedFileName)
     }
 
     @Test

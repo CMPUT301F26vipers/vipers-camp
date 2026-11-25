@@ -2,7 +2,8 @@
  * OwnerReservationDetailsTest.kt
  * Intent tests for the owner's Reservation details screen (mockup O15, US 02.07.01): the entrant's
  * name and contact details, the stay, whether the rules were accepted, a deleted entrant, and a
- * reservation at another owner's campsite. Uses the fake repositories, so it doesn't touch Firestore.
+ * reservation at another owner's campsite. Also the Message Entrant button (US 02.12.01). Uses the
+ * fake repositories, so it doesn't touch Firestore.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -10,12 +11,16 @@ package com.example.vipers.ui.reservations
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.theme.VipersTheme
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -40,6 +45,9 @@ class OwnerReservationDetailsTest {
         rulesAcceptedAt = 1_800_000_000_000,
     )
 
+    // the reservation whose conversation Message Entrant asked to open, if any
+    private var openedThread: String? = null
+
     /** Shows the details of "res-1" to [ownerId], with [reservation] saved. */
     private fun openDetails(reservation: Reservation, ownerId: String = "owner-priya") {
         val controller = OwnerReservationDetailsController(
@@ -49,7 +57,14 @@ class OwnerReservationDetailsTest {
             reservationId = "res-1",
         )
         composeRule.setContent {
-            VipersTheme { OwnerReservationDetailsScreen("res-1", onBack = {}, controller = controller) }
+            VipersTheme {
+                OwnerReservationDetailsScreen(
+                    "res-1",
+                    onBack = {},
+                    onMessage = { openedThread = it },
+                    controller = controller,
+                )
+            }
         }
     }
 
@@ -93,5 +108,23 @@ class OwnerReservationDetailsTest {
 
         composeRule.onNodeWithText("Reservation not found").assertIsDisplayed()
         composeRule.onNodeWithText("sam@example.com · 780-555-0101").assertDoesNotExist()
+    }
+
+    @Test
+    fun messageEntrant_opensTheConversationAboutThisReservation() {
+        openDetails(samsStay)
+
+        composeRule.onNodeWithText("Message Entrant").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_message_entrant").performClick()
+
+        assertEquals("res-1", openedThread)
+    }
+
+    @Test
+    fun messageEntrant_isNotShownForAnotherOwnersReservation() {
+        openDetails(samsStay, ownerId = "someone-else")
+
+        composeRule.onNodeWithText("Message Entrant").assertDoesNotExist()
+        assertNull(openedThread)
     }
 }

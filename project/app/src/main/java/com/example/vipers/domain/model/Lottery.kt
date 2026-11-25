@@ -71,11 +71,49 @@ data class Lottery(
     }
 
     /**
+     * Whether the owner can run the draw at time [now] (US 02.05.01b): registration has started,
+     * it hasn't been drawn or removed, and the booking period hasn't ended (winners couldn't
+     * reserve anything). Registration can still be open, since the owner may draw early.
+     * Not at the exact start time: closing registration then would make its end equal its start,
+     * and a failed draw could never be tried again.
+     */
+    fun canOwnerDraw(now: Long = System.currentTimeMillis()): Boolean =
+        !removed &&
+            drawnAt == null &&
+            registrationStart > 0L &&
+            registrationEnd > registrationStart &&
+            now > registrationStart &&
+            !(bookingEnd > 0L && now > bookingEnd)
+
+    /**
+     * Whether the app should draw this lottery on its own at time [now] (US 02.05.01b): the owner
+     * could draw it and registration has ended. Never true while registration is open.
+     */
+    fun isDueForDraw(now: Long = System.currentTimeMillis()): Boolean =
+        canOwnerDraw(now) && now > registrationEnd
+
+    /**
      * Checks if registration is currently open for entrants at time [now] (milliseconds since 1970).
      * Registration is open between [registrationStart] and [registrationEnd] (inclusive).
      */
     fun canEntrantJoin(now: Long = System.currentTimeMillis()): Boolean =
         status(now) == LotteryStatus.OPEN
+
+    /**
+     * Returns the user-facing reason why this lottery can no longer be edited at time [now],
+     * or null if editing is allowed (US 02.04.06).
+     */
+    fun editBlockedReason(now: Long = System.currentTimeMillis()): String? {
+        if (removed) return "Cannot edit a removed lottery"
+        val currentStatus = status(now)
+        if (drawnAt != null || currentStatus == LotteryStatus.DRAWN) {
+            return "Cannot edit a lottery that has already been drawn"
+        }
+        if (currentStatus == LotteryStatus.CLOSED) {
+            return "Registration has closed; this lottery can no longer be edited."
+        }
+        return null
+    }
 
     /**
      * Checks if the booking period is currently open at time [now] (milliseconds since 1970).
@@ -87,11 +125,11 @@ data class Lottery(
 
     /**
      * Checks if the booking period has expired at time [now] (milliseconds since 1970).
-     * Expired when a valid booking period exists ([bookingStart] > 0 and [bookingEnd] > [bookingStart])
-     * and [now] is strictly after [bookingEnd].
+     * Expired when a valid booking period exists ([bookingStart] > 0 and [bookingEnd] > [bookingStart]),
+     * the lottery has not been removed, and [now] is strictly after [bookingEnd].
      */
     fun isBookingExpired(now: Long = System.currentTimeMillis()): Boolean =
-        bookingStart > 0L && bookingEnd > bookingStart && now > bookingEnd
+        !removed && bookingStart > 0L && bookingEnd > bookingStart && now > bookingEnd
 
     /**
      * The nights this lottery offers that a winner can still pick at one campsite, in date order

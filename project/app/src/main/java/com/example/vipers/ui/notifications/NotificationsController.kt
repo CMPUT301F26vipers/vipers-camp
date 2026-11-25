@@ -93,6 +93,7 @@ class NotificationsController(
                     NotificationService(
                         app.container.notificationRepository,
                         app.container.campsiteRepository,
+                        app.container.profileRepository,
                     ),
                     app.container.deviceId,
                 )

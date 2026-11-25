@@ -7,8 +7,12 @@
 package com.example.vipers.ui.campsites
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakePlaceFinder
+import com.example.vipers.data.fake.FakePhotoReader
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.Place
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.repository.CampsiteRepository
@@ -27,7 +31,11 @@ import org.junit.Test
 class CampsiteControllerTest {
 
     private val repo = FakeCampsiteRepository()
-    private val controller = CampsiteController(repo, ownerId = "my-phone")
+    private val controller = CampsiteController(
+        repo, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+        imageRepository = FakeImageRepository(),
+        photoReader = FakePhotoReader(),
+    )
 
     @Before
     fun setUp() {
@@ -170,7 +178,11 @@ class CampsiteControllerTest {
         campsites: CampsiteRepository,
         campsite: Campsite = hintonInFull,
     ): CampsiteController {
-        val form = CampsiteController(campsites, ownerId = "my-phone")
+        val form = CampsiteController(
+            campsites, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         form.loadForEdit(campsite.id)
         return form
     }
@@ -196,7 +208,13 @@ class CampsiteControllerTest {
 
     @Test
     fun loadForEdit_owner_prefillsEveryField() = runBlocking {
-        val form = CampsiteController(FakeCampsiteRepository(listOf(hinton)), ownerId = "my-phone")
+        val form = CampsiteController(
+            FakeCampsiteRepository(listOf(hinton)),
+            ownerId = "my-phone",
+            placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         form.loadForEdit("hinton")
 
         assertEquals(FormMode.EDIT, form.mode)
@@ -213,7 +231,13 @@ class CampsiteControllerTest {
 
     @Test
     fun loadForEdit_nonOwner_setsNotAllowedAndLeavesTheFormEmpty() = runBlocking {
-        val form = CampsiteController(FakeCampsiteRepository(listOf(hinton)), ownerId = "someone-else")
+        val form = CampsiteController(
+            FakeCampsiteRepository(listOf(hinton)),
+            ownerId = "someone-else",
+            placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         form.loadForEdit("hinton")
 
         assertTrue(form.notAllowed)
@@ -222,7 +246,11 @@ class CampsiteControllerTest {
 
     @Test
     fun loadForEdit_missingId_setsNotAllowedAndLeavesTheFormEmpty() = runBlocking {
-        val form = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        val form = CampsiteController(
+            FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         form.loadForEdit("nope")
 
         assertTrue(form.notAllowed)
@@ -234,7 +262,11 @@ class CampsiteControllerTest {
         val failing = object : CampsiteRepository by FakeCampsiteRepository() {
             override suspend fun getCampsite(id: String): Campsite? = throw Exception("offline")
         }
-        val form = CampsiteController(failing, ownerId = "my-phone")
+        val form = CampsiteController(
+            failing, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         form.loadForEdit("hinton")
 
         assertTrue(form.loadFailed)
@@ -354,7 +386,11 @@ class CampsiteControllerTest {
     @Test
     fun saveEdits_nothingLoaded_setsNotAllowedAndSavesNothing() = runBlocking {
         val campsites = FakeCampsiteRepository(listOf(hintonInFull))
-        val form = CampsiteController(campsites, ownerId = "my-phone")
+        val form = CampsiteController(
+            campsites, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         form.saveEdits(Campsite(id = "hinton", name = "Taken over"))
 
         assertTrue(form.notAllowed)
@@ -463,11 +499,19 @@ class CampsiteControllerTest {
 
     @Test
     fun hasUnsavedChanges_newFormAfterTypingRulesOrCancellationPolicy_isTrue() {
-        val rulesOnly = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        val rulesOnly = CampsiteController(
+            FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         rulesOnly.onRulesChange("Quiet hours after 10 PM")
         assertTrue(rulesOnly.hasUnsavedChanges)
 
-        val policyOnly = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+        val policyOnly = CampsiteController(
+            FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         policyOnly.onCancellationPolicyChange("Free up to 7 days before")
         assertTrue(policyOnly.hasUnsavedChanges)
     }
@@ -489,7 +533,11 @@ class CampsiteControllerTest {
         val failing = object : CampsiteRepository by FakeCampsiteRepository() {
             override suspend fun addCampsite(campsite: Campsite): String = throw Exception("offline")
         }
-        val offlineController = CampsiteController(failing, ownerId = "my-phone")
+        val offlineController = CampsiteController(
+            failing, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
         offlineController.save(Campsite(name = "Bow River Sites"))
 
         assertTrue(offlineController.saveFailed)
@@ -513,7 +561,11 @@ class CampsiteControllerTest {
     fun publish_acceptsWholeDollarsZeroAndADollarSign() = runBlocking {
         val prices = mapOf("65" to 6500L, "0" to 0L, "$50" to 5000L, " 65.05 " to 6505L)
         for ((typed, cents) in prices) {
-            val form = CampsiteController(FakeCampsiteRepository(), ownerId = "my-phone")
+            val form = CampsiteController(
+                FakeCampsiteRepository(), ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+                imageRepository = FakeImageRepository(),
+                photoReader = FakePhotoReader(),
+            )
             form.onNameChange("Hinton Ridge Campground")
             form.onAddressChange("Hinton, AB")
             form.onRegionChange(Region.HINTON)
@@ -599,5 +651,282 @@ class CampsiteControllerTest {
 
         assertTrue(form.published)
         assertEquals(13000L, reservations.getReservation("r1")?.totalPriceCents)
+    }
+
+    // what Find location could return for "Hinton, AB" (mockup O03)
+    private val hintonTown = Place("Hinton", "Alberta, Canada", lat = 53.405, lng = -117.585)
+    private val golfCourse = Place("Hinton Golf Course", "Hinton, Alberta", 53.392, -117.561)
+    private val nordicCentre = Place("Hinton Nordic Centre", "Hinton, Alberta", 53.412, -117.603)
+
+    /** An empty Add Campsite form whose Find location returns [finder]'s places. */
+    private fun formWith(finder: FakePlaceFinder, campsites: CampsiteRepository = repo) =
+        CampsiteController(
+            campsites,
+            ownerId = "my-phone",
+            placeFinder = finder,
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
+
+    @Test
+    fun fetchPlaces_listsThePlacesFoundForTheTrimmedAddress() = runBlocking {
+        val finder = FakePlaceFinder(listOf(hintonTown, golfCourse, nordicCentre))
+        val form = formWith(finder)
+        form.onAddressChange("  Hinton, AB ")
+
+        form.fetchPlaces()
+
+        assertEquals(listOf("Hinton, AB"), finder.searches)
+        assertEquals(listOf(hintonTown, golfCourse, nordicCentre), form.places)
+        assertNull(form.findLocationError)
+        assertFalse(form.isFindingPlaces)
+    }
+
+    @Test
+    fun fetchPlaces_showsAtMostFivePlaces() = runBlocking {
+        val many = (1..7).map { Place("Hinton $it", "Alberta, Canada", 53.4, -117.5) }
+        val form = formWith(FakePlaceFinder(many))
+        form.onAddressChange("Hinton")
+
+        form.fetchPlaces()
+
+        assertEquals(CampsiteController.MAX_PLACES, form.places.size)
+        assertEquals(many.take(5), form.places)
+    }
+
+    @Test
+    fun fetchPlaces_blankAddress_asksForOneAndLooksNothingUp() = runBlocking {
+        val finder = FakePlaceFinder(listOf(hintonTown))
+        val form = formWith(finder)
+        form.onAddressChange("   ")
+
+        form.fetchPlaces()
+
+        assertEquals("Enter an address first", form.findLocationError)
+        assertTrue(finder.searches.isEmpty())
+        assertTrue(form.places.isEmpty())
+    }
+
+    @Test
+    fun fetchPlaces_nothingFound_saysSo() = runBlocking {
+        val form = formWith(FakePlaceFinder(emptyList()))
+        form.onAddressChange("Nowhere at all")
+
+        form.fetchPlaces()
+
+        assertEquals("No places found. Check the address and try again.", form.findLocationError)
+        assertTrue(form.places.isEmpty())
+    }
+
+    @Test
+    fun fetchPlaces_lookupFails_showsAnErrorAndKeepsTheForm() = runBlocking {
+        val form = formWith(FakePlaceFinder(fails = true))
+        form.onNameChange("Hinton Ridge Campground")
+        form.onAddressChange("Hinton, AB")
+
+        form.fetchPlaces()
+
+        assertEquals(
+            "Couldn't look up the address. Check your connection and try again.",
+            form.findLocationError,
+        )
+        assertEquals("Hinton Ridge Campground", form.name)
+        assertEquals("Hinton, AB", form.address)
+        assertFalse(form.isFindingPlaces)
+    }
+
+    @Test
+    fun onAddressChange_clearsTheFindLocationError() = runBlocking {
+        val form = formWith(FakePlaceFinder(emptyList()))
+        form.onAddressChange("Nowhere at all")
+        form.fetchPlaces()
+
+        form.onAddressChange("Hinton, AB")
+
+        assertNull(form.findLocationError)
+    }
+
+    @Test
+    fun choosePlace_setsTheMapLocationAndClosesTheDialog() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown, golfCourse)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+
+        form.choosePlace(golfCourse)
+
+        assertEquals(53.392, form.lat!!, 0.0)
+        assertEquals(-117.561, form.lng!!, 0.0)
+        assertEquals("Hinton Golf Course", form.placeName)
+        assertTrue(form.places.isEmpty())
+    }
+
+    @Test
+    fun dismissPlaces_closesTheDialogAndKeepsTheOldLocation() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown, golfCourse)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+        form.fetchPlaces()
+
+        form.dismissPlaces()
+
+        assertTrue(form.places.isEmpty())
+        assertEquals(53.405, form.lat!!, 0.0)
+    }
+
+    @Test
+    fun publish_withAChosenPlace_savesItsCoordinates() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onNameChange("Hinton Ridge Campground")
+        form.onAddressChange("Hinton, AB")
+        form.onRegionChange(Region.HINTON)
+        form.onMaxGuestsChange("8")
+        form.onPriceChange("65")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+
+        form.publish()
+
+        val saved = repo.getCampsitesByOwner("my-phone").single()
+        assertEquals(53.405, saved.lat!!, 0.0)
+        assertEquals(-117.585, saved.lng!!, 0.0)
+    }
+
+    @Test
+    fun publish_withoutAMapLocation_savesTheCampsiteWithoutOne() = runBlocking {
+        fillValidForm()
+
+        controller.publish()
+
+        val saved = repo.getCampsitesByOwner("my-phone").single()
+        assertFalse(saved.hasLocation())
+    }
+
+    @Test
+    fun hasUnsavedChanges_afterChoosingAPlaceOnAnEmptyForm_isTrue() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.onAddressChange("")
+
+        form.choosePlace(hintonTown)
+
+        assertTrue(form.hasUnsavedChanges)
+    }
+
+    @Test
+    fun loadForEdit_fillsTheSavedMapLocation() = runBlocking {
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+
+        assertEquals(53.405, form.lat!!, 0.0)
+        assertEquals(-117.585, form.lng!!, 0.0)
+        // the place's name isn't saved, only its coordinates
+        assertNull(form.placeName)
+        assertFalse(form.hasUnsavedChanges)
+    }
+
+    @Test
+    fun saveEdits_newPlace_savesTheNewCoordinates() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = CampsiteController(
+            campsites, ownerId = "my-phone", placeFinder = FakePlaceFinder(listOf(nordicCentre)),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
+        )
+        form.loadForEdit("hinton")
+        form.fetchPlaces()
+        form.choosePlace(nordicCentre)
+
+        form.publish()
+
+        val saved = campsites.getCampsite("hinton")!!
+        assertEquals(53.412, saved.lat!!, 0.0)
+        assertEquals(-117.603, saved.lng!!, 0.0)
+        // the fields the form doesn't have are kept
+        assertEquals("photo-1", saved.imageId)
+        assertEquals(46, saved.ratingSum)
+    }
+
+    @Test
+    fun saveEdits_removedMapLocation_savesTheCampsiteWithoutOne() = runBlocking {
+        val campsites = FakeCampsiteRepository(listOf(hintonInFull))
+        val form = editForm(campsites)
+
+        form.removeMapLocation()
+        assertTrue(form.hasUnsavedChanges)
+        form.publish()
+
+        assertFalse(campsites.getCampsite("hinton")!!.hasLocation())
+    }
+
+    @Test
+    fun onAddressChange_afterChoosingAPlace_keepsTheLocationAndAsksToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+
+        form.onAddressChange("Edson, AB")
+
+        assertTrue(form.addressChangedSinceFind)
+        assertEquals(53.405, form.lat!!, 0.0)
+    }
+
+    @Test
+    fun onAddressChange_withNoMapLocation_doesNotAskToCheckIt() {
+        val form = formWith(FakePlaceFinder())
+
+        form.onAddressChange("Hinton, AB")
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun onAddressChange_sameText_doesNotAskToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+
+        form.onAddressChange("Hinton, AB")
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun choosePlaceAgain_afterChangingTheAddress_stopsAskingToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown, golfCourse)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+        form.onAddressChange("Hinton Golf Course")
+        form.fetchPlaces()
+
+        form.choosePlace(golfCourse)
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun removeMapLocation_afterChangingTheAddress_stopsAskingToCheckIt() = runBlocking {
+        val form = formWith(FakePlaceFinder(listOf(hintonTown)))
+        form.onAddressChange("Hinton, AB")
+        form.fetchPlaces()
+        form.choosePlace(hintonTown)
+        form.onAddressChange("Edson, AB")
+
+        form.removeMapLocation()
+
+        assertFalse(form.addressChangedSinceFind)
+    }
+
+    @Test
+    fun editingTheAddressOfASavedCampsite_asksToCheckItsLocation() = runBlocking {
+        val form = editForm(FakeCampsiteRepository(listOf(hintonInFull)))
+        assertFalse(form.addressChangedSinceFind)
+
+        form.onAddressChange("Hinton, Alberta")
+
+        assertTrue(form.addressChangedSinceFind)
     }
 }

@@ -3,6 +3,7 @@
  * The controller (a ViewModel) behind the owner's view of one campsite (mockup O04, US 02.01.04).
  * It loads the campsite with all its saved details and its lotteries (US 02.04.01), with how many
  * entrants joined or reserved each one, and works out whether this user may edit it (US 02.01.03).
+ * It also saves the campsite's QR code as an image (US 02.02.01).
  * Known issues: this campsite's own reservations are not loaded here. The screen's Reservations
  * button opens the list for all of the current user's campsites (US 02.07.01).
  */
@@ -23,8 +24,11 @@ import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.LotteryRepository
+import java.io.OutputStream
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Loads one of the owner's campsites and its lotteries for the My Campsite screen.
@@ -65,6 +69,14 @@ class OwnerCampsiteController(
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** "QR code saved" or an error after saving the QR code, or null when there's nothing to say. */
+    var qrMessage by mutableStateOf<String?>(null)
+        private set
+
+    /** True when [qrMessage] is the error, so the screen can show it in red. */
+    var qrSaveFailed by mutableStateOf(false)
+        private set
+
     /**
      * Loads the campsite and its lotteries in the background. The screen calls this each time it
      * comes back into view, so it always shows the latest saved values (e.g. after Edit).
@@ -96,6 +108,44 @@ class OwnerCampsiteController(
         } finally {
             loading = false
         }
+    }
+
+    /**
+     * Saves the campsite's QR code as a PNG in the background (US 02.02.01). [openOutput] opens
+     * the file the owner picked, or returns null if it can't be opened.
+     */
+    fun saveQrCode(openOutput: () -> OutputStream?) {
+        viewModelScope.launch { writeQrCode(openOutput) }
+    }
+
+    /**
+     * Writes the QR code for [campsite] with [write] to the stream from [openOutput], and sets
+     * [qrMessage] to say whether it worked. Does nothing if the campsite hasn't loaded.
+     * [saveQrCode] runs this in the background; unit tests call it directly with their own [write].
+     */
+    suspend fun writeQrCode(
+        openOutput: () -> OutputStream?,
+        write: (String, OutputStream) -> Boolean = ::writeQrCodePng,
+    ) {
+        val link = campsite?.qrLink() ?: return
+        val saved = try {
+            withContext(Dispatchers.IO) {
+                openOutput()?.use { output -> write(link, output) } ?: false
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // e.g. the phone is out of space or the file was removed while saving
+            false
+        }
+        qrSaveFailed = !saved
+        qrMessage = if (saved) "QR code saved" else "Couldn't save the QR code. Try again."
+    }
+
+    /** Clears [qrMessage] once the screen has shown it. */
+    fun clearQrMessage() {
+        qrMessage = null
+        qrSaveFailed = false
     }
 
     // like mockup O04: "36 joined" while people sign up, "3 reserved" once winners start reserving

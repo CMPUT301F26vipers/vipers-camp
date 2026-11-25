@@ -2,7 +2,6 @@
  * Campsite.kt
  * A campsite an owner lists so entrants can find it and join its lotteries.
  * Stored in the Firestore "campsites" collection.
- * Known issues: photo and map location are stored but not yet filled in by the Add Campsite form.
  */
 package com.example.vipers.domain.model
 
@@ -91,7 +90,35 @@ data class Campsite(
         return "$${dollarsText(totalPriceCents(nights))}"
     }
 
+    /**
+     * The link stored in this campsite's QR code (US 02.02.01), e.g. "vipers-camp://campsite/abc".
+     * It only uses [id], so the code stays the same when the owner edits the campsite.
+     */
+    fun qrLink(): String {
+        return QR_LINK_PREFIX + id
+    }
+
     companion object {
+        /** The start of every campsite QR link; the campsite ID follows it. */
+        const val QR_LINK_PREFIX = "vipers-camp://campsite/"
+
+        /**
+         * The campsite ID in a scanned QR [link] made by [qrLink], or null if it isn't one of our
+         * campsite links (another app's QR code, an empty ID, or extra parts after the ID).
+         * Scanning (US 01.12.01) uses this. Campsite IDs only use letters, digits, - and _, so
+         * anything else (like ?, # or %) means it isn't ours, and it can't break the screen route.
+         */
+        fun idFromQrLink(link: String): String? {
+            val text = link.trim()
+            if (!text.startsWith(QR_LINK_PREFIX)) return null
+            val id = text.removePrefix(QR_LINK_PREFIX)
+            if (!QR_ID_PATTERN.matches(id)) return null
+            return id
+        }
+
+        // Firestore IDs are letters and digits; our test and seed IDs also use - and _
+        private val QR_ID_PATTERN = Regex("[A-Za-z0-9_-]+")
+
         /** An amount in cents as dollars: "50" or "65.50". Cents only show when there are some. */
         fun dollarsText(amountCents: Long): String {
             val dollars = amountCents / 100
@@ -132,6 +159,16 @@ data class Campsite(
     }
 
     /**
+     * The map coordinates as the owner sees them, e.g. "53.405, -117.585", or null if the
+     * campsite has no map location (US 02.01.02c).
+     */
+    fun coordinatesText(): String? {
+        val latitude = lat ?: return null
+        val longitude = lng ?: return null
+        return Place.coordinatesText(latitude, longitude)
+    }
+
+    /**
      * True if [name] starts with [searchText], ignoring upper/lower case and spaces around the
      * text. An empty [searchText] matches every campsite (US 01.01.01).
      */
@@ -166,12 +203,23 @@ data class Campsite(
     /**
      * Checks the fields the Add Campsite form requires (US 02.01.02a) and returns an error
      * message for each field that's wrong, keyed by field name. An empty map means it's valid.
+     * The map location is optional, but if it's set, [lat] and [lng] must both be set and be real
+     * coordinates (US 02.01.02c).
      */
     fun validate(): Map<String, String> {
         val errors = mutableMapOf<String, String>()
         if (name.isBlank()) errors["name"] = "Enter a name"
         if (address.isBlank()) errors["address"] = "Enter a location"
         if (maxOccupancy < 1) errors["maxOccupancy"] = "Must be at least 1"
+        if (!hasValidCoordinates()) errors["mapLocation"] = "Find the location again"
         return errors
+    }
+
+    // No coordinates at all is fine; otherwise both must be set and in range.
+    private fun hasValidCoordinates(): Boolean {
+        if (lat == null && lng == null) return true
+        val latitude = lat ?: return false
+        val longitude = lng ?: return false
+        return latitude in -90.0..90.0 && longitude in -180.0..180.0
     }
 }

@@ -24,7 +24,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -38,6 +40,7 @@ import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.ui.common.shortDate
+import com.example.vipers.ui.lottery.LotteryDrawer
 import com.example.vipers.ui.navigation.AppNavigation
 import com.example.vipers.ui.navigation.Routes
 import com.example.vipers.ui.theme.VipersTheme
@@ -112,6 +115,12 @@ class ViewDatesAfterWinningTest {
             lotteryId = "lot-summer",
             campsiteId = "hinton",
             reservationRepository = FakeReservationRepository(campsites, lotteries),
+            lotteryDrawer = LotteryDrawer(
+                lotteries,
+                FakeNotificationRepository(),
+                campsites,
+                FakeProfileRepository(),
+            ),
         )
         composeRule.setContent {
             VipersTheme {
@@ -147,7 +156,9 @@ class ViewDatesAfterWinningTest {
             campsiteRepository = campsites,
             lotteryRepository = FakeLotteryRepository(listOf(lottery), listOf(samsEntry(status))),
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(listOf(winNotification)),
+            imageRepository = FakeImageRepository(),
         )
         composeRule.setContent {
             VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) }
