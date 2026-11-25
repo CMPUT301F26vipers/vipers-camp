@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
                     container.notificationRepository,
                     container.campsiteRepository,
                     container.profileRepository,
+                    container.lotteryRepository,
                 ).markRead(tap.notificationId)
             } catch (e: CancellationException) {
                 throw e

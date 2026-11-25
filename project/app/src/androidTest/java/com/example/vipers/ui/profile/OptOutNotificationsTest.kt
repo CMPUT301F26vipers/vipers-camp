@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performScrollTo
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
@@ -31,6 +32,7 @@ import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
 import com.example.vipers.domain.model.UserProfile
+import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.service.NotificationService
 import com.example.vipers.ui.campsites.CampsiteDetailsController
 import com.example.vipers.ui.campsites.CampsiteDetailsScreen
@@ -94,7 +96,7 @@ class OptOutNotificationsTest {
 
     /** Shows Settings for this device, loading its profile from [profiles]. */
     private fun openSettings(profiles: FakeProfileRepository) {
-        val controller = ProfileController(profiles, "test-device")
+        val controller = profileController(profiles, "test-device")
         composeRule.setContent {
             VipersTheme {
                 SettingsScreen(
@@ -121,6 +123,10 @@ class OptOutNotificationsTest {
         val result = runBlocking { drawer.drawLottery("may", now) }
         assertTrue(result is LotteryDrawResult.Success)
     }
+
+    // the profile photo isn't used here, so it gets a fake photo reader
+    private fun profileController(repository: ProfileRepository, deviceId: String) =
+        ProfileController(repository, deviceId, FakePhotoReader())
 
     @Test
     fun switchIsOnByDefault() {
@@ -153,7 +159,7 @@ class OptOutNotificationsTest {
     fun switchIsStillOffAfterRestarting() {
         val profiles = FakeProfileRepository(listOf(sam))
         // the screen shows whichever controller this holds; a new one stands for a restart
-        var controller by mutableStateOf(ProfileController(profiles, "test-device"))
+        var controller by mutableStateOf(profileController(profiles, "test-device"))
         composeRule.setContent {
             VipersTheme {
                 SettingsScreen(
@@ -168,7 +174,7 @@ class OptOutNotificationsTest {
         waitForSaved(profiles, on = false)
 
         // "restart": a new controller loads the profile again from the same repository
-        controller = ProfileController(profiles, "test-device")
+        controller = profileController(profiles, "test-device")
 
         composeRule.waitUntil(5_000) { !controller.isLoading }
         switch().assertIsOff()
@@ -209,7 +215,7 @@ class OptOutNotificationsTest {
         val profiles = FakeProfileRepository(listOf(sam.copy(notificationsEnabled = false)))
         runTheDraw(profiles)
         val controller = NotificationsController(
-            NotificationService(notifications, campsites, profiles),
+            NotificationService(notifications, campsites, profiles, lotteries),
             userId = "test-device",
         )
         composeRule.setContent {

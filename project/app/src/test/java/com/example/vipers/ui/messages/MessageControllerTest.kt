@@ -8,6 +8,7 @@
 package com.example.vipers.ui.messages
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
@@ -71,6 +72,7 @@ class MessageControllerTest {
             notificationRepository,
             FakeCampsiteRepository(),
             profiles,
+            FakeLotteryRepository(),
         ),
         userId = userId,
         reservationId = reservationId,

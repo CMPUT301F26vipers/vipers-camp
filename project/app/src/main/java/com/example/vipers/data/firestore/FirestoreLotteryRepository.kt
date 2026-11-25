@@ -281,6 +281,41 @@ class FirestoreLotteryRepository(
         }.await()
     }
 
+    override suspend fun getEntriesForUser(userId: String): List<LotteryEntry> =
+        entries.whereEqualTo("userId", userId).get().await().documents.map { it.toLotteryEntry() }
+
+    override suspend fun removeLottery(id: String) {
+        val doc = lotteries.document(id)
+        if (!doc.get().await().exists()) return
+        doc.update("removed", true).await()
+    }
+
+    override suspend fun removeEntry(lotteryId: String, userId: String): Boolean {
+        val lotteryDoc = lotteries.document(lotteryId)
+        val entryDoc = entries.document(LotteryEntry.idFor(lotteryId, userId))
+
+        return db.runTransaction { tx ->
+            val entrySnap = tx.get(entryDoc)
+            val status = entrySnap.getString("status")
+            if (!entrySnap.exists() || status == EntryStatus.REMOVED.name) {
+                return@runTransaction false
+            }
+            val lotterySnap = tx.get(lotteryDoc)
+            tx.update(entryDoc, "status", EntryStatus.REMOVED.name)
+            if (status == EntryStatus.WAITING.name && lotterySnap.exists()) {
+                val lottery = lotterySnap.toLottery()
+                tx.update(
+                    lotteryDoc,
+                    mapOf(
+                        "waitingUserIds" to lottery.waitingUserIds.filter { it != userId },
+                        "entriesVersion" to (lottery.entriesVersion + 1),
+                    )
+                )
+            }
+            true
+        }.await()
+    }
+
     override suspend fun declineTransaction(
         lotteryId: String,
         userId: String,

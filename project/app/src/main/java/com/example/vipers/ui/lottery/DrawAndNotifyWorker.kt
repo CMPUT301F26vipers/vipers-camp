@@ -52,6 +52,7 @@ class DrawAndNotifyWorker(
                     container.notificationRepository,
                     container.campsiteRepository,
                     container.profileRepository,
+                    container.lotteryRepository,
                 ).showNewOnDevice(userId, container.deviceNotifier)
             }
             Result.success()

@@ -153,6 +153,22 @@ interface LotteryRepository {
     /** Loads [userId]'s entry in [lotteryId], or returns null if they haven't joined. */
     suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry?
 
+    /** Loads every entry [userId] has in any lottery (US 01.08.01). */
+    suspend fun getEntriesForUser(userId: String): List<LotteryEntry>
+
+    /**
+     * Marks [userId]'s entry in [lotteryId] as [EntryStatus.REMOVED] in one transaction, whatever
+     * its status (US 01.08.01). A WAITING entry also leaves the lottery's waitingUserIds, so the
+     * draw skips it. Returns false if there is no entry or it's already REMOVED.
+     */
+    suspend fun removeEntry(lotteryId: String, userId: String): Boolean
+
+    /**
+     * Marks the lottery with this [id] as removed, so it's never drawn and shows as closed
+     * (e.g. when its campsites are removed, US 01.08.01). Does nothing if there is none.
+     */
+    suspend fun removeLottery(id: String)
+
     /** Loads every entry in [lotteryId]. */
     suspend fun getEntries(lotteryId: String): List<LotteryEntry>
 

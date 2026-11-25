@@ -94,6 +94,7 @@ class NotificationsController(
                         app.container.notificationRepository,
                         app.container.campsiteRepository,
                         app.container.profileRepository,
+                        app.container.lotteryRepository,
                     ),
                     app.container.deviceId,
                 )

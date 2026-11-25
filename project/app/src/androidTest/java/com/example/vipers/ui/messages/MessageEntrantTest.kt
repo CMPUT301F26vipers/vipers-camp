@@ -125,6 +125,7 @@ class MessageEntrantTest {
                 notifications,
                 FakeCampsiteRepository(),
                 profiles,
+                FakeLotteryRepository(),
             ),
             userId = userId,
             reservationId = "res-hinton",
@@ -265,7 +266,7 @@ class MessageEntrantTest {
         // Priya sent a message, which added a notice to Sam's inbox
         val fromOwner = saved("owner-priya", "Check-in is at 2 PM")
         runBlocking {
-            NotificationService(notifications, FakeCampsiteRepository(), profiles)
+            NotificationService(notifications, FakeCampsiteRepository(), profiles, FakeLotteryRepository())
                 .sendNewMessage(samsStay, fromOwner)
         }
         startApp(deviceId = "sam")

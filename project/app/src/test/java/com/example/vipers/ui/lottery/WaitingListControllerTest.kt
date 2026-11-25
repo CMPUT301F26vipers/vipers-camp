@@ -98,6 +98,23 @@ class WaitingListControllerTest {
     }
 
     @Test
+    fun watch_anEntrantWhoDeletedTheirProfile_showsDeletedUser() = runTest {
+        // US 01.08.01: an older entry of someone who has no profile any more
+        val repo = FakeLotteryRepository(
+            listOf(lottery),
+            listOf(
+                entry("sam", joinedAt = 1_000),
+                entry("gone", joinedAt = 2_000, status = EntryStatus.DECLINED),
+            ),
+        )
+        val controller = controllerFor(repo)
+
+        assertEquals(listOf("sam", "gone"), controller.entries.map { it.userId })
+        assertEquals("Deleted user", controller.names["gone"])
+        assertEquals("Sam Patel", controller.names["sam"])
+    }
+
+    @Test
     fun countLabel_includesTheLimitWhenOneIsSet() = runTest {
         val repo = FakeLotteryRepository(listOf(lottery), listOf(entry("sam", 1_000), entry("aisha", 2_000)))
         assertEquals("2 of 10 joined", controllerFor(repo).countLabel)

@@ -42,6 +42,7 @@ import com.example.vipers.ui.home.HomeScreen
 import com.example.vipers.ui.home.QrScanResult
 import com.example.vipers.ui.messages.MessagesScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
+import com.example.vipers.ui.notifications.SendNotificationScreen
 import com.example.vipers.ui.notifications.SentScreen
 import com.example.vipers.ui.profile.PolicyScreen
 import com.example.vipers.ui.profile.ProfileScreen
@@ -62,7 +63,8 @@ private val tabRoutes = listOf(
 
 /**
  * The whole app's navigation. [isAdmin] shows the Admin tab, [onLoadDemoData] is called
- * by the button on Settings, and [onScanQr] opens the QR scanner from Home. When [pendingTarget]
+ * by the button on Settings, [onScanQr] opens the QR scanner from Home, and [onProfileDeleted]
+ * is called once the user deletes their profile on Profile (US 01.08.01). When [pendingTarget]
  * is set by a tapped phone notification (T-14), it opens that screen on top of the Notifications
  * tab, as if the item had been tapped in the inbox, then calls [onPendingTargetOpened].
  */
@@ -71,6 +73,7 @@ fun AppNavigation(
     isAdmin: Boolean,
     onLoadDemoData: () -> Unit,
     onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
+    onProfileDeleted: () -> Unit = {},
     pendingTarget: NotificationTarget? = null,
     onPendingTargetOpened: () -> Unit = {},
 ) {
@@ -295,7 +298,24 @@ fun AppNavigation(
                 arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
-                WaitingListScreen(lotteryId = lotteryId, onBack = { navController.popBackStack() })
+                WaitingListScreen(
+                    lotteryId = lotteryId,
+                    onBack = { navController.popBackStack() },
+                    onSendNotification = {
+                        navController.navigate(Routes.SEND_NOTIFICATION.replace("{lotteryId}", lotteryId))
+                    },
+                )
+            }
+            composable(
+                route = Routes.SEND_NOTIFICATION,
+                arguments = listOf(navArgument("lotteryId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val lotteryId = backStackEntry.arguments?.getString("lotteryId") ?: ""
+                SendNotificationScreen(
+                    lotteryId = lotteryId,
+                    onBack = { navController.popBackStack() },
+                    onSent = { navController.popBackStack() },
+                )
             }
             composable(Routes.NOTIFICATIONS) {
                 NotificationsScreen(
@@ -317,6 +337,7 @@ fun AppNavigation(
                 ProfileScreen(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenPolicy = { navController.navigate(Routes.POLICY) },
+                    onProfileDeleted = onProfileDeleted,
                 )
             }
             composable(Routes.SETTINGS) {

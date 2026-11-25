@@ -8,6 +8,7 @@
 package com.example.vipers.domain.service
 
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.domain.model.Notification
@@ -64,7 +65,7 @@ class ShowNewOnDeviceTest {
     )
 
     private fun serviceWith(notifications: FakeNotificationRepository) =
-        NotificationService(notifications, FakeCampsiteRepository(), profiles)
+        NotificationService(notifications, FakeCampsiteRepository(), profiles, FakeLotteryRepository())
 
     @Test
     fun showNewOnDevice_showsEveryUnshownItemOnceOldestFirstAndMarksThemShown() = runBlocking {
@@ -194,7 +195,7 @@ class ShowNewOnDeviceTest {
         }
         val notifier = RecordingNotifier()
 
-        val count = NotificationService(notifications, FakeCampsiteRepository(), profiles)
+        val count = NotificationService(notifications, FakeCampsiteRepository(), profiles, FakeLotteryRepository())
             .showNewOnDevice("sam", notifier)
 
         assertEquals(7, count)
