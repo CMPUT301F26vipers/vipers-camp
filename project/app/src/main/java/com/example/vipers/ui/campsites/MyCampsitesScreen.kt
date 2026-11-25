@@ -2,7 +2,8 @@
  * MyCampsitesScreen.kt
  *
  * The Campsites tab (mockup O01). Displays the list of campsites owned by the current user, each
- * with a small copy of its promo photo (US 02.01.02b).
+ * with a small copy of its promo photo (US 02.01.02b). Sent Notifications opens the owner's sent
+ * list (US 02.10.02).
  *
  * Known issues: Lottery status is currently hardcoded as TBD.
  */
@@ -83,7 +84,13 @@ fun MyCampsitesScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
             ) {
-                Text("Sent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Sent Notifications",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
 
