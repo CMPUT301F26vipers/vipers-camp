@@ -6,6 +6,7 @@
 package com.example.vipers
 
 import android.app.Application
+import com.example.vipers.data.device.AndroidDeviceNotifier
 import com.example.vipers.data.device.DeviceIdentityManager
 import com.example.vipers.data.firestore.FirestoreCampsiteRepository
 import com.example.vipers.data.firestore.FirestoreImageRepository
@@ -32,6 +33,8 @@ class CampApp : Application() {
             messageRepository = FirestoreMessageRepository(),
             notificationRepository = FirestoreNotificationRepository(),
             imageRepository = FirestoreImageRepository(),
+            deviceNotifier = AndroidDeviceNotifier(this),
         )
+        AndroidDeviceNotifier.createChannel(this)
     }
 }

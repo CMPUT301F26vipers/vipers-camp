@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -21,6 +23,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.ui.admin.AdminHomeScreen
 import com.example.vipers.ui.admin.BrowseCampsitesScreen
 import com.example.vipers.ui.admin.BrowseImagesScreen
@@ -61,7 +64,9 @@ private val tabRoutes = listOf(
 /**
  * The whole app's navigation. [isAdmin] shows the Admin tab, [onLoadDemoData] is called
  * by the button on Settings, [onScanQr] opens the QR scanner from Home, and [onProfileDeleted]
- * is called once the user deletes their profile on Profile (US 01.08.01).
+ * is called once the user deletes their profile on Profile (US 01.08.01). When [pendingTarget]
+ * is set by a tapped phone notification (T-14), it opens that screen on top of the Notifications
+ * tab, as if the item had been tapped in the inbox, then calls [onPendingTargetOpened].
  */
 @Composable
 fun AppNavigation(
@@ -69,6 +74,8 @@ fun AppNavigation(
     onLoadDemoData: () -> Unit,
     onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
     onProfileDeleted: () -> Unit = {},
+    pendingTarget: NotificationTarget? = null,
+    onPendingTargetOpened: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -312,29 +319,17 @@ fun AppNavigation(
             }
             composable(Routes.NOTIFICATIONS) {
                 NotificationsScreen(
-                    // a win opens Reserve (01.04.01); without a campsiteId it uses the lottery's first
                     onOpenReserve = { lotteryId ->
-                        val route = Routes.RESERVE
-                            .replace("{lotteryId}", lotteryId)
-                            .replace("?campsiteId={campsiteId}", "")
-                        navController.navigate(route)
+                        navController.openNotificationTarget(NotificationTarget.OpenReserve(lotteryId))
                     },
-                    // the entrant's campsite details (E05), never OWNER_CAMPSITE
                     onOpenCampsite = { campsiteId ->
-                        navController.navigate(Routes.CAMPSITE_DETAILS.replace("{campsiteId}", campsiteId))
+                        navController.openNotificationTarget(NotificationTarget.OpenCampsite(campsiteId))
                     },
-                    // the entrant's reservation details (US 01.05.01)
                     onOpenReservation = { reservationId ->
-                        val route = Routes.RESERVATION_DETAILS.replace(
-                            "{reservationId}",
-                            reservationId,
-                        )
-                        navController.navigate(route)
+                        navController.openNotificationTarget(NotificationTarget.OpenReservation(reservationId))
                     },
-                    // the reservation's conversation (US 02.12.01)
                     onOpenThread = { reservationId ->
-                        val route = Routes.MESSAGES.replace("{reservationId}", reservationId)
-                        navController.navigate(route)
+                        navController.openNotificationTarget(NotificationTarget.OpenThread(reservationId))
                     },
                 )
             }
@@ -463,6 +458,38 @@ fun AppNavigation(
 
         }
     }
+
+    val latestOnPendingTargetOpened by rememberUpdatedState(onPendingTargetOpened)
+    LaunchedEffect(pendingTarget) {
+        val target = pendingTarget ?: return@LaunchedEffect
+        navController.openTab(Routes.NOTIFICATIONS)
+        navController.openNotificationTarget(target)
+        latestOnPendingTargetOpened()
+    }
+}
+
+/**
+ * Opens the screen a notification's [target] names (T-13): Reserve for a win, the entrant's
+ * campsite details, the entrant's reservation details, or the reservation's conversation. Both a
+ * tap in the inbox and a tap on a phone notification (T-14) use this, so they open the same screen.
+ */
+fun NavHostController.openNotificationTarget(target: NotificationTarget) {
+    val route = when (target) {
+        // a win opens Reserve (01.04.01); without a campsiteId it uses the lottery's first
+        is NotificationTarget.OpenReserve -> Routes.RESERVE
+            .replace("{lotteryId}", target.lotteryId)
+            .replace("?campsiteId={campsiteId}", "")
+        // the entrant's campsite details (E05), never OWNER_CAMPSITE
+        is NotificationTarget.OpenCampsite ->
+            Routes.CAMPSITE_DETAILS.replace("{campsiteId}", target.campsiteId)
+        // the entrant's reservation details (US 01.05.01)
+        is NotificationTarget.OpenReservation ->
+            Routes.RESERVATION_DETAILS.replace("{reservationId}", target.reservationId)
+        // the reservation's conversation (US 02.12.01)
+        is NotificationTarget.OpenThread ->
+            Routes.MESSAGES.replace("{reservationId}", target.reservationId)
+    }
+    navigate(route)
 }
 
 /**

@@ -27,7 +27,7 @@ your story needs a field or method that isn't here.
 | `domain/service/` | Logic shared by several screens, on top of the repositories (e.g. `NotificationService`). No Firebase or Android imports. |
 | `data/firestore/` | `Firestore…Repository`: the real versions, plus `toMap()` / `to…()` mappers. |
 | `data/fake/` | `Fake…Repository`: in-memory versions for unit and intent tests. |
-| `data/device/` | `DeviceIdentityManager`: the device ID is the user's ID. |
+| `data/device/` | `DeviceIdentityManager`: the device ID is the user's ID. `AndroidDeviceNotifier`: posts phone notifications (T-14); `DeviceNotificationLink`: the extras of the Intent a phone notification opens. |
 | `data/seed/` | `SeedLoader`: demo data. |
 | `CampApp.kt` / `AppContainer.kt` | Creates the repositories. Controllers get them with `(application as CampApp).container`. |
 
@@ -306,6 +306,60 @@ that user's notifications, newest first, straight away and on every change, unti
 `onInboxError()` instead, and nothing more arrives. Firestore filters only by `recipientId` and sorts by `createdAt` on
 the device, so no composite index is needed. `Subscription` keeps Firestore's
 `ListenerRegistration` out of `domain/`.
+
+Phone notifications (T-14) use two methods. `listUnshownOnDevice(recipientId)` returns that user's
+notifications whose `shownOnDevice` is `false`, oldest first by `createdAt`. Firestore is only asked
+for `recipientId ==` and `shownOnDevice == false` (equality filters only) and sorts on the device,
+so no composite index is needed. `markShownOnDevice(notificationId)` sets `shownOnDevice` to `true`
+in one transaction, only if it is still `false`, and writes no other field. It returns `true` if it
+changed the notification, and `false` if there is no such notification or it was already shown, so
+when the background check and the app-open check run at the same time only one of them posts it.
+Transactions need a connection, so `markShownOnDevice` fails offline.
+
+`NotificationService.showNewOnDevice(userId, notifier)` decides what to show on the phone and
+returns how many it showed. `DeviceNotifier` (in `domain/service`) is how it posts them without
+Android imports: `canPost()` says whether the app may show system notifications right now, and
+`show(notification)` posts one. The Android version is `AndroidDeviceNotifier` in `data/device`:
+it posts on the "Camp updates" channel (made in `CampApp.onCreate`) with the notification's `id` as
+the tag, so posting it again replaces it, and tapping it opens `MainActivity` with the extras from
+`DeviceNotificationLink`, whose `fromIntent` gets the screen from `Notification.target`, like the
+inbox. `AppContainer.deviceNotifier` holds it; tests get a `FakeDeviceNotifier` that only records
+what it was asked to show. Every type is shown.
+- No profile (or it can't be read): nothing happens.
+- `notificationsEnabled = false` (US 01.10.01): nothing is shown, and every unshown item is marked
+  shown, so turning notifications back on doesn't bring back a pile of old items.
+- `canPost()` is `false` (permission refused): nothing is shown or marked, so the inbox alone is
+  used and the items can still be shown once permission is granted.
+- Otherwise each item from `listUnshownOnDevice`, oldest first, is shown only if
+  `markShownOnDevice` returns `true`, so each inbox item gives at most one phone notification.
+  An item that fails is skipped and the rest are still handled; the method doesn't throw for it.
+
+`DrawAndNotifyWorker` (WorkManager) runs this about every 15 minutes, even while the app is closed,
+and once whenever the app opens; `MainActivity` schedules both with
+`DrawAndNotifyWorker.schedule(context)` as unique work (`draw_and_notify_periodic`, kept if it's
+already scheduled, and `draw_and_notify_app_open`, replaced), and both wait for a network
+connection. Each run first starts the draws that are due, then calls `showNewOnDevice` for this
+device's user, so a draw's result is shown in the same run. Each unshown inbox item is shown once
+as a phone notification. Opted-out users get none (their items are marked shown), and when
+permission is refused nothing is shown or marked.
+
+On Android 13 and later, `AppRoot` asks for `POST_NOTIFICATIONS` once per app start, as soon as Home
+is shown (never on Welcome), if it isn't granted yet. If the user allows it, `MainActivity` calls
+`DrawAndNotifyWorker.checkNow(context)`, which runs one check straight away (the same unique
+`draw_and_notify_app_open` work), so items already waiting in the inbox appear without waiting 15
+minutes. If the user says no, nothing else happens and the in-app inbox is used alone. Intent tests
+that show `AppRoot` grant the permission with `GrantPermissionRule`, so the system dialog doesn't
+cover the screen.
+
+Tapping a phone notification opens the same screen as tapping the item in the inbox. Both go
+through `NavHostController.openNotificationTarget(target)` in `AppNavigation.kt`, the one place
+that turns a `NotificationTarget` into a route. `MainActivity` reads the tap with
+`DeviceNotificationLink.fromIntent` (in `onCreate` and `onNewIntent`), removes the extras with
+`DeviceNotificationLink.clear` so it's handled once, and marks the item read with
+`NotificationService.markRead`, like the inbox. `AppRoot` then opens the screen on top of the
+Notifications tab once Home is shown, so Back returns to the inbox, as it does after tapping the
+item there. On Welcome (no profile yet) the tap is dropped, and an intent with no tap, or whose
+item has no target, just opens Home.
 
 ### `messages`: `Message` (`MessageRepository`)
 

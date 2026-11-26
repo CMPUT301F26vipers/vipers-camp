@@ -64,6 +64,19 @@ class FakeNotificationRepository(initial: List<Notification> = emptyList()) : No
         return Subscription { listeners.remove(entry) }
     }
 
+    override suspend fun listUnshownOnDevice(recipientId: String): List<Notification> =
+        notifications.values
+            .filter { it.recipientId == recipientId && !it.shownOnDevice }
+            .sortedBy { it.createdAt }
+
+    override suspend fun markShownOnDevice(notificationId: String): Boolean {
+        val notification = notifications[notificationId] ?: return false
+        if (notification.shownOnDevice) return false
+        notifications[notificationId] = notification.copy(shownOnDevice = true)
+        notifyListeners(notification.recipientId)
+        return true
+    }
+
     private fun inboxOf(recipientId: String): List<Notification> =
         notifications.values.filter { it.recipientId == recipientId }.sortedByDescending { it.createdAt }
 
