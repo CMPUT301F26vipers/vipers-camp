@@ -56,7 +56,7 @@ interface ReservationRepository {
         userId: String,
         nights: List<String>,
         groupSize: Int,
-        rulesAcceptedAt: Long = 0L,
+        rulesAcceptedAt: Long,
         now: Long = System.currentTimeMillis(),
     ): ReserveResult
 
