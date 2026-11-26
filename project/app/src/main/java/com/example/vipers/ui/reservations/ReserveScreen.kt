@@ -3,9 +3,9 @@
  * The Reserve screen (mockup E11, US 01.04.01), opened from Campsite Details or the win
  * notification when the user won a lottery. It shows the reserve-by date, the campsite, the
  * lottery's nights with the taken ones greyed out, the nightly price times the picked nights and
- * total, the group size selector, the Reserve action button (T-03), the confirmation dialog
- * (01.05.01), and the campsite rules. A winner can decline the win here (US 01.04.03, mockup E12).
- * ReserveController does the work.
+ * total, the group size selector, campsite rules and cancellation policy with acceptance checkbox
+ * (US 02.11.01), the Reserve action button (T-03), the confirmation dialog (01.05.01), and a
+ * Decline option (US 01.04.03, mockup E12). ReserveController does the work.
  * Known issues: choosing between several campsites (01.04.02) is added by that story.
  */
 package com.example.vipers.ui.reservations
@@ -14,6 +14,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -182,7 +186,36 @@ fun ReserveScreen(
                     )
                 }
                 HorizontalDivider(color = Divider)
-                RulesAndPolicySection(campsite)
+                RulesAndPolicySection(
+                    campsite = campsite,
+                    emptyRulesText = "No specific rules",
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = controller.rulesAccepted,
+                            enabled = controller.offerState == OfferState.OPEN,
+                            role = Role.Checkbox,
+                            onValueChange = { controller.onRulesAcceptedChange(it) },
+                        )
+                        .testTag("checkbox_accept_rules"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = controller.rulesAccepted,
+                        onCheckedChange = null,
+                        enabled = controller.offerState == OfferState.OPEN,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "I accept the campsite rules",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMain,
+                        modifier = Modifier.testTag("text_accept_rules"),
+                    )
+                }
 
                 if (controller.reserveError != null) {
                     Text(
@@ -198,7 +231,9 @@ fun ReserveScreen(
 
                 Button(
                     onClick = controller::reserve,
-                    enabled = controller.offerState == OfferState.OPEN && !controller.isReserving,
+                    enabled = controller.offerState == OfferState.OPEN &&
+                        controller.rulesAccepted &&
+                        !controller.isReserving,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     modifier = Modifier
@@ -231,7 +266,8 @@ fun ReserveScreen(
 }
 
 /**
- * The Decline button (mockup E11, marker 7), shown only while the win can be declined (US 01.04.03).
+ * The Decline button (mockup E11, marker 7), shown only while the win can be declined
+ * (US 01.04.03).
  * Tapping it opens [DeclineWinDialog]; once declined, it's replaced by "You declined this win.".
  */
 @Composable
@@ -391,7 +427,8 @@ private fun RowScope.NightChip(
                 shape,
             )
             .border(
-                if (state == "Free") BorderStroke(1.dp, Border) else BorderStroke(0.dp, Color.Transparent),
+                if (state == "Free") BorderStroke(1.dp, Border)
+                else BorderStroke(0.dp, Color.Transparent),
                 shape,
             )
             .clickable(enabled = free, onClick = onClick)
