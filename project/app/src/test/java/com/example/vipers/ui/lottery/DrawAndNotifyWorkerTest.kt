@@ -55,13 +55,13 @@ class DrawAndNotifyWorkerTest {
     private val notifications = FakeNotificationRepository()
 
     /** A worker over [repository], with a fixed Random so draws are repeatable. */
-    private fun workerFor(repository: LotteryRepository): DrawAndNotifyWorker {
+    private fun workerFor(repository: LotteryRepository): DrawAndNotifyWorker.DueDraws {
         val campsites =
             FakeCampsiteRepository(listOf(Campsite(id = "hinton", name = "Hinton Ridge")))
         val drawer = LotteryDrawer(
             repository, notifications, campsites, FakeProfileRepository(), random = Random(7),
         )
-        return DrawAndNotifyWorker(repository, drawer)
+        return DrawAndNotifyWorker.DueDraws(repository, drawer)
     }
 
     @Test

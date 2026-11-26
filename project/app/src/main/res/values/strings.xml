@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Vipers</string>
+    <string name="notification_channel_name">Camp updates</string>
+    <string name="notification_channel_description">Lottery results, reservation updates and messages</string>
 </resources>
