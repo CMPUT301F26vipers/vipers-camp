@@ -44,11 +44,11 @@ interface ReservationRepository {
     suspend fun getReservationsForOwner(ownerId: String): List<Reservation>
 
     /**
-     * Atomically reserves [nights] at [campsiteId] for [userId] under [lotteryId] (T-03).
-     * Enforces that the entrant has won, booking is open, groupSize <= maxOccupancy,
-     * and none of the chosen nights are already held.
-     * Updates heldNights in the campsite's availability, sets entry status to RESERVED,
-     * and saves the new reservation.
+     * Atomically reserves [nights] at [campsiteId] for [userId] under [lotteryId] (T-03,
+     * US 02.11.01). Enforces that the entrant has won, booking is open, groupSize <= maxOccupancy,
+     * and none of the chosen nights are already held. Updates heldNights in the campsite's
+     * availability, sets entry status to RESERVED, records [rulesAcceptedAt], and saves the new
+     * reservation.
      */
     suspend fun createReservation(
         lotteryId: String,
@@ -56,6 +56,7 @@ interface ReservationRepository {
         userId: String,
         nights: List<String>,
         groupSize: Int,
+        rulesAcceptedAt: Long,
         now: Long = System.currentTimeMillis(),
     ): ReserveResult
 

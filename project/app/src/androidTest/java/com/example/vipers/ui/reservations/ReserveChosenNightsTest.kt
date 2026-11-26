@@ -107,6 +107,7 @@ class ReserveChosenNightsTest {
         lotteryRepo: FakeLotteryRepository? = null,
         reservationRepo: FakeReservationRepository? = null,
         userId: String = "test-device",
+        acceptRules: Boolean = true,
     ): TestHarness {
         val camps = campsiteRepo ?: FakeCampsiteRepository(listOf(hinton)).also {
             runBlocking { it.saveAvailability(theCalendar) }
@@ -133,6 +134,9 @@ class ReserveChosenNightsTest {
                 FakeProfileRepository(),
             ),
         )
+        if (acceptRules) {
+            controller.onRulesAcceptedChange(true)
+        }
         composeRule.setContent {
             VipersTheme {
                 ReserveScreen("lot-summer", "hinton", onBack = {}, controller = controller)

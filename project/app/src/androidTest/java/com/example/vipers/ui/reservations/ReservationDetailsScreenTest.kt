@@ -1,9 +1,9 @@
 /*
  * ReservationDetailsScreenTest.kt
- * UI tests for ReservationDetailsScreen (US 01.05.01).
+ * UI tests for ReservationDetailsScreen (US 01.05.01, US 01.05.02).
  * Verifies that the reservation details screen displays the reservation number, campsite name,
- * dates, group size, total price, and status, and handles missing reservations. Also checks that
- * a rejected reservation shows its status and the owner's reason (US 02.08.01, mockup E15c).
+ * dates, group size, total price, status, rules, and download CSV button. Also checks that a
+ * rejected reservation shows its status and the owner's reason (US 02.08.01, mockup E15c).
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -99,6 +99,10 @@ class ReservationDetailsScreenTest {
             .assertTextEquals("Confirmed")
         composeRule.onNodeWithTag("detail_campsite_rules")
             .assertTextEquals("Quiet hours after 10 PM")
+        composeRule.onNodeWithTag("button_download_csv")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertTextEquals("Download CSV")
     }
 
     @Test
