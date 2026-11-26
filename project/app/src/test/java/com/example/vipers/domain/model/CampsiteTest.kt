@@ -15,6 +15,39 @@ import org.junit.Test
 class CampsiteTest {
 
     @Test
+    fun matchScore_weightsPartialAvailabilityProximityTagsAndRating() {
+        val site = Campsite(tags = listOf("Cookhouse"), ratingSum = 9, ratingCount = 2)
+        // 40 * (2/4) + 10 * proximity + 30 * (1/2) + 20 * (4.5/5) = 53 + 10 * proximity
+        assertEquals(53, site.matchScore(2, 4, setOf("cookhouse", "Showers"), dateProximity = 0.0))
+        assertEquals(58, site.matchScore(2, 4, setOf("cookhouse", "Showers"), dateProximity = 0.5))
+        assertEquals(63, site.matchScore(2, 4, setOf("cookhouse", "Showers"), dateProximity = 1.0))
+    }
+
+    @Test
+    fun matchScore_givesFullCreditForUnspecifiedPreferences() {
+        assertEquals(80, Campsite().matchScore(0, 0, emptySet()))
+        assertEquals(70, Campsite().matchScore(0, 0, emptySet(), dateProximity = 0.0))
+    }
+
+    @Test
+    fun matchScore_canReachZero() {
+        assertEquals(0, Campsite().matchScore(0, 2, setOf("Showers"), dateProximity = 1.0))
+    }
+
+    @Test
+    fun matchScore_canReachOneHundredWithEquivalentTags() {
+        val site = Campsite(tags = listOf(" cookhouse "), ratingSum = 10, ratingCount = 2)
+        assertEquals(100, site.matchScore(2, 2, setOf("Cookhouse", "COOKHOUSE"), dateProximity = 1.0))
+    }
+
+    @Test
+    fun matchScore_clampsOutOfRangeDateProximity() {
+        val site = Campsite(tags = listOf("Cookhouse"), ratingSum = 10, ratingCount = 2)
+        assertEquals(100, site.matchScore(2, 2, setOf("Cookhouse"), dateProximity = 2.0))
+        assertEquals(90, site.matchScore(2, 2, setOf("Cookhouse"), dateProximity = -1.0))
+    }
+
+    @Test
     fun averageRating_isZeroWithNoRatings() {
         assertEquals(0.0, Campsite(ratingSum = 0, ratingCount = 0).averageRating(), 0.001)
     }

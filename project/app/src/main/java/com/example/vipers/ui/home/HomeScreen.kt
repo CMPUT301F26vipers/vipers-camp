@@ -4,9 +4,10 @@
  * name here (US 01.01.01) and filters them by region, date range, and guests (US 01.01.02). Each
  * result shows a summary card (US 01.01.04), and tapping a card opens its Campsite Details
  * (US 01.01.05); CampsiteSearchController does the searching and filtering. The number of results
- * and a loading indicator are shown (US 01.01.03). The QR button in the top bar scans a campsite
- * poster and opens that campsite (US 01.12.01); MainActivity runs the scanner (mockup E04).
- * Known issues: preferred tags / "% match" on the mockup are the WOW factor (W-01).
+ * and a loading indicator are shown (US 01.01.03). Filtered results show match percentages and
+ * can be ranked by best match (W-01). The QR button in the top bar scans a campsite poster and
+ * opens that campsite (US 01.12.01); MainActivity runs the scanner (mockup E04).
+ * Known issues: none.
  */
 package com.example.vipers.ui.home
 
@@ -32,6 +33,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -95,7 +98,7 @@ fun HomeScreen(
 
     // load each time Home opens, so newly added campsites show up
     LaunchedEffect(Unit) { controller.loadCampsites() }
-    val results = controller.results
+    val results = controller.rankedResults
 
     Column {
         TopBar(
@@ -191,6 +194,7 @@ fun HomeScreen(
                 startDate = controller.filterStartDate,
                 endDate = controller.filterEndDate,
                 minGuests = controller.filterMinGuests,
+                tags = controller.preferredTags,
                 onClearFilters = controller::clearFilters,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -215,14 +219,21 @@ fun HomeScreen(
             controller.loadFailed && results.isEmpty() ->
                 EmptyResults("Couldn't load campsites", "Check your connection and open Home again.")
             else -> {
-                Text(
-                    text = controller.resultCountText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .testTag("text_result_count"),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = controller.resultCountText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp).testTag("text_result_count"),
+                    )
+                    if (controller.hasActiveFilters) {
+                        SortMenu(controller.sortByBestMatch, controller::changeSort)
+                    }
+                }
                 if (results.isEmpty()) {
                     EmptyResults(
                         "No campsites found",
@@ -235,9 +246,11 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.testTag("campsite_list"),
                     ) {
-                        items(results, key = { it.id }) { campsite ->
+                        items(results, key = { it.campsite.id }) { result ->
+                            val campsite = result.campsite
                             CampsiteResultRow(
                                 campsite,
+                                score = result.score,
                                 hasOpenLottery = controller.hasOpenLottery(campsite),
                                 onClick = {
                                     controller.clearScanMessage()
@@ -257,8 +270,10 @@ fun HomeScreen(
             currentStartDate = controller.filterStartDate,
             currentEndDate = controller.filterEndDate,
             currentMinGuests = controller.filterMinGuests,
-            onApply = { region, start, end, guests ->
-                controller.applyFilters(region, start, end, guests)
+            availableTags = controller.availableTags,
+            currentTags = controller.preferredTags,
+            onApply = { region, start, end, guests, tags ->
+                controller.applyFilters(region, start, end, guests, tags)
                 showFilterDialog = false
             },
             onClear = {
@@ -280,6 +295,7 @@ private fun ActiveFiltersBar(
     startDate: String?,
     endDate: String?,
     minGuests: Int?,
+    tags: Set<String>,
     onClearFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -296,6 +312,7 @@ private fun ActiveFiltersBar(
         if (minGuests != null && minGuests > 0) {
             filterSummaries.add("$minGuests+ guests")
         }
+        filterSummaries.addAll(tags)
         Text(
             text = "Active: " + filterSummaries.joinToString(", "),
             style = MaterialTheme.typography.bodySmall,
@@ -357,7 +374,12 @@ private fun SearchField(text: String, onTextChange: (String) -> Unit, modifier: 
  * are cut short with "…" so the card keeps its size.
  */
 @Composable
-private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean, onClick: () -> Unit) {
+private fun CampsiteResultRow(
+    campsite: Campsite,
+    score: Int?,
+    hasOpenLottery: Boolean,
+    onClick: () -> Unit,
+) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().testTag("campsite_result"),
@@ -398,6 +420,9 @@ private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean, onCli
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (score != null) {
+                    Text("$score% match", style = MaterialTheme.typography.bodySmall, color = Primary)
+                }
             }
             LotteryBadge(hasOpenLottery)
         }
@@ -440,5 +465,26 @@ private fun EmptyResults(title: String, message: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+/** Sort options for filtered results in the result-count row (E02). */
+@Composable
+private fun SortMenu(bestMatch: Boolean, onSelect: (Boolean) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(if (bestMatch) "Sort: Best match" else "Sort: Name")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("Best match") }, onClick = {
+                onSelect(true)
+                expanded = false
+            })
+            DropdownMenuItem(text = { Text("Name") }, onClick = {
+                onSelect(false)
+                expanded = false
+            })
+        }
     }
 }

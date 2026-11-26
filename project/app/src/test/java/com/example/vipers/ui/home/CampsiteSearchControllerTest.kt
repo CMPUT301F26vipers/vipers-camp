@@ -24,6 +24,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -41,6 +42,7 @@ class CampsiteSearchControllerTest {
         LocalDateTime.parse(text).atZone(ZoneId.of("America/Edmonton")).toInstant().toEpochMilli()
 
     // the tests run as if it is noon on April 28, 2027
+    private val today = LocalDate.of(2027, 4, 28)
     private val now = at("2027-04-28T12:00")
 
     private val lotteries = listOf(
@@ -69,16 +71,100 @@ class CampsiteSearchControllerTest {
         lotteryRepository: LotteryRepository = FakeLotteryRepository(lotteries),
         campsiteRepository: CampsiteRepository? = null,
         calendars: List<AvailabilityCalendar> = emptyList(),
+        referenceDate: LocalDate = today,
     ): CampsiteSearchController = runBlocking {
         val repo = campsiteRepository ?: FakeCampsiteRepository(campsites).also { fake ->
             calendars.forEach { fake.saveAvailability(it) }
         }
         val controller = CampsiteSearchController(repo, lotteryRepository)
-        controller.fetchCampsites(now)
+        controller.fetchCampsites(now, referenceDate)
         controller
     }
 
     private fun campsite(id: String): Campsite = campsites.first { it.id == id }
+
+    @Test
+    fun bestMatch_breaksEqualPercentagesByRatingThenName() {
+        val sites = listOf(
+            Campsite(id = "a", name = "Aspen", ratingSum = 45, ratingCount = 10),
+            Campsite(id = "b", name = "Birch", ratingSum = 451, ratingCount = 100),
+            Campsite(id = "c", name = "Cedar", ratingSum = 451, ratingCount = 100),
+        )
+        val controller = loadedController(campsiteRepository = FakeCampsiteRepository(sites))
+        controller.applyFilters(minGuests = 1)
+        assertEquals(listOf(88, 88, 88), controller.rankedResults.map { it.score })
+        assertEquals(listOf("b", "c", "a"), controller.results.map { it.id })
+    }
+
+    @Test
+    fun dateScore_countsBothEndpointsAndExcludesHeldNights() {
+        val first = "2027-05-08"
+        val last = "2027-05-09"
+        val calendar = AvailabilityCalendar("1", listOf(first, last), listOf(last))
+        val controller = loadedController(calendars = listOf(calendar))
+        controller.applyFilters(startDate = last, endDate = first)
+        assertEquals(55, controller.rankedResults.single().score)
+        controller.applyFilters(startDate = first)
+        assertEquals(80, controller.rankedResults.single().score)
+    }
+
+    @Test
+    fun bestMatch_biasesPartialMatchesCloserToRequestedDates() {
+        val sites = listOf(
+            Campsite(id = "full", name = "Cedar Full", region = Region.HINTON, maxOccupancy = 6),
+            Campsite(id = "adjacent", name = "Birch Adjacent", region = Region.HINTON, maxOccupancy = 6),
+            Campsite(id = "start", name = "Aspen Start", region = Region.HINTON, maxOccupancy = 6),
+            Campsite(id = "late", name = "Alder Late", region = Region.HINTON, maxOccupancy = 6),
+        )
+        val repo = FakeCampsiteRepository(sites).also { fake ->
+            runBlocking {
+                fake.saveAvailability(AvailabilityCalendar("full", listOf("2027-05-08", "2027-05-09")))
+                fake.saveAvailability(AvailabilityCalendar("adjacent", listOf("2027-05-08", "2027-05-10")))
+                fake.saveAvailability(AvailabilityCalendar("start", listOf("2027-05-08")))
+                fake.saveAvailability(AvailabilityCalendar("late", listOf("2027-05-09")))
+            }
+        }
+        val controller = loadedController(campsiteRepository = repo)
+        controller.applyFilters(startDate = "2027-05-08", endDate = "2027-05-09")
+
+        // All unrated with no tags: 30 tags + 40*coverage + 10*proximity -> 80, 60, 55, 50
+        assertEquals(listOf("full", "adjacent", "start", "late"), controller.results.map { it.id })
+        assertEquals(listOf(80, 60, 55, 50), controller.rankedResults.map { it.score })
+    }
+
+    @Test
+    fun bestMatch_withoutDatesBiasesSoonerUpcomingAvailability() {
+        val sites = listOf(
+            Campsite(id = "none", name = "Alder None", region = Region.HINTON, maxOccupancy = 6),
+            Campsite(id = "later", name = "Aspen Later", region = Region.HINTON, maxOccupancy = 6),
+            Campsite(id = "soon", name = "Birch Soon", region = Region.HINTON, maxOccupancy = 6),
+        )
+        val repo = FakeCampsiteRepository(sites).also { fake ->
+            runBlocking {
+                fake.saveAvailability(AvailabilityCalendar("soon", listOf("2027-05-01")))
+                fake.saveAvailability(AvailabilityCalendar("later", listOf("2027-05-31")))
+            }
+        }
+        val controller = loadedController(
+            campsiteRepository = repo,
+            referenceDate = LocalDate.of(2027, 5, 1),
+        )
+        controller.applyFilters(region = Region.HINTON)
+
+        // 40 coverage + 30 tags + 10 * upcomingProximity (1.0, 0.5, 0.0) -> 80, 75, 70
+        assertEquals(listOf("soon", "later", "none"), controller.results.map { it.id })
+        assertEquals(listOf(80, 75, 70), controller.rankedResults.map { it.score })
+    }
+
+    @Test
+    fun dateRange_accepts365NightsAndRejects366() {
+        val first = "2027-01-01"
+        val controller = loadedController(calendars = listOf(AvailabilityCalendar("1", listOf(first))))
+        controller.applyFilters(startDate = first, endDate = "2027-12-31")
+        assertEquals("1", controller.results.single().id)
+        controller.applyFilters(startDate = first, endDate = "2028-01-01")
+        assertTrue(controller.results.isEmpty())
+    }
 
     @Test
     fun results_emptySearchShowsEveryCampsiteSortedByName() {
@@ -168,10 +254,11 @@ class CampsiteSearchControllerTest {
         controller.applyFilters(startDate = "2027-06-04", endDate = "2027-06-06")
         assertTrue(controller.results.isEmpty())
 
-        // Range covering both campsite 1 and campsite 3
+        // Range covering both campsite 1 (June 1–2) and campsite 3 (June 10–11); Best match puts
+        // campsite 1 first because its free nights are closer to the requested start date.
         controller.applyFilters(startDate = "2027-06-01", endDate = "2027-06-15")
         assertEquals(
-            listOf("Bow Valley Campground", "Hinton Ridge Campground"),
+            listOf("Hinton Ridge Campground", "Bow Valley Campground"),
             controller.results.map { it.name },
         )
     }
