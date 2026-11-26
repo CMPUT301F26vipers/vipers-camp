@@ -1,7 +1,7 @@
 /*
  * MatchScoreTest.kt
- * Intent tests for preferred tags, match percentages and Home sorting (W-01, E02/E03).
- * Uses fake campsite and lottery repositories.
+ * Intent tests for preferred tags, date-proximity scoring, match percentages and Home sorting
+ * (W-01, E02/E03). Uses fake campsite and lottery repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.home
@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.test.espresso.Espresso
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
@@ -24,9 +25,9 @@ import com.example.vipers.domain.model.Region
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.time.LocalDate
 
 class MatchScoreTest {
     @get:Rule
@@ -41,13 +42,13 @@ class MatchScoreTest {
         id = "lake", name = "Aspen Lake Campground", tags = listOf("Lake access", "Showers"),
     )
 
-    @Before
-    fun openHome() {
-        val sites = FakeCampsiteRepository(listOf(lake, ridge))
-        val nights = listOf("2027-05-08", "2027-05-09")
+    private fun openHome(
+        campsites: List<Campsite>,
+        calendars: List<AvailabilityCalendar>,
+    ) {
+        val sites = FakeCampsiteRepository(campsites)
         runBlocking {
-            sites.saveAvailability(AvailabilityCalendar(ridge.id, nights))
-            sites.saveAvailability(AvailabilityCalendar(lake.id, nights, listOf(nights.last())))
+            calendars.forEach { sites.saveAvailability(it) }
         }
         val controller = CampsiteSearchController(sites, FakeLotteryRepository())
         screen.setContent { VipersTheme { HomeScreen(controller) } }
@@ -59,6 +60,11 @@ class MatchScoreTest {
 
     private fun apply() = screen.onNodeWithTag("button_apply_filters").performClick()
 
+    private fun enterDates(text: String) {
+        screen.onNodeWithTag("field_filter_dates").performTextInput(text)
+        Espresso.closeSoftKeyboard()
+    }
+
     private fun assertBefore(first: Campsite, second: Campsite) {
         val top = screen.onNodeWithText(first.name).fetchSemanticsNode().boundsInRoot.top
         val below = screen.onNodeWithText(second.name).fetchSemanticsNode().boundsInRoot.top
@@ -67,6 +73,14 @@ class MatchScoreTest {
 
     @Test
     fun preferredTagRanksBothSitesAndClearRestoresNameOrder() {
+        val today = LocalDate.now().toString()
+        openHome(
+            listOf(lake, ridge),
+            listOf(
+                AvailabilityCalendar(ridge.id, listOf(today)),
+                AvailabilityCalendar(lake.id, listOf(today)),
+            ),
+        )
         assertBefore(lake, ridge)
         screen.onNodeWithText("% match", substring = true).assertDoesNotExist()
         filters()
@@ -89,8 +103,16 @@ class MatchScoreTest {
 
     @Test
     fun requestedDatesAndTwoTagsShowDifferentFreeNightShares() {
+        val nights = listOf("2027-05-08", "2027-05-09")
+        openHome(
+            listOf(lake, ridge),
+            listOf(
+                AvailabilityCalendar(ridge.id, nights),
+                AvailabilityCalendar(lake.id, nights, listOf(nights.last())),
+            ),
+        )
         filters()
-        screen.onNodeWithTag("field_filter_dates").performTextInput("2027-05-08 to 2027-05-09")
+        enterDates("2027-05-08 to 2027-05-09")
         select("Cookhouse")
         select("Showers")
         apply()
@@ -103,12 +125,63 @@ class MatchScoreTest {
 
     @Test
     fun preferredTagsDoNotBringBackASiteOutsideTheRequestedDates() {
+        val nights = listOf("2027-05-08", "2027-05-09")
+        openHome(
+            listOf(lake, ridge),
+            listOf(
+                AvailabilityCalendar(ridge.id, nights),
+                AvailabilityCalendar(lake.id, nights, listOf(nights.last())),
+            ),
+        )
         filters()
-        screen.onNodeWithTag("field_filter_dates").performTextInput("2027-05-09")
+        enterDates("2027-05-09")
         select("Showers")
         apply()
         screen.onAllNodesWithTag("campsite_result").assertCountEquals(1)
         screen.onNodeWithText(ridge.name).assertIsDisplayed()
         screen.onNodeWithText(lake.name).assertDoesNotExist()
+    }
+
+    @Test
+    fun dateProximityRanksEarlierAndAdjacentAvailabilityHigher() {
+        val cedar = ridge.copy(id = "cedar", name = "Cedar Creek Campground")
+        val birch = ridge.copy(id = "birch", name = "Birch Point Campground")
+        val aspen = ridge.copy(id = "aspen", name = "Aspen Late Campground")
+        openHome(
+            listOf(aspen, birch, cedar),
+            listOf(
+                AvailabilityCalendar(cedar.id, listOf("2027-05-08", "2027-05-10")),
+                AvailabilityCalendar(birch.id, listOf("2027-05-08")),
+                AvailabilityCalendar(aspen.id, listOf("2027-05-09")),
+            ),
+        )
+        filters()
+        enterDates("2027-05-08 to 2027-05-09")
+        apply()
+        assertBefore(cedar, birch)
+        assertBefore(birch, aspen)
+        screen.onNodeWithText("78% match").assertIsDisplayed()
+        screen.onNodeWithText("73% match").assertIsDisplayed()
+        screen.onNodeWithText("68% match").assertIsDisplayed()
+    }
+
+    @Test
+    fun noDatesBiasRanksSoonerUpcomingAvailabilityHigher() {
+        val today = LocalDate.now()
+        val later = lake.copy(id = "later", name = "Aspen Later Campground")
+        openHome(
+            listOf(later, ridge),
+            listOf(
+                AvailabilityCalendar(ridge.id, listOf(today.toString())),
+                AvailabilityCalendar(later.id, listOf(today.plusDays(30).toString())),
+            ),
+        )
+        filters()
+        screen.onNodeWithTag("field_filter_region").performClick()
+        screen.onNodeWithText("Hinton").performClick()
+        apply()
+        assertBefore(ridge, later)
+        screen.onNodeWithText("98% match").assertIsDisplayed()
+        screen.onNodeWithText("93% match").assertIsDisplayed()
     }
 }
