@@ -9,7 +9,6 @@
  */
 package com.example.vipers.ui.reservations
 
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -106,8 +105,6 @@ fun ReservationDetailsScreen(
                 downloadError = null
             } catch (_: Exception) {
                 downloadError = "Couldn't save the file. Try again."
-                Toast.makeText(context, "Couldn't save the file. Try again.", Toast.LENGTH_SHORT)
-                    .show()
             }
         }
     }
