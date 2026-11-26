@@ -84,6 +84,12 @@ class FirestoreNotificationRepository(
             }
         return Subscription { registration.remove() }
     }
+
+    override suspend fun getAllNotifications(): List<Notification> =
+        collection
+            .get().await()
+            .documents.map { it.toNotification() }
+            .sortedByDescending { it.createdAt }
 }
 
 /**

@@ -1669,6 +1669,43 @@ class FakeRepositoryTest {
     }
 
     @Test
+    fun getAllNotifications_severalRecipientsAndSenders_returnsAllNewestFirst() = runBlocking {
+        val repo = FakeNotificationRepository(
+            listOf(
+                Notification(id = "draw_lot-1_sam", recipientId = "sam", senderId = "system", createdAt = 100),
+                Notification(
+                    id = "broadcast_b1_alex", recipientId = "alex", senderId = "owner-1",
+                    type = NotificationType.OWNER_BROADCAST, batchId = "b1", createdAt = 300,
+                ),
+                Notification(
+                    id = "rejected_res-1", recipientId = "kim", senderId = "owner-2",
+                    type = NotificationType.RESERVATION_REJECTED, createdAt = 200,
+                ),
+            ),
+        )
+        repo.saveNotification(
+            Notification(
+                id = "broadcast_b1_sam", recipientId = "sam", senderId = "owner-1",
+                type = NotificationType.OWNER_BROADCAST, batchId = "b1", createdAt = 400,
+            ),
+        )
+
+        val all = repo.getAllNotifications()
+
+        assertEquals(
+            listOf("broadcast_b1_sam", "broadcast_b1_alex", "rejected_res-1", "draw_lot-1_sam"),
+            all.map { it.id },
+        )
+        assertEquals(setOf("sam", "alex", "kim"), all.map { it.recipientId }.toSet())
+        assertEquals(setOf("system", "owner-1", "owner-2"), all.map { it.senderId }.toSet())
+    }
+
+    @Test
+    fun getAllNotifications_emptyRepository_returnsEmptyList() = runBlocking {
+        assertTrue(FakeNotificationRepository().getAllNotifications().isEmpty())
+    }
+
+    @Test
     fun createReservation_successful_holdsNightsUpdatesEntryAndCreatesReservation() = runBlocking {
         val campsite = Campsite(id = "site-1", ownerId = "owner-1", name = "Pine Lake", maxOccupancy = 4, pricePerNightCents = 5000)
         val calendar = AvailabilityCalendar(campsiteId = "site-1", openNights = listOf("2027-06-01", "2027-06-02", "2027-06-03"))
