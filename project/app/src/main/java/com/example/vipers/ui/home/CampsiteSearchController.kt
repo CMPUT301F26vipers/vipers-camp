@@ -107,6 +107,9 @@ class CampsiteSearchController(
     // Availability calendars by campsite ID for date filtering (US 01.01.02)
     private var availabilityByCampsiteId by mutableStateOf<Map<String, AvailabilityCalendar>>(emptyMap())
 
+    // Reference day used when scoring how soon upcoming free nights start (W-01)
+    private var referenceDate by mutableStateOf(LocalDate.now())
+
     /** A visible campsite and the whole percentage displayed on its Home card. */
     internal data class Result(val campsite: Campsite, val score: Int?)
 
@@ -133,11 +136,15 @@ class CampsiteSearchController(
         for (site in allCampsites) {
             if (!site.matchesSearch(searchText) || !site.matchesRegion(selectedRegion) ||
                 !site.matchesGuests(filterMinGuests)) continue
+            val calendar = availabilityByCampsiteId[site.id]
             val free = if (first != null && last != null) {
-                availabilityByCampsiteId[site.id]?.freeNights(first, last).orEmpty().size
+                calendar?.freeNights(first, last).orEmpty().size
             } else 0
             if (nights > 0 && free == 0) continue
-            val score = if (hasActiveFilters) site.matchScore(free, nights, preferredTags) else null
+            val score = if (hasActiveFilters) {
+                val proximity = calendar?.dateProximity(first, last, referenceDate) ?: 0.0
+                site.matchScore(free, nights, preferredTags, proximity)
+            } else null
             matches.add(Result(site, score))
         }
         return if (hasActiveFilters && sortByBestMatch) {
@@ -256,11 +263,15 @@ class CampsiteSearchController(
 
     /**
      * Gets the campsites from the repository, finds which ones have a lottery open at time [now]
-     * (milliseconds since 1970), loads availability for date filtering, and sets [isLoading] and
-     * [loadFailed]. Only a failed campsite load sets [loadFailed]. [loadCampsites] runs this in the
-     * background; unit tests call it directly and pass their own [now].
+     * (milliseconds since 1970), loads availability for date filtering and date-proximity scoring
+     * relative to [today], and sets [isLoading] and [loadFailed]. Only a failed campsite load sets
+     * [loadFailed]. [loadCampsites] runs this in the background; unit tests call it directly and
+     * pass their own [now] and [today].
      */
-    suspend fun fetchCampsites(now: Long = System.currentTimeMillis()) {
+    suspend fun fetchCampsites(
+        now: Long = System.currentTimeMillis(),
+        today: LocalDate = LocalDate.now(),
+    ) {
         isLoading = true
         try {
             val campsites = campsiteRepository.getAllCampsites()
@@ -269,6 +280,7 @@ class CampsiteSearchController(
             allCampsites = campsites
             openLotteryCampsiteIds = withOpenLottery
             availabilityByCampsiteId = availability
+            referenceDate = today
             loadFailed = false
         } catch (e: CancellationException) {
             // the load was stopped on purpose (the controller is gone), so it didn't fail
