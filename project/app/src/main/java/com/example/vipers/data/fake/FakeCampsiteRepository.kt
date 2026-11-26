@@ -48,6 +48,11 @@ class FakeCampsiteRepository(initial: List<Campsite> = emptyList()) : CampsiteRe
         )
     }
 
+    override suspend fun removeCampsite(id: String) {
+        val saved = campsites[id] ?: return
+        campsites[id] = saved.copy(removed = true)
+    }
+
     override suspend fun getCampsitesByOwner(ownerId: String): List<Campsite> =
         campsites.values.filter { it.ownerId == ownerId && !it.removed }
 

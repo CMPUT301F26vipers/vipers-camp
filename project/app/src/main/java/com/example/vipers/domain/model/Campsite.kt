@@ -125,15 +125,19 @@ data class Campsite(
         /**
          * The campsite ID in a scanned QR [link] made by [qrLink], or null if it isn't one of our
          * campsite links (another app's QR code, an empty ID, or extra parts after the ID).
-         * Scanning (US 01.12.01) uses this.
+         * Scanning (US 01.12.01) uses this. Campsite IDs only use letters, digits, - and _, so
+         * anything else (like ?, # or %) means it isn't ours, and it can't break the screen route.
          */
         fun idFromQrLink(link: String): String? {
             val text = link.trim()
             if (!text.startsWith(QR_LINK_PREFIX)) return null
             val id = text.removePrefix(QR_LINK_PREFIX)
-            if (id.isBlank() || id.contains('/') || id.any { it.isWhitespace() }) return null
+            if (!QR_ID_PATTERN.matches(id)) return null
             return id
         }
+
+        // Firestore IDs are letters and digits; our test and seed IDs also use - and _
+        private val QR_ID_PATTERN = Regex("[A-Za-z0-9_-]+")
 
         /** An amount in cents as dollars: "50" or "65.50". Cents only show when there are some. */
         fun dollarsText(amountCents: Long): String {

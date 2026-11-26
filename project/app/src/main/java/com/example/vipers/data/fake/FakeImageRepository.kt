@@ -2,7 +2,9 @@
  * FakeImageRepository.kt
  * An in-memory ImageRepository for unit and intent tests (a test double for the Repository
  * pattern). Nothing is saved to Firestore (US 02.01.02b).
- * Known issues: none. Lives in main (not test) so both unit tests and intent tests can use it.
+ * Known issues: new IDs come from one counter shared by every fake and never reset, so tests
+ * shouldn't expect a particular ID. Lives in main (not test) so both unit tests and intent tests
+ * can use it.
  */
 package com.example.vipers.data.fake
 
@@ -21,7 +23,6 @@ class FakeImageRepository(
 
     // Images by ID, like documents in a Firestore collection.
     private val images = initial.associateBy { it.id }.toMutableMap()
-    private var nextId = 1
 
     /** IDs passed to [deleteImage] so far, oldest first. */
     val deletedIds = mutableListOf<String>()
@@ -42,5 +43,11 @@ class FakeImageRepository(
     override suspend fun deleteImage(id: String) {
         deletedIds.add(id)
         images.remove(id)
+    }
+
+    companion object {
+        // Shared by every fake, like Firestore's random IDs, so two tests never save different
+        // photos under the same ID (the photo cache in Photo.kt would show the old one).
+        private var nextId = 1
     }
 }

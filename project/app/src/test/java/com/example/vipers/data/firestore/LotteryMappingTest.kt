@@ -65,9 +65,12 @@ class LotteryMappingTest {
 
     @Test
     fun toEditableFields_always_holdsOnlyTheFieldsAnOwnerEdits() {
-        // updateLottery writes exactly these, so nothing else can be overwritten (US 02.04.06)
+        // updateLottery writes exactly these, so nothing else can be overwritten (US 02.04.02, 02.04.06)
+        val duplicateIdsLottery = lottery.copy(campsiteIds = listOf("camp-1", "camp-2", "camp-1", ""))
+        val fields = duplicateIdsLottery.toEditableFields()
         assertEquals(
             setOf(
+                "campsiteIds",
                 "nightsOffered",
                 "nightsDescription",
                 "registrationStart",
@@ -77,7 +80,8 @@ class LotteryMappingTest {
                 "winnersCount",
                 "waitlistCapacity",
             ),
-            lottery.toEditableFields().keys
+            fields.keys
         )
+        assertEquals(listOf("camp-1", "camp-2"), fields["campsiteIds"])
     }
 }

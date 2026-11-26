@@ -50,6 +50,14 @@ data class Reservation(
         status == ReservationStatus.CONFIRMED && !LocalDate.parse(checkOut).isBefore(today)
 
     /**
+     * True if it is CONFIRMED and checked out before [today]: a completed stay, shown on the
+     * owner's Past tab (US 02.07.02). On check-out day itself it is still active. Cancelled and
+     * rejected reservations are never completed; they go in the Cancelled tab (US 02.07.03).
+     */
+    fun isCompleted(today: LocalDate): Boolean =
+        status == ReservationStatus.CONFIRMED && LocalDate.parse(checkOut).isBefore(today)
+
+    /**
      * True if the entrant can still cancel: it is CONFIRMED and check-in is [today] or later
      * (US 01.07.01). A check-in that can't be read counts as not cancellable.
      */

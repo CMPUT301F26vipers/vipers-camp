@@ -1,7 +1,7 @@
 /*
  * ReservationRow.kt
- * One row of the owner's active reservations list (US 02.07.01), and the stay's date and guest
- * text that the list and the reservation details screen both show.
+ * One row of the owner's Active and Past reservation lists (US 02.07.01, 02.07.02), and the stay's
+ * date and guest text that the lists and the reservation details screen both show.
  * Known issues: none. Built when the list loads and never stored, so entrantName can be the
  * entrant's current name rather than a copy.
  */
@@ -17,7 +17,7 @@ private val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 private val MONTH_DAY_YEAR = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
 
 /**
- * What the owner's list shows for one active reservation (US 02.07.01).
+ * What the owner's Active and Past lists show for one reservation (US 02.07.01, 02.07.02).
  *
  * @property reservationId The reservation's Firestore document ID.
  * @property entrantName The entrant's current name, from ProfileRepository.getDisplayName.

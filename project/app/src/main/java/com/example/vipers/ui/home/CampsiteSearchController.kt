@@ -4,7 +4,9 @@
  * and filters them by name on the device as the user types, as the CRC card describes. It also
  * filters them by region, date range, and guests (US 01.01.02), tracks result counts and loading
  * state (US 01.01.03), and marks which campsites have a lottery open for registration, for the
- * result cards (US 01.01.04).
+ * result cards (US 01.01.04). Filtered results are scored and ranked by match score (W-01).
+ * When the entrant scans a campsite QR code it works out which campsite to open, or why it
+ * can't (US 01.12.01).
  * Known issues: Finding the open lotteries and availability takes Firestore queries per campsite,
  * which is fine for now but slow with many campsites. If the lotteries or availability can't be
  * loaded, the campsites still show.
@@ -153,6 +155,7 @@ class CampsiteSearchController(
     /** Called as the user types; the [results] update right away. */
     fun onSearchTextChange(text: String) {
         searchText = text
+        clearScanMessage()
     }
 
     /**
@@ -171,6 +174,7 @@ class CampsiteSearchController(
         filterEndDate = endDate?.trim()?.ifBlank { null }
         filterMinGuests = minGuests?.takeIf { it > 0 }
         if (!hasActiveFilters) sortByBestMatch = true
+        clearScanMessage()
     }
 
     /** Clears all active filters (US 01.01.02), restoring the full list of campsites. */
@@ -199,6 +203,48 @@ class CampsiteSearchController(
      * (the "Lottery open" badge on its card).
      */
     fun hasOpenLottery(campsite: Campsite): Boolean = campsite.id in openLotteryCampsiteIds
+
+    /**
+     * Why the last Scan QR didn't open a campsite (US 01.12.01), shown in red under the search
+     * bar, or null when there's nothing to say.
+     */
+    var scanMessage by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Handles what the QR scanner returned (US 01.12.01). Returns the campsite ID to open when the
+     * code is one of our campsite links; Campsite Details then shows "Campsite not found." if that
+     * campsite was removed. Otherwise returns null and sets [scanMessage], except when the user
+     * just closed the scanner.
+     */
+    fun onQrScanned(result: QrScanResult): String? {
+        scanMessage = null
+        return when (result) {
+            is QrScanResult.Scanned -> {
+                val campsiteId = Campsite.idFromQrLink(result.text)
+                if (campsiteId == null) scanMessage = "Not a valid campsite code"
+                campsiteId
+            }
+            QrScanResult.Cancelled -> null
+            QrScanResult.NoCameraPermission -> {
+                scanMessage = "Scan QR needs the camera. Allow camera access in your phone's " +
+                    "Settings, then try again."
+                null
+            }
+            QrScanResult.Failed -> {
+                scanMessage = "Couldn't open the scanner. Try again."
+                null
+            }
+        }
+    }
+
+    /**
+     * Clears [scanMessage] when a new scan starts or the entrant moves on (searches, filters or
+     * opens a campsite), so an old error doesn't stay on Home.
+     */
+    fun clearScanMessage() {
+        scanMessage = null
+    }
 
     /**
      * Loads the campsites in the background. Home calls this each time it opens. The load runs in

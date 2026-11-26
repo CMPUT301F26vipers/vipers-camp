@@ -1,7 +1,7 @@
 /*
  * LotteryRepository.kt
  * What the app can do with lotteries and their waiting-list entries (Repository pattern).
- * Known issues: only the draw and the replacement draw run as transactions and are added by those stories.
+ * Known issues: none.
  */
 package com.example.vipers.domain.repository
 
@@ -9,6 +9,7 @@ import com.example.vipers.domain.model.DrawManifestChunk
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.domain.model.Notification
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -43,6 +44,21 @@ sealed class DrawTransactionResult {
     data class Error(val message: String) : DrawTransactionResult()
 }
 
+/** Result of an atomic win-decline, replacement-promotion, and notice write (US 01.04.03, T-12). */
+sealed interface DeclineTransactionResult {
+    /**
+     * The win changed from WON to DECLINED. [promotedUserId] became WON (and their prepared notice,
+     * if any, was committed in the same transaction), or null if the decline committed alone.
+     */
+    data class Declined(val promotedUserId: String? = null) : DeclineTransactionResult
+
+    /** The selected candidate was no longer LOST in this lottery; nothing was written. */
+    data object CandidateStale : DeclineTransactionResult
+
+    /** The declining entry was no longer eligible to decline; nothing was written. */
+    data object NotDeclined : DeclineTransactionResult
+}
+
 /** Saves and loads [Lottery]s and their [LotteryEntry]s. */
 interface LotteryRepository {
 
@@ -70,12 +86,12 @@ interface LotteryRepository {
     suspend fun closeRegistration(lotteryId: String, now: Long = System.currentTimeMillis()): Boolean
 
     /**
-     * Atomically updates editable fields of an existing [lottery] in a transaction (US 02.04.06).
+     * Atomically updates editable fields of an existing [lottery] in a transaction (US 02.04.02, 02.04.06).
      *
      * In one transaction, reads the latest stored lottery, enforces caller ownership ([callerId]),
-     * checks edit eligibility (not drawn, removed, or closed), validates proposed fields against
-     * the current waiting-list count (preventing capacity from being set below current entrants),
-     * and updates only editable fields while preserving all unedited fields.
+     * checks edit eligibility (not drawn, removed, or closed), validates proposed fields (including
+     * `campsiteIds`) against the current waiting-list count (preventing capacity from being set below
+     * current entrants), and updates only editable fields while preserving all unedited fields.
      *
      * @param lottery Proposed lottery fields to update.
      * @param callerId The device ID of the authenticated user performing the edit.
@@ -111,18 +127,47 @@ interface LotteryRepository {
     suspend fun updateEntry(entry: LotteryEntry)
 
     /**
-     * Declines [userId]'s win in [lotteryId] (US 01.04.03): in one transaction, sets the entry to
-     * [EntryStatus.DECLINED] only if it is still [EntryStatus.WON], and changes no other field.
-     * Returns true if it changed the entry, or false if the entry is missing or has any other
-     * status (e.g. already DECLINED or RESERVED), so two quick taps can't decline twice.
+     * Atomically declines [userId]'s win in [lotteryId], promotes [candidateUserId] if still
+     * [EntryStatus.LOST] in [lotteryId], and commits [replacementNotice] (when non-null) in one
+     * transaction at time [now] (US 01.04.03, T-12).
+     *
+     * Re-reads the lottery, the declining entry, [candidateUserId] (when non-null), and any
+     * existing deterministic notification document before writing. Checks [LotteryEntry.canDecline]
+     * for [userId]; if ineligible, writes nothing and returns [DeclineTransactionResult.NotDeclined].
+     * When [candidateUserId] is non-null and no longer [EntryStatus.LOST] in [lotteryId], writes
+     * nothing and returns [DeclineTransactionResult.CandidateStale]. When [candidateUserId] is
+     * null, commits the valid decline alone. Preserves `read` and `shownOnDevice` on any existing
+     * deterministic notice document.
      */
-    suspend fun declineTransaction(lotteryId: String, userId: String): Boolean
+    suspend fun declineTransaction(
+        lotteryId: String,
+        userId: String,
+        candidateUserId: String? = null,
+        replacementNotice: Notification? = null,
+        now: Long = System.currentTimeMillis(),
+    ): DeclineTransactionResult
 
     /** Directly seeds an entry without transactional lifecycle validation. For tests and SeedLoader only. */
     suspend fun seedEntry(entry: LotteryEntry)
 
     /** Loads [userId]'s entry in [lotteryId], or returns null if they haven't joined. */
     suspend fun getEntry(lotteryId: String, userId: String): LotteryEntry?
+
+    /** Loads every entry [userId] has in any lottery (US 01.08.01). */
+    suspend fun getEntriesForUser(userId: String): List<LotteryEntry>
+
+    /**
+     * Marks [userId]'s entry in [lotteryId] as [EntryStatus.REMOVED] in one transaction, whatever
+     * its status (US 01.08.01). A WAITING entry also leaves the lottery's waitingUserIds, so the
+     * draw skips it. Returns false if there is no entry or it's already REMOVED.
+     */
+    suspend fun removeEntry(lotteryId: String, userId: String): Boolean
+
+    /**
+     * Marks the lottery with this [id] as removed, so it's never drawn and shows as closed
+     * (e.g. when its campsites are removed, US 01.08.01). Does nothing if there is none.
+     */
+    suspend fun removeLottery(id: String)
 
     /** Loads every entry in [lotteryId]. */
     suspend fun getEntries(lotteryId: String): List<LotteryEntry>

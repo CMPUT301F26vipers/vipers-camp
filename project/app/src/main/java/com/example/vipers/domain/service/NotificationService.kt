@@ -2,12 +2,14 @@
  * NotificationService.kt
  * The app's notification logic, between the screens and NotificationRepository. It passes the
  * inbox and marking read through to the repository (T-13), builds and saves a draw's "You won"
- * (US 01.03.01) and "Not selected" (US 01.03.02) notices and the "New message" notice
- * (US 02.12.01), and skips users who turned notifications off in Settings (US 01.10.01).
+ * (US 01.03.01), "Not selected" (US 01.03.02), and replacement win (US 01.04.03, T-12) notices
+ * and the "New message" notice (US 02.12.01), and skips users who turned notifications off in
+ * Settings (US 01.10.01).
  * Known issues: showing notifications on the phone is left to T-14.
  */
 package com.example.vipers.domain.service
 
+import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.Message
 import com.example.vipers.domain.model.Notification
@@ -15,12 +17,14 @@ import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.InboxListener
+import com.example.vipers.domain.repository.LotteryRepository
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.Subscription
 import kotlinx.coroutines.CancellationException
 import java.text.DateFormat
 import java.util.Date
+import java.util.UUID
 
 /**
  * Reads a user's inbox and marks notifications read (T-13), and sends a draw's results
@@ -32,6 +36,7 @@ class NotificationService(
     private val notificationRepository: NotificationRepository,
     private val campsiteRepository: CampsiteRepository,
     private val profileRepository: ProfileRepository,
+    private val lotteryRepository: LotteryRepository,
     private val formatDate: (Long) -> String = ::dateAndTime,
 ) {
 
@@ -84,14 +89,12 @@ class NotificationService(
         val loserIds = optedIn(allLosers)
         if (winnerIds.isEmpty() && loserIds.isEmpty()) return
         // Notification has no campsite name field, so the names go in the message
-        val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }
-        val where = if (names.isEmpty()) "a campsite" else names.joinToString(", ")
+        val where = campsiteNamesFor(lottery)
         val won = drawNotices(
             lottery, winnerIds, now,
             type = NotificationType.WON,
-            title = "You won the lottery!",
-            message = "You won a spot at $where. " +
-                "Reserve your nights before ${formatDate(lottery.bookingEnd)}.",
+            title = WON_TITLE,
+            message = wonMessage(where, lottery.bookingEnd),
         )
         val lost = drawNotices(
             lottery, loserIds, now,
@@ -100,6 +103,105 @@ class NotificationService(
             message = "You weren't selected for $where this time.",
         )
         notificationRepository.addAll(won + lost)
+    }
+
+    /**
+     * The entrants on [lotteryId]'s waiting list as the owner sees it on Waiting List (O11,
+     * US 02.10.01): the user of every entry except [EntryStatus.REMOVED] ones, before or after
+     * the draw, oldest entry first and without duplicates. Opt-outs are not removed here.
+     */
+    suspend fun waitingListRecipients(lotteryId: String): List<String> =
+        lotteryRepository.getEntries(lotteryId)
+            .filter { it.status != EntryStatus.REMOVED }
+            .sortedBy { it.joinedAt }
+            .map { it.userId }
+            .distinct()
+
+    /**
+     * Sends the owner [senderId]'s [message] to everyone on [lotteryId]'s waiting list
+     * (US 02.10.01): one [NotificationType.OWNER_BROADCAST] titled "Message from owner" per
+     * entrant in [waitingListRecipients], skipping entrants who turned notifications off or no
+     * longer have a profile (US 01.10.01); one whose profile can't be read is kept, like in
+     * [optedIn]. The message is saved trimmed
+     * ([Notification.ownerMessageText]). Every notification shares [batchId] and the time [now]
+     * (milliseconds since 1970), has the ID "broadcast_<batchId>_<userId>", and points to the
+     * lottery's campsite only when it covers one. All are saved in one
+     * [NotificationRepository.addAll] call, so sending again with the same [batchId] finishes a
+     * failed send instead of adding copies.
+     *
+     * Saves nothing and says why when the message is empty, the lottery is missing or removed,
+     * [senderId] isn't its owner, or nobody is left to notify.
+     *
+     * @throws Exception if saving fails, e.g. offline; call again with the same [batchId] to finish.
+     */
+    suspend fun sendOwnerBroadcast(
+        senderId: String,
+        lotteryId: String,
+        message: String,
+        batchId: String = UUID.randomUUID().toString(),
+        now: Long = System.currentTimeMillis(),
+    ): OwnerBroadcastResult {
+        val text = Notification.ownerMessageText(message) ?: return OwnerBroadcastResult.EmptyMessage
+        val lottery = lotteryRepository.getLottery(lotteryId)
+        if (lottery == null || lottery.removed) return OwnerBroadcastResult.LotteryNotFound
+        if (lottery.ownerId != senderId) return OwnerBroadcastResult.NotOwner
+        val recipientIds = waitingListRecipients(lotteryId).filter { wantsOwnerMessages(it) }
+        if (recipientIds.isEmpty()) return OwnerBroadcastResult.NobodyToNotify
+        val notices = recipientIds.map { userId ->
+            Notification(
+                id = "broadcast_${batchId}_$userId",
+                recipientId = userId,
+                senderId = senderId,
+                campsiteId = lottery.campsiteIds.singleOrNull(),
+                lotteryId = lotteryId,
+                type = NotificationType.OWNER_BROADCAST,
+                title = "Message from owner",
+                message = text,
+                read = false,
+                shownOnDevice = false,
+                batchId = batchId,
+                createdAt = now,
+            )
+        }
+        notificationRepository.addAll(notices)
+        return OwnerBroadcastResult.Sent(batchId, notices.size)
+    }
+
+    private suspend fun wantsOwnerMessages(userId: String): Boolean =
+        try {
+            profileRepository.getProfile(userId)?.notificationsEnabled ?: false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            true
+        }
+
+    /**
+     * Prepares the replacement "You won" notice for [recipientId] in [lottery] at promotion time
+     * [promotedAt] (US 01.04.03, T-12), or returns null if [recipientId] turned notifications off
+     * ([optedIn], US 01.10.01). Uses the separate deterministic ID
+     * `replacement_<lotteryId>_<recipientId>` and established win wording so the repository can
+     * commit the notice atomically with the decline and promotion without overwriting the original
+     * draw's `draw_<lotteryId>_<recipientId>` record.
+     */
+    suspend fun prepareReplacementWinNotice(
+        lottery: Lottery,
+        recipientId: String,
+        promotedAt: Long = System.currentTimeMillis(),
+    ): Notification? {
+        if (optedIn(listOf(recipientId)).isEmpty()) return null
+        val where = campsiteNamesFor(lottery)
+        return Notification(
+            id = replacementNoticeId(lottery.id, recipientId),
+            recipientId = recipientId,
+            senderId = "system",
+            campsiteId = lottery.campsiteIds.singleOrNull(),
+            lotteryId = lottery.id,
+            type = NotificationType.WON,
+            title = WON_TITLE,
+            message = wonMessage(where, lottery.bookingEnd),
+            createdAt = promotedAt,
+        )
     }
 
     /**
@@ -114,6 +216,14 @@ class NotificationService(
         if (optedIn(listOf(recipientId)).isEmpty()) return
         notificationRepository.saveNotification(message.notice(reservation, recipientId))
     }
+
+    private suspend fun campsiteNamesFor(lottery: Lottery): String {
+        val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }
+        return if (names.isEmpty()) "a campsite" else names.joinToString(", ")
+    }
+
+    private fun wonMessage(where: String, bookingEnd: Long): String =
+        "You won a spot at $where. Reserve your nights before ${formatDate(bookingEnd)}."
 
     // One notice per user in userIds with what every draw notice shares: the ID
     // "draw_<lotteryId>_<userId>", sent by "system" about the lottery, pointing to its campsite only
@@ -137,6 +247,14 @@ class NotificationService(
             message = message,
             createdAt = lottery.drawnAt ?: now,
         )
+    }
+
+    companion object {
+        private const val WON_TITLE = "You won the lottery!"
+
+        /** Deterministic ID for a replacement win notice, distinct from the original draw notice. */
+        fun replacementNoticeId(lotteryId: String, userId: String): String =
+            "replacement_${lotteryId}_$userId"
     }
 }
 

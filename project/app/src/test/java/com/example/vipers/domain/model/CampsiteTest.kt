@@ -346,4 +346,18 @@ class CampsiteTest {
         assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hinton/edit"))
         assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hin ton"))
     }
+
+    @Test
+    fun idFromQrLink_withQueryOrFragment_isNull() {
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/?"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/#"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hinton?foo=1"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hinton#top"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hin%20ton"))
+    }
+
+    @Test
+    fun idFromQrLink_allowsDashesAndUnderscores() {
+        assertEquals("camp-1_b", Campsite.idFromQrLink("vipers-camp://campsite/camp-1_b"))
+    }
 }
