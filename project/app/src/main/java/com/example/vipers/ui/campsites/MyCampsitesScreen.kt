@@ -1,10 +1,8 @@
 /*
  * MyCampsitesScreen.kt
- *
- * The Campsites tab (mockup O01). Displays the list of campsites owned by the current user, each
- * with a small copy of its promo photo (US 02.01.02b).
- *
- * Known issues: Lottery status is currently hardcoded as TBD.
+ * The Campsites tab (mockup O01, US 02.03.01). Displays the list of campsites owned by the current
+ * user, each with its promo photo thumbnail and real lottery status.
+ * Known issues: none.
  */
 package com.example.vipers.ui.campsites
 
@@ -67,23 +65,40 @@ fun MyCampsitesScreen(
             },
         )
 
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             OutlinedButton(
                 onClick = onOpenReservations,
                 modifier = Modifier.weight(1f).height(50.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ),
             ) {
-                Text("Reservations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Reservations",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
             }
 
             OutlinedButton(
                 onClick = onOpenSent,
                 modifier = Modifier.weight(1f).height(50.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ),
             ) {
-                Text("Sent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Sent",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
 
@@ -100,7 +115,11 @@ fun MyCampsitesScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(campsites) { campsite ->
-                    CampsiteItem(campsite = campsite, onClick = { onOpenCampsite(campsite.id) })
+                    CampsiteItem(
+                        campsite = campsite,
+                        lotteryStatus = viewModel.lotteryStatuses[campsite.id] ?: "None",
+                        onClick = { onOpenCampsite(campsite.id) },
+                    )
                 }
             }
         }
@@ -108,14 +127,19 @@ fun MyCampsitesScreen(
 }
 
 /**
- * Displays a summary card for a single campsite, matching the UI mockups.
- * Includes a placeholder image, the campsite name, its region, and a chevron icon.
+ * Displays a summary card for a single campsite, matching mockup O01.
+ * Includes promo photo thumbnail, campsite name, address and real lottery status, and chevron icon.
  *
  * @param campsite The [Campsite] data object to display.
+ * @param lotteryStatus Current lottery status label (mockup O01).
  * @param onClick Callback triggered when the user taps anywhere on the card.
  */
 @Composable
-fun CampsiteItem(campsite: Campsite, onClick: () -> Unit) {
+fun CampsiteItem(
+    campsite: Campsite,
+    lotteryStatus: String = "None",
+    onClick: () -> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -155,8 +179,11 @@ fun CampsiteItem(campsite: Campsite, onClick: () -> Unit) {
                 )
 
                 Text(
-                    // Updated to address and hardcoded lottery status
-                    text = "${campsite.address} · Lottery status: TBD",
+                    text = if (campsite.address.isNotBlank()) {
+                        "${campsite.address} · Lottery status: $lotteryStatus"
+                    } else {
+                        "Lottery status: $lotteryStatus"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.secondary,
                     maxLines = 1,
