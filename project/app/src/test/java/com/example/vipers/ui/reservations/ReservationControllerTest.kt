@@ -1,7 +1,7 @@
 /*
  * ReservationControllerTest.kt
- * Unit tests for ReservationController: the entrant's My Reservations (US 01.06.01) and the owner's
- * Active list (US 02.07.01) and Past list (US 02.07.02), using the fake repositories.
+ * Unit tests for ReservationController: the entrant's My Reservations (US 01.06.01, US 01.06.02)
+ * and the owner's Active list (US 02.07.01) and Past list (US 02.07.02), using fake repositories.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -25,7 +25,9 @@ import org.junit.Test
 class ReservationControllerTest {
 
     private val today = LocalDate.of(2027, 5, 10)
-    private val profiles = FakeProfileRepository(listOf(UserProfile(id = "sam", name = "Sam Patel")))
+    private val profiles = FakeProfileRepository(
+        listOf(UserProfile(id = "sam", name = "Sam Patel"))
+    )
 
     /** A confirmed reservation by Sam at owner-1's campsite, staying well past [today]. */
     private fun reservation(id: String) = Reservation(
@@ -69,6 +71,12 @@ class ReservationControllerTest {
     private fun ReservationController.myIds(): List<String> {
         runBlocking { fetchMyReservations(today) }
         return myActive.map { it.id }
+    }
+
+    /** Loads Sam's past reservations on [today] and returns their IDs, in order. */
+    private fun ReservationController.myPastIds(): List<String> {
+        runBlocking { fetchMyReservations(today) }
+        return myPast.map { it.id }
     }
 
     @Test
@@ -263,7 +271,8 @@ class ReservationControllerTest {
         val controller = controllerWith(
             reservation("upcoming"),
             reservation("checksOutToday").copy(checkIn = "2027-05-08", checkOut = "2027-05-10"),
-            reservation("checkedOutYesterday").copy(checkIn = "2027-05-07", checkOut = "2027-05-09"),
+            reservation("checkedOutYesterday")
+                .copy(checkIn = "2027-05-07", checkOut = "2027-05-09"),
             pastReservation("april"),
             pastReservation("cancelled").copy(status = ReservationStatus.CANCELLED),
         )
@@ -531,5 +540,73 @@ class ReservationControllerTest {
             listOf("Sam Patel", "Deleted user", "Sam Patel"),
             controller.pastRows.map { it.entrantName },
         )
+    }
+
+    @Test
+    fun fetchMyReservations_withCompletedStays_populatesMyPast() {
+        val controller = entrantControllerWith(
+            pastReservation("past1"),
+            pastReservation("past2").copy(checkIn = "2027-04-10", checkOut = "2027-04-12"),
+        )
+
+        assertEquals(listOf("past1", "past2"), controller.myPastIds())
+    }
+
+    @Test
+    fun fetchMyReservations_withCancelledAndRejected_includesThemInMyPast() {
+        val controller = entrantControllerWith(
+            reservation("active"),
+            reservation("cancelled").copy(status = ReservationStatus.CANCELLED),
+            reservation("rejected").copy(status = ReservationStatus.REJECTED),
+        )
+
+        assertEquals(listOf("cancelled", "rejected"), controller.myPastIds())
+    }
+
+    @Test
+    fun fetchMyReservations_withActiveStay_excludesFromMyPast() {
+        val controller = entrantControllerWith(
+            reservation("active"),
+            pastReservation("past"),
+        )
+
+        assertEquals(listOf("past"), controller.myPastIds())
+        assertEquals(listOf("active"), controller.myIds())
+    }
+
+    @Test
+    fun fetchMyReservations_myPast_sortsByMostRecentFirst() {
+        val controller = entrantControllerWith(
+            pastReservation("older").copy(checkIn = "2027-03-01", checkOut = "2027-03-05"),
+            pastReservation("newer").copy(checkIn = "2027-04-01", checkOut = "2027-04-05"),
+            pastReservation("newest").copy(checkIn = "2027-04-10", checkOut = "2027-04-15"),
+        )
+
+        assertEquals(listOf("newest", "newer", "older"), controller.myPastIds())
+    }
+
+    @Test
+    fun fetchMyReservations_myPast_skipsUnreadableDates() {
+        val controller = entrantControllerWith(
+            pastReservation("good"),
+            pastReservation("badCheckOut").copy(checkOut = "invalid"),
+            pastReservation("badCheckIn").copy(checkIn = "not-a-date"),
+        )
+
+        assertEquals(listOf("good"), controller.myPastIds())
+    }
+
+    @Test
+    fun fetchMyReservations_whenFails_clearsMyPast() = runBlocking {
+        val failing = object : ReservationRepository by FakeReservationRepository() {
+            override suspend fun getReservationsForUser(userId: String): List<Reservation> =
+                throw Exception("offline")
+        }
+        val controller = ReservationController(failing, profiles, "sam")
+        controller.fetchMyReservations(today)
+
+        assertTrue(controller.loadFailed)
+        assertFalse(controller.isLoading)
+        assertTrue(controller.myPast.isEmpty())
     }
 }

@@ -1,10 +1,11 @@
 /*
  * MyReservationsScreen.kt
  * The Reservations tab (mockup E14), with Active and Past tabs. The Active tab lists the entrant's
- * confirmed reservations whose check-out is today or later, soonest first (US 01.06.01). Tapping
- * one opens its details (mockup E15).
- * Known issues: the Past tab (US 01.06.02) is a placeholder. The grey square stands in for the
- * campsite's photo until images are added (US 02.01.02b).
+ * confirmed reservations whose check-out is today or later, soonest first (US 01.06.01). The Past
+ * tab lists completed stays, cancelled, and rejected reservations, most recent first (mockup E14b,
+ * US 01.06.02). Tapping one opens its details (mockup E15).
+ * Known issues: the grey square stands in for the campsite's photo until images are added
+ * (US 02.01.02b).
  */
 package com.example.vipers.ui.reservations
 
@@ -51,7 +52,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
-import com.example.vipers.ui.common.Placeholder
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Border
 import com.example.vipers.ui.theme.Divider
@@ -68,7 +68,8 @@ private enum class MyReservationsTab(val label: String) {
 }
 
 /**
- * The entrant's reservations, split into Active and Past tabs (mockup E14, US 01.06.01).
+ * The entrant's reservations, split into Active and Past tabs (mockup E14, US 01.06.01,
+ * US 01.06.02).
  *
  * @param onOpenReservation Called with the reservation's ID when its row is tapped.
  * @param controller Loads the reservations; tests can pass one built with fake repositories.
@@ -120,7 +121,7 @@ fun MyReservationsScreen(
 
         when (selectedTab) {
             MyReservationsTab.ACTIVE -> ActiveTab(controller, onOpenReservation)
-            MyReservationsTab.PAST -> Placeholder("Past reservations are added in US 01.06.02.")
+            MyReservationsTab.PAST -> PastTab(controller, onOpenReservation)
         }
     }
 }
@@ -170,6 +171,28 @@ private fun ActiveTab(controller: ReservationController, onOpenReservation: (Str
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(controller.myActive, key = { it.id }) { reservation ->
+                    MyReservationItem(reservation, onClick = { onOpenReservation(reservation.id) })
+                }
+            }
+    }
+}
+
+/** The Past tab: a loading indicator, a message, or the list of reservations (US 01.06.02). */
+@Composable
+private fun PastTab(controller: ReservationController, onOpenReservation: (String) -> Unit) {
+    when {
+        controller.isLoading ->
+            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        controller.loadFailed -> TabMessage("Couldn't load reservations")
+        controller.myPast.isEmpty() -> TabMessage("No past reservations")
+        else ->
+            LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(controller.myPast, key = { it.id }) { reservation ->
                     MyReservationItem(reservation, onClick = { onOpenReservation(reservation.id) })
                 }
             }

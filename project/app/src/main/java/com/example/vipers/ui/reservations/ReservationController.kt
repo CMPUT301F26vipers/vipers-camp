@@ -1,9 +1,10 @@
 /*
  * ReservationController.kt
  * The controller (a ViewModel) behind the lists of reservations: the entrant's My Reservations
- * (US 01.06.01) and the owner's Reservations screen. For the owner it loads the reservations at
- * their campsites once, splits them into the Active list (US 02.07.01) and the Past list of
- * completed stays (US 02.07.02), and looks up each entrant's current name.
+ * (US 01.06.01, US 01.06.02) and the owner's Reservations screen. For the entrant it loads active
+ * stays and past reservations (completed stays, cancelled, and rejected). For the owner it loads
+ * the reservations at their campsites once, splits them into the Active list (US 02.07.01) and
+ * the Past list of completed stays (US 02.07.02), and looks up each entrant's current name.
  * Known issues: the owner's Cancelled list (US 02.07.03) is not built yet.
  */
 package com.example.vipers.ui.reservations
@@ -26,11 +27,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Loads the reservation lists for this device's user: the ones they made as an entrant
- * (US 01.06.01), and the ones at their campsites as an owner, split into the tabs of the owner's
- * Reservations screen: active ones (US 02.07.01) and completed stays (US 02.07.02). The owner's
- * tabs are built from the same load, so switching tabs doesn't load again and the tabs never
- * disagree.
+ * Loads the reservation lists for this device's user: the ones they made as an entrant, split
+ * into active stays (US 01.06.01) and past reservations (US 01.06.02), and the ones at their
+ * campsites as an owner, split into active ones (US 02.07.01) and completed stays (US 02.07.02).
+ * The owner's tabs are built from the same load, so switching tabs doesn't load again and the tabs
+ * never disagree.
  * Takes the repositories in its constructor so tests can pass fake ones.
  *
  * @param userId This device's ID, the entrant for My Reservations and the owner for the owner list.
@@ -43,6 +44,10 @@ class ReservationController(
 
     /** The entrant's own active reservations, soonest check-in first (US 01.06.01). */
     var myActive by mutableStateOf(emptyList<Reservation>())
+        private set
+
+    /** The entrant's own past reservations, most recent first (US 01.06.02). */
+    var myPast by mutableStateOf(emptyList<Reservation>())
         private set
 
     /** The owner's active reservations, soonest check-in first. */
@@ -61,16 +66,17 @@ class ReservationController(
     var loadFailed by mutableStateOf(false)
         private set
 
-    /** Loads the entrant's own reservations in the background (US 01.06.01). */
+    /** Loads the entrant's own reservations in the background (US 01.06.01, US 01.06.02). */
     fun loadMyReservations() {
         viewModelScope.launch { fetchMyReservations() }
     }
 
     /**
-     * Gets the reservations this user made that are active on [today] into [myActive], and sets
-     * [isLoading] and [loadFailed] (US 01.06.01). Reservations whose dates can't be read are
-     * left out. [loadMyReservations] runs this in the background; unit tests call it directly
-     * with a fixed date.
+     * Gets the reservations this user made into [myActive] (active on [today], US 01.06.01) and
+     * [myPast] (completed, cancelled, or rejected, US 01.06.02), and sets [isLoading] and
+     * [loadFailed]. Reservations whose dates can't be read are left out.
+     * [loadMyReservations] runs this in the background; unit tests call it directly with a
+     * fixed date.
      */
     suspend fun fetchMyReservations(today: LocalDate = LocalDate.now()) {
         isLoading = true
@@ -78,12 +84,14 @@ class ReservationController(
         try {
             val reservations = reservationRepository.getReservationsForUser(userId)
             myActive = activeSoonestFirst(reservations, today)
+            myPast = pastMostRecentFirst(reservations, today)
         } catch (e: CancellationException) {
             // the load was stopped on purpose (the controller is gone), so it didn't fail
             throw e
         } catch (e: Exception) {
             // clear the old list so a failed reload doesn't leave stale reservations behind
             myActive = emptyList()
+            myPast = emptyList()
             loadFailed = true
         } finally {
             isLoading = false
@@ -152,6 +160,18 @@ class ReservationController(
                 }
             }
             .sortedBy { it.checkIn }
+
+    // the past ones on today (completed, cancelled, or rejected), most recent first, skipping
+    // any with dates that can't be read (My Reservations Past tab uses this, US 01.06.02)
+    private fun pastMostRecentFirst(
+        reservations: List<Reservation>,
+        today: LocalDate,
+    ): List<Reservation> =
+        reservations
+            .filter { hasReadableDates(it) && it.isPast(today) }
+            .sortedWith(
+                compareByDescending<Reservation> { it.checkOut }.thenByDescending { it.checkIn }
+            )
 
     private fun hasReadableDates(reservation: Reservation): Boolean =
         try {

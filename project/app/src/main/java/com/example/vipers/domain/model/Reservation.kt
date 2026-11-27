@@ -23,7 +23,8 @@ import java.time.format.DateTimeParseException
  * @property checkOut Day the stay ends.
  * @property groupSize Number of guests.
  * @property totalPriceCents Total price in cents, fixed when booked.
- * @property rulesAcceptedAt When the entrant accepted the campsite rules, in milliseconds since 1970.
+ * @property rulesAcceptedAt When the entrant accepted the campsite rules, in milliseconds
+ * since 1970.
  * @property status Confirmed, cancelled or rejected.
  * @property statusChangedAt When the status last changed, in milliseconds since 1970.
  * @property rejectionReason The owner's reason; only set when [status] is REJECTED.
@@ -56,6 +57,21 @@ data class Reservation(
      */
     fun isCompleted(today: LocalDate): Boolean =
         status == ReservationStatus.CONFIRMED && LocalDate.parse(checkOut).isBefore(today)
+
+    /**
+     * True if this reservation belongs in the entrant's Past tab (US 01.06.02): a completed stay
+     * ([isCompleted]) or any CANCELLED or REJECTED reservation, regardless of its dates.
+     */
+    fun isPast(today: LocalDate): Boolean {
+        if (status == ReservationStatus.CANCELLED || status == ReservationStatus.REJECTED) {
+            return true
+        }
+        return try {
+            isCompleted(today)
+        } catch (e: DateTimeParseException) {
+            false
+        }
+    }
 
     /**
      * True if the entrant can still cancel: it is CONFIRMED and check-in is [today] or later
