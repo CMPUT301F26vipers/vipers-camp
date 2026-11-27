@@ -1,6 +1,6 @@
 /*
  * CsvExporterTest.kt
- * Unit tests for CsvExporter formatting and RFC 4180 escaping rules (US 01.05.02).
+ * Unit tests for CsvExporter formatting and RFC 4180 escaping rules (US 01.05.02, US 01.07.02).
  * Known issues: none.
  */
 package com.example.vipers.domain.service
@@ -104,6 +104,37 @@ class CsvExporterTest {
         val rejected = sampleReservation.copy(status = ReservationStatus.REJECTED)
         val rejectedCsv = CsvExporter.toCsv(rejected, sampleCampsite)
         assertEquals(true, rejectedCsv.lines()[1].endsWith(",REJECTED"))
+    }
+
+    @Test
+    fun toCsv_cancelledReservation_producesCorrectRowWithCancelledStatus() {
+        val cancelled = sampleReservation.copy(
+            status = ReservationStatus.CANCELLED,
+            statusChangedAt = 1_700_000_000_000L,
+        )
+        val csv = CsvExporter.toCsv(cancelled, sampleCampsite)
+        val expected = "Reservation Number,Campsite Name,Location,Check-in,Check-out," +
+            "Group Size,Total Price,Status\n" +
+            "R-20417,Two Jack Main,Banff National Park,2026-07-01,2026-07-05,4,$200,CANCELLED\n"
+        assertEquals(expected, csv)
+    }
+
+    @Test
+    fun toCsv_cancelledReservation_escapesSpecialCharactersProperly() {
+        val cancelled = sampleReservation.copy(
+            status = ReservationStatus.CANCELLED,
+            reservationNumber = "R-99999",
+        )
+        val campsite = sampleCampsite.copy(
+            name = "Wild, \"Rocky\" Ridge",
+            address = "Kananaskis, AB",
+        )
+        val csv = CsvExporter.toCsv(cancelled, campsite)
+        val dataRow = csv.lines()[1]
+        val expectedRow =
+            "R-99999,\"Wild, \"\"Rocky\"\" Ridge\",\"Kananaskis, AB\",2026-07-01,2026-07-05," +
+                "4,$200,CANCELLED"
+        assertEquals(expectedRow, dataRow)
     }
 
     @Test
