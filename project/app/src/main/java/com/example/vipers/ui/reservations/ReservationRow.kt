@@ -1,13 +1,16 @@
 /*
  * ReservationRow.kt
  * One row of the owner's Active and Past reservation lists (US 02.07.01, 02.07.02), and the stay's
- * date and guest text that the lists and the reservation details screen both show.
+ * date and guest text that the lists and the reservation details screen both show. Also provides
+ * date formatting for cancelled reservations (US 01.07.02).
  * Known issues: none. Built when the list loads and never stored, so entrantName can be the
  * entrant's current name rather than a copy.
  */
 package com.example.vipers.ui.reservations
 
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.util.Locale
@@ -60,3 +63,21 @@ fun formatStayDates(checkIn: String, checkOut: String): String =
 
 /** [groupSize] as text, e.g. "1 guest" or "3 guests" (US 02.07.01). */
 fun formatGuests(groupSize: Int): String = if (groupSize == 1) "1 guest" else "$groupSize guests"
+
+/**
+ * Formats a cancellation timestamp (in milliseconds since 1970) as "MMM d, yyyy" for the
+ * Cancelled on banner (US 01.07.02, mockup E15b). Falls back to today if the timestamp is
+ * not positive.
+ */
+fun formatCancelledDate(
+    timestamp: Long,
+    zone: ZoneId = ZoneId.systemDefault(),
+): String {
+    val date = if (timestamp > 0L) {
+        Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()
+    } else {
+        LocalDate.now(zone)
+    }
+    return date.format(MONTH_DAY_YEAR)
+}
+

@@ -1,17 +1,22 @@
 /*
  * ReservationTest.kt
  * Unit tests for the Active / Past rule on reservations, for the completed-stay rule the owner's
- * Past tab uses (US 02.07.02), for which ones can be cancelled (US 01.07.01), and for which ones
- * can be rejected and with what reason (US 02.08.01).
+ * Past tab uses (US 02.07.02), for which ones can be cancelled (US 01.07.01), for cancellation
+ * confirmation and notification (US 01.07.02), and for which ones can be rejected and with what
+ * reason (US 02.08.01).
  * Known issues: none.
  */
 package com.example.vipers.domain.model
 
+import com.example.vipers.ui.reservations.formatCancelledDate
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDate
 
 class ReservationTest {
 
@@ -101,8 +106,10 @@ class ReservationTest {
     @Test
     fun isNotCompleted_whenCancelledOrRejected() {
         val afterCheckOut = LocalDate.parse("2027-05-11")
-        assertFalse(mayEightToTen.copy(status = ReservationStatus.CANCELLED).isCompleted(afterCheckOut))
-        assertFalse(mayEightToTen.copy(status = ReservationStatus.REJECTED).isCompleted(afterCheckOut))
+        val cancelled = mayEightToTen.copy(status = ReservationStatus.CANCELLED)
+        val rejected = mayEightToTen.copy(status = ReservationStatus.REJECTED)
+        assertFalse(cancelled.isCompleted(afterCheckOut))
+        assertFalse(rejected.isCompleted(afterCheckOut))
     }
 
     @Test
@@ -196,5 +203,46 @@ class ReservationTest {
     @Test
     fun nights_runFromCheckInToTheNightBeforeCheckOut() {
         assertEquals(listOf("2027-05-08", "2027-05-09"), mayEightToTen.nights())
+    }
+
+    @Test
+    fun statusNotice_forCancelledReservation_createsCancellationNotification() {
+        val cancelled = mayEightToTen.copy(
+            id = "res-101",
+            userId = "sam",
+            campsiteId = "site-bow",
+            campsiteName = "Bow River Sites",
+            checkIn = "2027-05-08",
+            checkOut = "2027-05-10",
+            status = ReservationStatus.CANCELLED,
+        )
+        val notice = cancelled.statusNotice(1_700_000_000_000L)
+
+        assertEquals("cancelled_res-101", notice.id)
+        assertEquals("sam", notice.recipientId)
+        assertEquals("system", notice.senderId)
+        assertEquals("site-bow", notice.campsiteId)
+        assertEquals("res-101", notice.reservationId)
+        assertEquals(NotificationType.RESERVATION_CANCELLED, notice.type)
+        assertEquals("Reservation cancelled", notice.title)
+        assertEquals("Bow River Sites: 2027-05-08 to 2027-05-10", notice.message)
+        assertEquals(1_700_000_000_000L, notice.createdAt)
+    }
+
+    @Test
+    fun formatCancelledDate_formatsEpochMillisToDateString() {
+        val zone = ZoneId.of("UTC")
+        // 1700000000000 ms is 2023-11-14T22:13:20Z
+        val formatted = formatCancelledDate(1_700_000_000_000L, zone)
+        assertEquals("Nov 14, 2023", formatted)
+    }
+
+    @Test
+    fun formatCancelledDate_fallsBackToTodayWhenZeroOrNegative() {
+        val zone = ZoneId.of("UTC")
+        val today = LocalDate.now(zone)
+        val expected = today.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US))
+        assertEquals(expected, formatCancelledDate(0L, zone))
+        assertEquals(expected, formatCancelledDate(-1L, zone))
     }
 }
