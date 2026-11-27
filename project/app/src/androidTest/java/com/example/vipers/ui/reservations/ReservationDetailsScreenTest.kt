@@ -1,9 +1,10 @@
 /*
  * ReservationDetailsScreenTest.kt
- * UI tests for ReservationDetailsScreen (US 01.05.01, US 01.05.02).
+ * UI tests for ReservationDetailsScreen (US 01.05.01, US 01.05.02, US 01.07.02).
  * Verifies that the reservation details screen displays the reservation number, campsite name,
  * dates, group size, total price, status, rules, and download CSV button. Also checks that a
- * rejected reservation shows its status and the owner's reason (US 02.08.01, mockup E15c).
+ * rejected reservation shows its status and the owner's reason (US 02.08.01, mockup E15c), and
+ * a cancelled reservation displays the "Cancelled on …" banner (US 01.07.02, mockup E15b).
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -197,6 +198,33 @@ class ReservationDetailsScreenTest {
         openForMessaging(ReservationStatus.CANCELLED)
         composeRule.onNodeWithTag("detail_header").assertTextEquals("Cancelled Reservation")
         composeRule.onNodeWithTag("button_message_owner").assertDoesNotExist()
+    }
+
+    @Test
+    fun cancelledReservationShowsCancelledOnBanner() {
+        val cancelled = reservation.copy(
+            status = ReservationStatus.CANCELLED,
+            statusChangedAt = 1_700_000_000_000L,
+        )
+        val controller = controllerFor(cancelled.id, "sam", cancelled)
+        composeRule.setContent {
+            VipersTheme {
+                ReservationDetailsScreen(
+                    reservationId = cancelled.id,
+                    onBack = {},
+                    onMessage = {},
+                    controller = controller,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("detail_header").assertTextEquals("Cancelled Reservation")
+        composeRule.onNodeWithTag("detail_cancelled_banner")
+            .assertIsDisplayed()
+            .assertTextContains("Cancelled on", substring = true)
+        composeRule.onNodeWithTag("button_message_owner").assertDoesNotExist()
+        composeRule.onNodeWithTag("button_cancel_reservation").assertDoesNotExist()
+        composeRule.onNodeWithTag("button_download_csv").assertIsDisplayed()
     }
 
     @Test

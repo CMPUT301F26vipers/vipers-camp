@@ -5,8 +5,9 @@
  * the reservation details as a CSV file. Before check-in the entrant can cancel it after
  * confirming in a dialog (US 01.07.01, mockups E15 and E16). Message Owner opens this
  * reservation's conversation (US 01.14.01). A reservation the owner rejected shows its status in
- * red and the owner's reason (US 02.08.01, mockup E15c).
- * Known issues: the "Cancelled on …" banner from mockup E15b comes with US 01.07.02.
+ * red and the owner's reason (US 02.08.01, mockup E15c). A cancelled reservation displays a
+ * "Cancelled on …" banner (US 01.07.02, mockup E15b).
+ * Known issues: none.
  */
 package com.example.vipers.ui.reservations
 
@@ -203,6 +204,7 @@ private fun ReservationContent(
     onCancelClick: () -> Unit,
 ) {
     val confirmed = reservation.status == ReservationStatus.CONFIRMED
+    val cancelled = reservation.status == ReservationStatus.CANCELLED
     val rejected = reservation.status == ReservationStatus.REJECTED
     val reason = reservation.rejectionReason?.takeIf { rejected && it.isNotBlank() }
     Column(
@@ -243,6 +245,20 @@ private fun ReservationContent(
                     modifier = Modifier.testTag("detail_reservation_number"),
                 )
             }
+        }
+
+        if (cancelled) {
+            Text(
+                text = "Cancelled on " + formatCancelledDate(reservation.statusChangedAt),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = TextMuted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Divider, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+                    .testTag("detail_cancelled_banner"),
+            )
         }
 
         // Details list
