@@ -1,7 +1,7 @@
 /*
  * MyCampsitesScreenTest.kt
  * Intent tests for the My Campsites screen (mockup O01, US 02.03.01): the empty state, the owner's
- * campsites in the list, and tapping a campsite to open it. Uses the fake campsite repository.
+ * campsites in the list with real lottery status, and tapping a campsite to open it.
  * Known issues: none.
  */
 package com.example.vipers.ui.campsites
@@ -12,7 +12,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeLotteryRepository
 import com.example.vipers.domain.model.Campsite
+import com.example.vipers.domain.model.Lottery
 import org.junit.Rule
 import org.junit.Test
 
@@ -115,6 +117,75 @@ class MyCampsitesScreenTest {
         composeTestRule.onNodeWithContentDescription("View details").performClick()
 
         // 4. Verify the UI responded and captured the correct ID
-        assert(capturedId == "camp-999") { "CampsiteItem did not fire onClick with the correct ID." }
+        assert(capturedId == "camp-999") {
+            "CampsiteItem did not fire onClick with the correct ID."
+        }
+    }
+
+    @Test
+    fun populatedCampsites_withOpenLottery_displaysRealLotteryStatus() {
+        val now = System.currentTimeMillis()
+        val campsite = Campsite(
+            id = "c1",
+            ownerId = "user12",
+            name = "Hinton Ridge",
+            address = "Hinton, AB",
+        )
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("c1"),
+            registrationStart = now - 1000L,
+            registrationEnd = now + 5000L,
+        )
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val lotteryRepo = FakeLotteryRepository(listOf(lottery))
+        val viewModel = MyCampsitesController(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+            ownerId = "user12",
+        )
+
+        composeTestRule.setContent {
+            MyCampsitesScreen(
+                onAddCampsite = {},
+                viewModel = viewModel,
+                onOpenCampsite = {},
+                onOpenSent = {},
+                onOpenReservations = {},
+            )
+        }
+
+        composeTestRule.onNodeWithText("Hinton Ridge").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Hinton, AB · Lottery status: Open").assertIsDisplayed()
+    }
+
+    @Test
+    fun populatedCampsites_withoutLottery_displaysNoneLotteryStatus() {
+        val campsite = Campsite(
+            id = "c2",
+            ownerId = "user12",
+            name = "Banff Alpine Camp",
+            address = "Banff, AB",
+        )
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        val lotteryRepo = FakeLotteryRepository(emptyList())
+        val viewModel = MyCampsitesController(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+            ownerId = "user12",
+        )
+
+        composeTestRule.setContent {
+            MyCampsitesScreen(
+                onAddCampsite = {},
+                viewModel = viewModel,
+                onOpenCampsite = {},
+                onOpenSent = {},
+                onOpenReservations = {},
+            )
+        }
+
+        composeTestRule.onNodeWithText("Banff Alpine Camp").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Banff, AB · Lottery status: None").assertIsDisplayed()
     }
 }
