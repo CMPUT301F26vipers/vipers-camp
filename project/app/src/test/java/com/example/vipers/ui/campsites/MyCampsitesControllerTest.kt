@@ -269,9 +269,11 @@ class MyCampsitesControllerTest {
     @Test
     fun fetchCampsites_repositoryThrows_setsErrorAndStopsLoading() = runBlocking {
         val failingRepo = object : CampsiteRepository {
+            override fun newCampsiteId(): String = ""
             override suspend fun addCampsite(campsite: Campsite): String = ""
             override suspend fun getCampsite(id: String): Campsite? = null
             override suspend fun updateCampsite(campsite: Campsite) {}
+            override suspend fun removeCampsite(id: String) {}
             override suspend fun getCampsitesByOwner(ownerId: String): List<Campsite> {
                 throw RuntimeException("Network disconnected")
             }
