@@ -2,10 +2,11 @@
  * NotificationService.kt
  * The app's notification logic, between the screens and NotificationRepository. It passes the
  * inbox and marking read through to the repository (T-13), builds and saves a draw's "You won"
- * (US 01.03.01), "Not selected" (US 01.03.02), and replacement win (US 01.04.03, T-12) notices
- * and the "New message" notice (US 02.12.01), and skips users who turned notifications off in
- * Settings (US 01.10.01). It also picks which new inbox items to show as phone notifications,
- * at most once each, through a DeviceNotifier (T-14).
+ * (US 01.03.01), "Not selected" (US 01.03.02), and replacement win (US 01.04.03, T-12) notices,
+ * the "New message" notice (US 02.12.01) and the "Reservation rejected" notice with the owner's
+ * reason (US 02.08.01), and skips users who turned notifications off in Settings (US 01.10.01).
+ * It also picks which new inbox items to show as phone notifications, at most once each, through
+ * a DeviceNotifier (T-14).
  * Known issues: none.
  */
 package com.example.vipers.domain.service
@@ -16,6 +17,7 @@ import com.example.vipers.domain.model.Message
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.LotteryRepository
@@ -216,6 +218,27 @@ class NotificationService(
         val recipientId = reservation.otherSide(message.senderId) ?: return
         if (optedIn(listOf(recipientId)).isEmpty()) return
         notificationRepository.saveNotification(message.notice(reservation, recipientId))
+    }
+
+    /**
+     * Tells the entrant that the owner rejected [reservation], and why (US 02.08.01). It saves the
+     * RESERVATION_REJECTED notice from [Reservation.statusNotice], dated [now]: ID
+     * `rejected_<reservationId>`, so sending again replaces it instead of adding a copy, from the
+     * owner, with the reason in the message, and it opens the reservation. Nothing is sent if
+     * [reservation] isn't REJECTED, has no reason ([Reservation.isValidRejectionReason]), or its
+     * entrant turned notifications off ([optedIn], US 01.10.01).
+     *
+     * @return true if the notice was saved.
+     */
+    suspend fun sendReservationRejected(
+        reservation: Reservation,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean {
+        if (reservation.status != ReservationStatus.REJECTED) return false
+        if (!Reservation.isValidRejectionReason(reservation.rejectionReason)) return false
+        if (optedIn(listOf(reservation.userId)).isEmpty()) return false
+        notificationRepository.saveNotification(reservation.statusNotice(now))
+        return true
     }
 
     /**

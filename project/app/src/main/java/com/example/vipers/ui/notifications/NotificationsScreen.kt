@@ -5,11 +5,8 @@
  * was sent; unread rows have a dot and a bold title. Tapping a row marks it read and opens the
  * screen its NotificationTarget names, through lambdas from AppNavigation.
  * NotificationsController supplies the items.
- * Known issues: AppNavigation doesn't open anything yet for a win (no Reserve route until
- * 01.04.01 / T-03), a reservation (no entrant reservation details route yet) or a message (no
- * thread screen yet); those taps only mark the item read. The times ("2m", "3h"...) are worked
- * out when the list is drawn, so they don't tick while the tab stays open with no new
- * notifications.
+ * Known issues: the times ("2m", "3h"...) are worked out when the list is drawn, so they don't
+ * tick while the tab stays open with no new notifications.
  */
 package com.example.vipers.ui.notifications
 

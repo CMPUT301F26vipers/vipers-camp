@@ -1,7 +1,8 @@
 /*
  * ReservationTest.kt
  * Unit tests for the Active / Past rule on reservations, for the completed-stay rule the owner's
- * Past tab uses (US 02.07.02), and for which ones can be cancelled (US 01.07.01).
+ * Past tab uses (US 02.07.02), for which ones can be cancelled (US 01.07.01), and for which ones
+ * can be rejected and with what reason (US 02.08.01).
  * Known issues: none.
  */
 package com.example.vipers.domain.model
@@ -144,6 +145,52 @@ class ReservationTest {
     @Test
     fun cannotCancel_whenCheckInCantBeRead() {
         assertFalse(mayEightToTen.copy(checkIn = "").canCancel(today))
+    }
+
+    @Test
+    fun canReject_whenConfirmedAndCheckOutIsAhead() {
+        assertTrue(mayEightToTen.canReject(today))
+    }
+
+    @Test
+    fun canReject_onCheckOutDay() {
+        assertTrue(mayEightToTen.canReject(LocalDate.parse("2027-05-10")))
+    }
+
+    @Test
+    fun cannotReject_afterCheckOut() {
+        assertFalse(mayEightToTen.canReject(LocalDate.parse("2027-05-11")))
+    }
+
+    @Test
+    fun cannotReject_whenCancelled() {
+        assertFalse(mayEightToTen.copy(status = ReservationStatus.CANCELLED).canReject(today))
+    }
+
+    @Test
+    fun cannotReject_whenAlreadyRejected() {
+        assertFalse(mayEightToTen.copy(status = ReservationStatus.REJECTED).canReject(today))
+    }
+
+    @Test
+    fun cannotReject_whenCheckOutCantBeRead() {
+        assertFalse(mayEightToTen.copy(checkOut = "").canReject(today))
+    }
+
+    @Test
+    fun rejectionReason_isValidWithText() {
+        assertTrue(Reservation.isValidRejectionReason("Forest fire warning"))
+    }
+
+    @Test
+    fun rejectionReason_isValidWithSpacesAround() {
+        assertTrue(Reservation.isValidRejectionReason("  Forest fire warning  "))
+    }
+
+    @Test
+    fun rejectionReason_isInvalidWhenEmptyOrBlank() {
+        assertFalse(Reservation.isValidRejectionReason(""))
+        assertFalse(Reservation.isValidRejectionReason("   "))
     }
 
     @Test

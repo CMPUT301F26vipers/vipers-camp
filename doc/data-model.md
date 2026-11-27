@@ -207,6 +207,16 @@ confirms something they just did. A rejection should respect the opt-out: check 
 `NotificationService.optedIn` first and pass `sendNotice = false` if they turned notifications
 off. Everything else in the transaction still happens.
 
+The owner rejects with `rejectTransaction(reservationId, reason, now, sendNotice)` (US 02.08.01).
+It checks `Reservation.isValidRejectionReason(reason)` first and throws
+`IllegalArgumentException`, writing nothing, if the reason is blank. Otherwise it runs the same
+`changeStatus` transaction with `REJECTED` and the trimmed reason: if the reservation is missing or
+no longer `CONFIRMED` (e.g. the entrant cancelled first, or a second tap) it writes nothing and
+returns `false`; otherwise it sets `status`, `statusChangedAt` and `rejectionReason`, removes the
+reservation's `nights()` from `heldNights` (nights already missing are ignored, and `openNights`
+stays the same), writes the `rejected_<reservationId>` notice unless `sendNotice` is false, and
+returns `true`. Transactions need a connection, so rejecting fails offline.
+
 ### `notifications`: `Notification` (`NotificationRepository`)
 
 | Field | Type | Notes |
@@ -252,6 +262,14 @@ it atomically with the decline and promotion—preserving `read` and `shownOnDev
 deterministic notice, leaving `draw_<lotteryId>_<userId>` (`NOT_SELECTED`) intact as the original
 draw record, and preventing original-manifest replays from overwriting the promotion. `batchId` stays
 `null` for draws; it only groups owner broadcasts.
+
+A rejected reservation (US 02.08.01) uses the ID `rejected_<reservationId>`, so the entrant gets one
+per reservation however often it is sent. It is `RESERVATION_REJECTED` from the owner, with
+`campsiteId` and `reservationId` set (a tap opens the reservation), the title "Reservation
+rejected" and the message "<campsite name>: <check-in> to <check-out>. Reason: <reason>".
+`NotificationService.sendReservationRejected(reservation, now)` builds it with
+`Reservation.statusNotice` and saves it, but only for a `REJECTED` reservation with a reason and an
+entrant who hasn't turned notifications off (`optedIn`); it returns whether it saved one.
 
 An owner broadcast (US 02.10.01) goes to everyone on a lottery's waiting list as the owner sees it on
 the Waiting List screen: `NotificationService.waitingListRecipients(lotteryId)` returns the user of

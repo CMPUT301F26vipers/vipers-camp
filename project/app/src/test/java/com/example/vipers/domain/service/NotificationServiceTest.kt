@@ -3,8 +3,9 @@
  * Unit tests for NotificationService.sendDrawResults (US 01.03.01, 01.03.02): the "You won" and
  * "Not selected" notices a draw adds to inboxes, using the fake repositories and a fixed date format.
  * Also tests optedIn and that the draw skips users who turned notifications off (US 01.10.01),
- * and the "New message" notice sendNewMessage sends to the other side of a conversation
- * (US 02.12.01).
+ * the "New message" notice sendNewMessage sends to the other side of a conversation
+ * (US 02.12.01), and the "Reservation rejected" notice sendReservationRejected sends to the
+ * entrant (US 02.08.01).
  * Known issues: none. The inbox and markRead pass-throughs are covered by NotificationsControllerTest.
  */
 package com.example.vipers.domain.service
@@ -22,6 +23,7 @@ import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.UserProfile
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
@@ -698,6 +700,79 @@ class NotificationServiceTest {
         service.sendNewMessage(samsStay, fromOwner)
 
         assertEquals(1, notifications.getNotificationsFor("sam").size)
+    }
+
+    private val samsRejectedStay = samsStay.copy(
+        checkIn = "2027-05-08",
+        checkOut = "2027-05-10",
+        status = ReservationStatus.REJECTED,
+        rejectionReason = "Forest fire warning",
+    )
+
+    @Test
+    fun sendReservationRejected_addsOneRejectedNoticeFromTheOwnerWithTheReason() = runBlocking {
+        assertTrue(service.sendReservationRejected(samsRejectedStay, now = 3_000))
+
+        val notice = notifications.getNotificationsFor("sam").single()
+        assertEquals("rejected_res-hinton", notice.id)
+        assertEquals(NotificationType.RESERVATION_REJECTED, notice.type)
+        assertEquals("owner-priya", notice.senderId)
+        assertEquals("res-hinton", notice.reservationId)
+        assertEquals("hinton", notice.campsiteId)
+        assertNull(notice.lotteryId)
+        assertNull(notice.batchId)
+        assertEquals("Reservation rejected", notice.title)
+        assertEquals(
+            "Hinton Ridge Campground: 2027-05-08 to 2027-05-10. Reason: Forest fire warning",
+            notice.message,
+        )
+        assertEquals(3_000L, notice.createdAt)
+        assertFalse(notice.read)
+        assertFalse(notice.shownOnDevice)
+        assertTrue(notifications.getNotificationsFor("owner-priya").isEmpty())
+    }
+
+    @Test
+    fun sendReservationRejected_noticeOpensTheReservation() = runBlocking {
+        service.sendReservationRejected(samsRejectedStay, now = 3_000)
+
+        val notice = notifications.getNotificationsFor("sam").single()
+        assertEquals(NotificationTarget.OpenReservation("res-hinton"), notice.target)
+    }
+
+    @Test
+    fun sendReservationRejected_twice_keepsOneNotice() = runBlocking {
+        service.sendReservationRejected(samsRejectedStay, now = 3_000)
+        service.sendReservationRejected(samsRejectedStay, now = 4_000)
+
+        assertEquals(1, notifications.getNotificationsFor("sam").size)
+    }
+
+    @Test
+    fun sendReservationRejected_toSomeoneWhoTurnedNotificationsOff_sendsNothing() = runBlocking {
+        assertFalse(service.sendReservationRejected(samsRejectedStay.copy(userId = "riley"), now = 3_000))
+
+        assertTrue(notifications.getNotificationsFor("riley").isEmpty())
+    }
+
+    @Test
+    fun sendReservationRejected_notRejected_sendsNothing() = runBlocking {
+        assertFalse(service.sendReservationRejected(samsStay, now = 3_000))
+        assertFalse(
+            service.sendReservationRejected(
+                samsRejectedStay.copy(status = ReservationStatus.CANCELLED),
+                now = 3_000,
+            ),
+        )
+
+        assertTrue(notifications.getNotificationsFor("sam").isEmpty())
+    }
+
+    @Test
+    fun sendReservationRejected_withoutAReason_sendsNothing() = runBlocking {
+        assertFalse(service.sendReservationRejected(samsRejectedStay.copy(rejectionReason = "  "), now = 3_000))
+
+        assertTrue(notifications.getNotificationsFor("sam").isEmpty())
     }
 
     // US 01.04.03 / T-12: preparing replacement win notices
