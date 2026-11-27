@@ -2,11 +2,12 @@
  * Campsite.kt
  * A campsite an owner lists so entrants can find it and join its lotteries.
  * Stored in the Firestore "campsites" collection.
- * Known issues: photo and map location are stored but not yet filled in by the Add Campsite form.
+ * Known issues: none.
  */
 package com.example.vipers.domain.model
 
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * A campsite listed by an owner.
@@ -68,6 +69,38 @@ data class Campsite(
         return ratingSum.toDouble() / ratingCount
     }
 
+    /**
+     * Calculates the entrant's match percentage after the hard filters pass (W-01).
+     *
+     * The 50-point availability share splits into 40 points for the share of requested nights
+     * that are free and 10 points for [dateProximity] (how close the campsite's free nights are
+     * to the requested dates, or to today when no dates are chosen).
+     *
+     * @param freeNights Number of available nights within the requested dates.
+     * @param requestedNights Total nights including both endpoints, or zero for any dates.
+     * @param preferredTags Optional amenities. A missing preference earns full credit.
+     * @param dateProximity Closeness of the campsite's free nights in 0.0..1.0 (1.0 = closest).
+     * @return A whole percentage: 50 points for availability (40 coverage + 10 proximity),
+     * 30 for tags and 20 for rating.
+     */
+    fun matchScore(
+        freeNights: Int,
+        requestedNights: Int,
+        preferredTags: Set<String>,
+        dateProximity: Double = 1.0,
+    ): Int {
+        val coverage = if (requestedNights <= 0) 1.0 else freeNights.toDouble() / requestedNights
+        val proximity = if (requestedNights > 0 && freeNights <= 0) 0.0
+            else dateProximity.coerceIn(0.0, 1.0)
+        val wanted = preferredTags.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+        val offered = tags.map { it.trim().lowercase() }.toSet()
+        val amenities = if (wanted.isEmpty()) 1.0 else
+            wanted.count { it in offered }.toDouble() / wanted.size
+        val stars = averageRating().coerceIn(0.0, 5.0)
+        val availability = 40 * coverage.coerceIn(0.0, 1.0) + 10 * proximity
+        return (availability + 30 * amenities + 4 * stars).roundToInt()
+    }
+
     /** The nightly price in dollars, as the campsite form shows it: "50" or "65.50" (T-09). */
     fun priceInDollars(): String {
         return dollarsText(pricePerNightCents)
@@ -91,7 +124,35 @@ data class Campsite(
         return "$${dollarsText(totalPriceCents(nights))}"
     }
 
+    /**
+     * The link stored in this campsite's QR code (US 02.02.01), e.g. "vipers-camp://campsite/abc".
+     * It only uses [id], so the code stays the same when the owner edits the campsite.
+     */
+    fun qrLink(): String {
+        return QR_LINK_PREFIX + id
+    }
+
     companion object {
+        /** The start of every campsite QR link; the campsite ID follows it. */
+        const val QR_LINK_PREFIX = "vipers-camp://campsite/"
+
+        /**
+         * The campsite ID in a scanned QR [link] made by [qrLink], or null if it isn't one of our
+         * campsite links (another app's QR code, an empty ID, or extra parts after the ID).
+         * Scanning (US 01.12.01) uses this. Campsite IDs only use letters, digits, - and _, so
+         * anything else (like ?, # or %) means it isn't ours, and it can't break the screen route.
+         */
+        fun idFromQrLink(link: String): String? {
+            val text = link.trim()
+            if (!text.startsWith(QR_LINK_PREFIX)) return null
+            val id = text.removePrefix(QR_LINK_PREFIX)
+            if (!QR_ID_PATTERN.matches(id)) return null
+            return id
+        }
+
+        // Firestore IDs are letters and digits; our test and seed IDs also use - and _
+        private val QR_ID_PATTERN = Regex("[A-Za-z0-9_-]+")
+
         /** An amount in cents as dollars: "50" or "65.50". Cents only show when there are some. */
         fun dollarsText(amountCents: Long): String {
             val dollars = amountCents / 100

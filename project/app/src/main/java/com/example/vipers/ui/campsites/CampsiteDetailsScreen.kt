@@ -4,8 +4,7 @@
  * tapping a search result on Home: all its details, the lottery they can join with its registration
  * deadline, and an action to join the waiting list. A winner's Reserve button opens the Reserve
  * screen (US 01.04.01). CampsiteDetailsController loads the data.
- * Known issues: the photo is a placeholder until promo images (02.01.02b), the map comes with
- * T-04, and Rate (01.13.01) is added by that story.
+ * Known issues: the Rate action is planned for US 01.13.01.
  */
 package com.example.vipers.ui.campsites
 
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,7 +21,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,18 +28,17 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
+import com.example.vipers.ui.common.FullPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
@@ -100,20 +96,13 @@ fun CampsiteDetailsScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // placeholder until campsites have promo images
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
-                        .background(GreenFill, RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_image),
-                        contentDescription = null,
-                        tint = Primary,
-                    )
-                }
+                // the whole promo photo, or a placeholder if there's none (US 02.01.02b)
+                FullPhoto(
+                    campsite.imageId,
+                    contentDescription = "Campsite photo",
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("details_photo"),
+                )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         campsite.name,
@@ -134,6 +123,7 @@ fun CampsiteDetailsScreen(
                     onReserve = onReserve,
                 )
                 CampsiteDetails(campsite, showSummary = false)
+                CampsiteMapButton(campsite, Modifier.fillMaxWidth())
             }
         }
     }

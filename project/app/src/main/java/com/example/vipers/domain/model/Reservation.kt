@@ -50,6 +50,14 @@ data class Reservation(
         status == ReservationStatus.CONFIRMED && !LocalDate.parse(checkOut).isBefore(today)
 
     /**
+     * True if it is CONFIRMED and checked out before [today]: a completed stay, shown on the
+     * owner's Past tab (US 02.07.02). On check-out day itself it is still active. Cancelled and
+     * rejected reservations are never completed; they go in the Cancelled tab (US 02.07.03).
+     */
+    fun isCompleted(today: LocalDate): Boolean =
+        status == ReservationStatus.CONFIRMED && LocalDate.parse(checkOut).isBefore(today)
+
+    /**
      * True if the entrant can still cancel: it is CONFIRMED and check-in is [today] or later
      * (US 01.07.01). A check-in that can't be read counts as not cancellable.
      */
@@ -111,4 +119,35 @@ data class Reservation(
     /** The total price as text for the UI, e.g. "$100" or "$65.50" (T-03, US 01.05.01). */
     val totalPriceText: String
         get() = "$${Campsite.dollarsText(totalPriceCents)}"
+
+    /**
+     * True if the user with this [userId] can read and send messages about this reservation: its
+     * entrant or the owner of its campsite (US 02.12.01, 01.14.01). Anyone else, including
+     * another owner, can't.
+     */
+    fun canMessage(userId: String): Boolean =
+        userId.isNotBlank() && (userId == this.userId || userId == ownerId)
+
+    /**
+     * Checks whether an entrant can message the owner about this reservation (US 01.14.01).
+     *
+     * @param entrantId ID of the entrant requesting the conversation.
+     * @return True if [entrantId] identifies this reservation's entrant, the reservation has
+     * not been cancelled, and it has a different owner with a nonblank ID.
+     */
+    fun canMessageOwner(entrantId: String): Boolean =
+        status != ReservationStatus.CANCELLED && entrantId == userId &&
+            !otherSide(entrantId).isNullOrBlank()
+
+    /**
+     * The other person in this reservation's conversation (US 02.12.01): the entrant for the
+     * owner, and the owner for the entrant. Null if [userId] can't message about it
+     * ([canMessage]), or if the owner booked their own campsite, so there is nobody else.
+     */
+    fun otherSide(userId: String): String? = when {
+        !canMessage(userId) -> null
+        this.userId == ownerId -> null
+        userId == ownerId -> this.userId
+        else -> ownerId
+    }
 }

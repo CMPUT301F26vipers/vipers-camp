@@ -1,8 +1,8 @@
 /*
  * ReservationDetailsScreenTest.kt
- * UI tests for ReservationDetailsScreen (US 01.05.01).
+ * UI tests for ReservationDetailsScreen (US 01.05.01, US 01.05.02).
  * Verifies that the reservation details screen displays the reservation number, campsite name,
- * dates, group size, total price, and status, and handles missing reservations.
+ * dates, group size, total price, status, rules, and download CSV button.
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -14,12 +14,15 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.ui.theme.VipersTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -73,6 +76,7 @@ class ReservationDetailsScreenTest {
                 ReservationDetailsScreen(
                     reservationId = "res-1",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }
@@ -92,6 +96,10 @@ class ReservationDetailsScreenTest {
             .assertTextEquals("Confirmed")
         composeRule.onNodeWithTag("detail_campsite_rules")
             .assertTextEquals("Quiet hours after 10 PM")
+        composeRule.onNodeWithTag("button_download_csv")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertTextEquals("Download CSV")
     }
 
     @Test
@@ -102,6 +110,7 @@ class ReservationDetailsScreenTest {
                 ReservationDetailsScreen(
                     reservationId = "nope",
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }
@@ -110,6 +119,43 @@ class ReservationDetailsScreenTest {
         composeRule.onNodeWithTag("text_reservation_not_found").assertIsDisplayed()
         composeRule.onNodeWithTag("text_reservation_not_found")
             .assertTextContains("Reservation not found", substring = true)
+    }
+
+    private var openedId: String? = null
+
+    private fun openForMessaging(status: ReservationStatus, user: String = "sam") {
+        val controller = controllerFor(reservation.id, user, reservation.copy(status = status))
+        composeRule.setContent {
+            VipersTheme {
+                ReservationDetailsScreen(
+                    reservationId = reservation.id,
+                    onBack = {},
+                    onMessage = { openedId = it },
+                    controller = controller,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun rejectedReservationCanMessageTheOwner() {
+        openForMessaging(ReservationStatus.REJECTED)
+        composeRule.onNodeWithTag("button_message_owner").performScrollTo().performClick()
+        assertEquals(reservation.id, openedId)
+    }
+
+    @Test
+    fun cancelledReservationHasNoMessageOwnerButton() {
+        openForMessaging(ReservationStatus.CANCELLED)
+        composeRule.onNodeWithTag("detail_header").assertTextEquals("Cancelled Reservation")
+        composeRule.onNodeWithTag("button_message_owner").assertDoesNotExist()
+    }
+
+    @Test
+    fun anotherEntrantCannotMessageFromTheReservation() {
+        openForMessaging(ReservationStatus.CONFIRMED, "another-entrant")
+        composeRule.onNodeWithTag("text_reservation_not_found").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_message_owner").assertDoesNotExist()
     }
 
     @Test
@@ -121,6 +167,7 @@ class ReservationDetailsScreenTest {
                 ReservationDetailsScreen(
                     reservationId = "res-1",
                     onBack = { backCalled = true },
+                    onMessage = {},
                     controller = controller,
                 )
             }

@@ -5,13 +5,17 @@
  * (US 02.01.03). CampsiteController checks and saves what the owner types, including the nightly
  * price (T-09), the optional rules and cancellation policy (T-11), and the optional map location:
  * Find location looks up the address and the owner picks a place in the dialog (mockup O03,
- * US 02.01.02c).
- * Known issues: the photo (02.01.02b) is added by that story.
+ * US 02.01.02c). The optional photo is picked with the phone's photo picker, previewed, and can be
+ * changed or removed before saving (US 02.01.02b).
+ * Known issues: none.
  */
 package com.example.vipers.ui.campsites
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -64,6 +69,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Place
 import com.example.vipers.domain.model.Region
+import com.example.vipers.ui.common.JpegPhoto
+import com.example.vipers.ui.common.SavedPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Border
 import com.example.vipers.ui.theme.ButtonHeight
@@ -141,7 +148,7 @@ fun CampsiteFormScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            PhotoPlaceholder()
+            PhotoField(controller)
             FormField(
                 label = "Name",
                 value = controller.name,
@@ -228,7 +235,7 @@ fun CampsiteFormScreen(
         }
         Button(
             onClick = controller::publish,
-            enabled = !controller.isSaving,
+            enabled = controller.canPublish,
             shape = ButtonShape,
             modifier = Modifier
                 .fillMaxWidth()
@@ -537,20 +544,85 @@ private fun ChoosePlaceDialog(places: List<Place>, onUse: (Place) -> Unit, onCan
     )
 }
 
-/** Where the photo picker goes; photos are added in US 02.01.02b. */
+/**
+ * The optional photo (US 02.01.02b): "+ Add photo" opens the phone's photo picker; once there is a
+ * photo it shows a preview with Change and Remove (mockups O02, O05). Errors show underneath.
+ */
 @Composable
-private fun PhotoPlaceholder() {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(72.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline, InputShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            "+ Add photo (coming in US 02.01.02b)",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+private fun PhotoField(controller: CampsiteController) {
+    val pickPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) controller.choosePhoto(uri.toString())
+    }
+    val openPicker = {
+        pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        when {
+            controller.isReadingPhoto -> Row(
+                Modifier.fillMaxWidth().height(72.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("  Getting the photo ready…", style = MaterialTheme.typography.bodyMedium)
+            }
+            controller.hasPhoto -> Row(
+                Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outline, InputShape)
+                    .padding(8.dp)
+                    .testTag("photo_preview"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val photoModifier = Modifier.size(width = 72.dp, height = 54.dp)
+                val newPhoto = controller.newPhoto
+                if (newPhoto != null) {
+                    JpegPhoto(newPhoto, "Campsite photo", InputShape, photoModifier)
+                } else {
+                    SavedPhoto(controller.imageId, "Campsite photo", InputShape, photoModifier)
+                }
+                Text(
+                    "Campsite photo",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedButton(
+                    onClick = openPicker,
+                    border = BorderStroke(1.dp, Primary),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+                    modifier = Modifier.testTag("button_change_photo"),
+                ) {
+                    Text("Change")
+                }
+                TextButton(
+                    onClick = controller::removePhoto,
+                    modifier = Modifier.testTag("button_remove_photo"),
+                ) {
+                    Text("Remove")
+                }
+            }
+            else -> Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, InputShape)
+                    .clickable(onClick = openPicker)
+                    .testTag("button_add_photo"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("+ Add photo", color = Primary, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        controller.photoError?.let { error ->
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("photo_error"),
+            )
+        }
     }
 }

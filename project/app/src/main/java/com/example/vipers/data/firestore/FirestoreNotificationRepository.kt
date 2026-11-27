@@ -39,16 +39,6 @@ class FirestoreNotificationRepository(
         }
     }
 
-    // This notification, but if it was already saved, with the saved read and shownOnDevice, so
-    // sending it again doesn't make a read item unread or show it on the phone twice (US 01.03.01).
-    private fun Notification.keepingStateOf(saved: DocumentSnapshot): Notification {
-        if (!saved.exists()) return this
-        return copy(
-            read = saved.getBoolean("read") ?: false,
-            shownOnDevice = saved.getBoolean("shownOnDevice") ?: false,
-        )
-    }
-
     private companion object {
         // the most writes Firestore allows in one transaction
         const val MAX_WRITES = 500
@@ -94,6 +84,38 @@ class FirestoreNotificationRepository(
             }
         return Subscription { registration.remove() }
     }
+
+    override suspend fun listUnshownOnDevice(recipientId: String): List<Notification> =
+        collection
+            .whereEqualTo("recipientId", recipientId)
+            .whereEqualTo("shownOnDevice", false)
+            .get().await()
+            .documents.map { it.toNotification() }
+            .sortedBy { it.createdAt }
+
+    override suspend fun markShownOnDevice(notificationId: String): Boolean {
+        val doc = collection.document(notificationId)
+        return db.runTransaction { tx ->
+            val snapshot = tx.get(doc)
+            if (!snapshot.exists() || snapshot.getBoolean("shownOnDevice") == true) {
+                return@runTransaction false
+            }
+            tx.update(doc, "shownOnDevice", true)
+            true
+        }.await()
+    }
+}
+
+/**
+ * Returns this notification, preserving saved `read` and `shownOnDevice` flags when [saved]
+ * already exists so deterministic rewrites never mark read items unread or re-alert the device.
+ */
+internal fun Notification.keepingStateOf(saved: DocumentSnapshot): Notification {
+    if (!saved.exists()) return this
+    return copy(
+        read = saved.getBoolean("read") ?: false,
+        shownOnDevice = saved.getBoolean("shownOnDevice") ?: false,
+    )
 }
 
 /** Turns a notification into the fields saved in its Firestore document. */

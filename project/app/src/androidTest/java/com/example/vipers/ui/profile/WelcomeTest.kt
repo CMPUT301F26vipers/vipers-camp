@@ -8,6 +8,8 @@
  */
 package com.example.vipers.ui.profile
 
+import android.Manifest
+import android.os.Build
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -19,10 +21,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.rule.GrantPermissionRule
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -40,6 +45,14 @@ class WelcomeTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    @get:Rule
+    val notificationPermission: GrantPermissionRule =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            GrantPermissionRule.grant()
+        }
+
     private val profiles = FakeProfileRepository()
 
     /** Opens the app as the device "my-phone", with fake repositories in place of Firestore. */
@@ -51,7 +64,9 @@ class WelcomeTest {
             campsiteRepository = FakeCampsiteRepository(),
             lotteryRepository = FakeLotteryRepository(),
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(),
+            imageRepository = FakeImageRepository(),
         )
         composeRule.setContent {
             VipersTheme { AppRoot(app.container.deviceIdentityManager, onLoadDemoData = {}) }

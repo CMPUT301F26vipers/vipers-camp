@@ -8,6 +8,7 @@ package com.example.vipers.domain.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -121,5 +122,81 @@ class AvailabilityCalendarTest {
     fun freeNights_isEmptyWhenNoNightInTheRangeIsFree() {
         assertEquals(emptyList<String>(), calendar.freeNights("2027-05-08", "2027-05-09"))
         assertEquals(emptyList<String>(), calendar.freeNights("2027-05-01", "2027-05-01"))
+    }
+
+    @Test
+    fun requestedNightCount_countsBothEndpointsAndCapsAt365() {
+        val start = LocalDate.of(2027, 5, 8)
+        assertEquals(1, AvailabilityCalendar.requestedNightCount(start, start))
+        assertEquals(2, AvailabilityCalendar.requestedNightCount(LocalDate.of(2027, 5, 9), start))
+        assertEquals(365, AvailabilityCalendar.requestedNightCount(
+            LocalDate.of(2027, 1, 1), LocalDate.of(2027, 12, 31),
+        ))
+        assertNull(AvailabilityCalendar.requestedNightCount(
+            LocalDate.of(2027, 1, 1), LocalDate.of(2028, 1, 1),
+        ))
+    }
+
+    @Test
+    fun dateProximity_isFullWhenEveryRequestedNightIsFree() {
+        val full = AvailabilityCalendar("1", listOf("2027-05-08", "2027-05-09"))
+        assertEquals(1.0, full.dateProximity("2027-05-08", "2027-05-09", today), 0.001)
+        assertEquals(1.0, full.dateProximity("2027-05-09", "2027-05-08", today), 0.001)
+        assertEquals(1.0, full.dateProximity("2027-05-08", null, today), 0.001)
+    }
+
+    @Test
+    fun dateProximity_isZeroWhenNoRequestedNightIsFreeOrDatesInvalid() {
+        assertEquals(0.0, calendar.dateProximity("2027-05-08", "2027-05-09", today), 0.001)
+        assertEquals(0.0, calendar.dateProximity("bad-date", "2027-05-09", today), 0.001)
+        assertEquals(0.0, calendar.dateProximity("2027-01-01", "2028-01-01", today), 0.001)
+    }
+
+    @Test
+    fun dateProximity_favoursFreeNightsCloserToTheRequestedStartDate() {
+        val onStart = AvailabilityCalendar("1", listOf("2027-05-08"))
+        val inMiddle = AvailabilityCalendar("2", listOf("2027-05-10"))
+        val atEnd = AvailabilityCalendar("3", listOf("2027-05-12"))
+
+        assertEquals(0.5, onStart.dateProximity("2027-05-08", "2027-05-12", today), 0.001)
+        assertEquals(0.25, inMiddle.dateProximity("2027-05-08", "2027-05-12", today), 0.001)
+        assertEquals(0.0, atEnd.dateProximity("2027-05-08", "2027-05-12", today), 0.001)
+    }
+
+    @Test
+    fun dateProximity_rewardsAdjacentFreeNightsAndIgnoresPastOrHeldOnes() {
+        val nextDayFree = AvailabilityCalendar("1", listOf("2027-05-08", "2027-05-10"))
+        val fourDaysOut = AvailabilityCalendar("2", listOf("2027-05-08", "2027-05-13"))
+        val heldAdjacent = AvailabilityCalendar(
+            "3", listOf("2027-05-08", "2027-05-10"), listOf("2027-05-10"),
+        )
+        val pastAdjacent = AvailabilityCalendar("4", listOf("2027-05-07", "2027-05-08"))
+
+        assertEquals(1.0, nextDayFree.dateProximity("2027-05-08", "2027-05-09", today), 0.001)
+        assertEquals(
+            0.5 + 0.5 * (4.0 / 7.0),
+            fourDaysOut.dateProximity("2027-05-08", "2027-05-09", today),
+            0.001,
+        )
+        assertEquals(0.5, heldAdjacent.dateProximity("2027-05-08", "2027-05-09", today), 0.001)
+        // May 7 is in the past when today is May 8, so it doesn't count as an adjacent option
+        val onCheckIn = LocalDate.of(2027, 5, 8)
+        assertEquals(0.5, pastAdjacent.dateProximity("2027-05-08", "2027-05-09", onCheckIn), 0.001)
+    }
+
+    @Test
+    fun dateProximity_withoutRequestedDatesFavoursSoonerUpcomingAvailability() {
+        val freeToday = AvailabilityCalendar("1", listOf("2027-04-28"))
+        val freeIn30Days = AvailabilityCalendar("2", listOf("2027-05-28"))
+        val freeIn60Days = AvailabilityCalendar("3", listOf("2027-06-27"))
+        val onlyPastAndHeld = AvailabilityCalendar(
+            "4", listOf("2027-04-20", "2027-04-28", "not-a-date"), listOf("2027-04-28"),
+        )
+
+        assertEquals(1.0, freeToday.dateProximity(today = today), 0.001)
+        assertEquals(0.5, freeIn30Days.dateProximity(today = today), 0.001)
+        assertEquals(0.0, freeIn60Days.dateProximity(today = today), 0.001)
+        assertEquals(0.0, onlyPastAndHeld.dateProximity(today = today), 0.001)
+        assertEquals(0.0, AvailabilityCalendar("5").dateProximity(today = today), 0.001)
     }
 }

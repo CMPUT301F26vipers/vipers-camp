@@ -30,6 +30,7 @@ package "View (ui, Jetpack Compose)" {
 package "Controller (ViewModels and services)" {
   class DeviceIdentityManager
   class ProfileController
+  class DeleteProfileController
   class CampsiteSearchController
   class CampsiteDetailsController
   class MyCampsitesController
@@ -48,9 +49,9 @@ package "Controller (ViewModels and services)" {
   class MessageController <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
   class LotteryDrawer
   class NotificationService
-  class DrawAndNotifyWorker <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class DrawAndNotifyWorker
   class CsvExporter <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
-  class DeletionService <<planned>> #EEEEEE;line:999999;line.dashed;text:777777
+  class DeletionService
 }
 
 package "App wiring" {
@@ -104,9 +105,12 @@ MainActivity --> ProfileScreen
 MainActivity --> AdminHomeScreen
 MainActivity ..> DeviceIdentityManager
 HomeScreen ..> CampsiteSearchController
+MyReservationsScreen ..> ReservationController
 MyCampsitesScreen ..> MyCampsitesController
 NotificationsScreen ..> NotificationsController
 ProfileScreen ..> ProfileController
+ProfileScreen ..> DeleteProfileController
+DeleteProfileController ..> DeletionService
 AdminHomeScreen ..> AdminController
 
 CampApp *-- AppContainer
@@ -117,15 +121,19 @@ AppContainer --> ReservationRepository
 AppContainer --> NotificationRepository
 AppContainer o-- DeviceIdentityManager
 AppContainer o-- LotteryDrawer
+AppContainer o-- DrawAndNotifyWorker
+AppContainer o-- DeletionService
 
 NotificationsController ..> NotificationService
 LotteryDrawer ..> NotificationService
 LotteryDrawer ..> LotteryRepository
 NotificationService ..> NotificationRepository
 LotteryDetailsController ..> LotteryDrawer
+ReserveController ..> LotteryDrawer
 DrawAndNotifyWorker ..> LotteryDrawer
 MessageController ..> MessageRepository
 DeletionService ..> ImageRepository
+DeletionService ..> NotificationService
 CsvExporter ..> Reservation
 
 FirestoreProfileRepository ..|> ProfileRepository

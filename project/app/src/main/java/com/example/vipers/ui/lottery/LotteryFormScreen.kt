@@ -1,61 +1,100 @@
 /*
  * LotteryFormScreen.kt
- * The screen to create a new lottery for a campsite.
+ * The screen to create a new lottery for a campsite (mockup O08) or edit an existing one (mockup O10).
  * Known issues: none.
  */
 package com.example.vipers.ui.lottery
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.vipers.domain.model.LotteryStatus
+import com.example.vipers.ui.campsites.FormMode
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.theme.ButtonShape
+import com.example.vipers.ui.theme.GreenFill
+import com.example.vipers.ui.theme.InputHeight
+import com.example.vipers.ui.theme.InputShape
+import com.example.vipers.ui.theme.Primary
+import com.example.vipers.ui.theme.PrimaryDark
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 /**
- * Screen allowing campsite owners to configure and publish a new lottery,
+ * Screen allowing campsite owners to configure and publish a new lottery or edit an existing one (mockup O10),
  * including available night selection, nights description, registration period, booking period,
  * winner count, and optional waiting list limit.
  *
- * @param campsiteId ID of the campsite selected.
+ * Text inputs conform to the team's [InputHeight] (46dp) rule using [BasicTextField]
+ * with [OutlinedTextFieldDefaults.DecorationBox].
+ *
+ * @param campsiteId ID of the campsite selected (when creating).
+ * @param lotteryId ID of the lottery being edited (when editing).
  * @param onBack Callback triggered when navigating back.
- * @param controller ViewModel managing creation state and validation.
+ * @param controller ViewModel managing creation/edit state and validation.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LotteryFormScreen(
-    campsiteId: String,
+    campsiteId: String? = null,
+    lotteryId: String? = null,
     onBack: () -> Unit,
-    controller: LotteryController = viewModel(factory = LotteryController.factory(campsiteId))
+    controller: LotteryController = viewModel(
+        factory = if (lotteryId != null) {
+            LotteryController.editFactory(lotteryId)
+        } else {
+            LotteryController.factory(campsiteId ?: "")
+        }
+    )
 ) {
     val context = LocalContext.current
     val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    val editing = lotteryId != null || controller.mode == FormMode.EDIT
+
+    LaunchedEffect(lotteryId) {
+        if (lotteryId != null && controller.mode != FormMode.EDIT) {
+            controller.loadForEdit(lotteryId)
+        }
+    }
 
     LaunchedEffect(controller.saved) {
         if (controller.saved) {
@@ -152,11 +191,43 @@ fun LotteryFormScreen(
         }.show()
     }
 
+    val pageTitle = if (editing) "Edit Lottery" else "Create Lottery"
+
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar(
-            title = "Create Lottery",
+            title = pageTitle,
             onBack = onBack
         )
+
+        when {
+            editing && controller.notAllowed -> {
+                Text(
+                    text = "You do not own this lottery or it was not found.",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                return@Column
+            }
+            editing && controller.loadFailed -> {
+                Text(
+                    text = "Couldn't load the lottery. Check your connection and try again.",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                return@Column
+            }
+            editing && controller.mode != FormMode.EDIT -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                return@Column
+            }
+        }
 
         Column(
             modifier = Modifier
@@ -165,14 +236,150 @@ fun LotteryFormScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             when {
-                controller.loading -> CircularProgressIndicator()
-                controller.error != null && controller.campsite == null -> Text(controller.error!!)
+                controller.loading && !editing -> CircularProgressIndicator()
+                !editing && (controller.loadFailed || (controller.error != null && controller.ownedCampsites.isEmpty())) ->
+                    Text(controller.error ?: "Unable to load campsite availability.")
                 else -> {
-                    controller.campsite?.let { camp ->
-                        Text("Campsite: ${camp.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    val isReadOnly = controller.isReadOnly
+
+                    // O10 Header / Status Banner when editing
+                    if (editing && controller.loadedLottery != null) {
+                        val loaded = controller.loadedLottery!!
+                        val now = System.currentTimeMillis()
+                        val status = loaded.status(now)
+                        val joinedCount = loaded.waitingUserIds.size
+
+                        val statusBannerText = when (status) {
+                            LotteryStatus.OPEN -> "Registration is open • $joinedCount joined"
+                            LotteryStatus.UPCOMING -> "Registration upcoming"
+                            LotteryStatus.DRAWN -> "Registration closed • Drawn"
+                            LotteryStatus.CLOSED -> "Registration closed"
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = GreenFill,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = statusBannerText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = PrimaryDark,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+
+                        if (controller.isReadOnly) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = controller.readOnlyReason ?: "This lottery cannot be edited.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+
+                        if (controller.hasIneligibleStoredCampsites) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("ineligible_campsites_banner")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "One or more previously included campsites are no longer eligible and must be removed from this lottery before saving.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = controller.removeIneligibleConfirmed,
+                                            onCheckedChange = { confirmed ->
+                                                controller.onConfirmRemoveIneligibleChange(confirmed)
+                                            },
+                                            enabled = !isReadOnly,
+                                            modifier = Modifier.testTag("checkbox_confirm_remove_ineligible")
+                                        )
+                                        Text(
+                                            text = "Confirm removing unavailable campsite(s)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Campsites Multi-Select (O08 / O10, US 02.04.02)
+                    Text("Campsites", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Select one or more campsites:")
+
+                    if (controller.ownedCampsites.isEmpty()) {
+                        Text("No active campsites available.")
+                    } else {
+                        controller.ownedCampsites.forEach { camp ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = camp.id in controller.selectedCampsiteIds,
+                                    onCheckedChange = { checked ->
+                                        controller.toggleCampsite(camp.id, checked)
+                                    },
+                                    enabled = !isReadOnly,
+                                    modifier = Modifier.testTag("campsite_checkbox_${camp.id}")
+                                )
+                                Text(text = camp.name)
+                            }
+                        }
+                    }
+
+                    Text("${controller.selectedCampsiteIds.size} campsite(s) selected")
+                    if (controller.loadingCampsiteCalendars) {
+                        Text("Loading campsite availability...")
+                    }
+                    if (controller.calendarLoadError != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("campsite_calendar_error_banner")
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = controller.calendarLoadError!!,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Button(
+                                    onClick = { controller.retryCampsiteCalendarLoad() },
+                                    enabled = !isReadOnly && !controller.loadingCampsiteCalendars,
+                                    modifier = Modifier.testTag("button_retry_campsite_calendar")
+                                ) {
+                                    Text("Retry")
+                                }
+                            }
+                        }
                     }
 
                     HorizontalDivider()
+
+                    val loaded = controller.loadedLottery
+                    val isRegistrationOpen = editing && loaded != null && loaded.status(System.currentTimeMillis()) == LotteryStatus.OPEN
 
                     // 1. Selectable Available Nights Range & Checkboxes
                     Text("Select Offered Nights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -184,6 +391,7 @@ fun LotteryFormScreen(
                     ) {
                         Button(
                             onClick = { showDatePicker(true) },
+                            enabled = !isReadOnly,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("button_range_start")
@@ -193,6 +401,7 @@ fun LotteryFormScreen(
 
                         Button(
                             onClick = { showDatePicker(false) },
+                            enabled = !isReadOnly,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("button_range_end")
@@ -203,10 +412,34 @@ fun LotteryFormScreen(
 
                     Button(
                         onClick = { controller.loadSelectedRange() },
-                        enabled = controller.rangeStart.isNotEmpty() && controller.rangeEnd.isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth()
+                        enabled = !isReadOnly &&
+                            !controller.loadingCampsiteCalendars &&
+                            !controller.hasMissingSelectedCalendars &&
+                            controller.selectedCampsiteIds.isNotEmpty() &&
+                            controller.rangeStart.isNotEmpty() &&
+                            controller.rangeEnd.isNotEmpty(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("button_load_nights")
                     ) {
                         Text("Load nights")
+                    }
+
+                    if (controller.conflictMessage != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("nights_conflict_banner")
+                        ) {
+                            Text(
+                                text = controller.conflictMessage!!,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
 
                     Row(
@@ -217,7 +450,11 @@ fun LotteryFormScreen(
                         Text("Available nights:")
                         Button(
                             onClick = { controller.toggleSelectAll() },
-                            enabled = controller.availableNights.isNotEmpty()
+                            enabled = !isReadOnly &&
+                                !controller.loadingCampsiteCalendars &&
+                                !controller.hasMissingSelectedCalendars &&
+                                controller.availableNights.isNotEmpty(),
+                            modifier = Modifier.testTag("button_select_all")
                         ) {
                             Text(
                                 if (controller.availableNights.isNotEmpty() &&
@@ -232,14 +469,20 @@ fun LotteryFormScreen(
                     }
 
                     controller.availableNights.forEach { night ->
+                        val isConflicting = night in controller.conflictingNights
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = night in controller.selectedNights,
                                 onCheckedChange = { checked ->
                                     controller.toggleNight(night, checked)
-                                }
+                                },
+                                enabled = !isReadOnly,
+                                modifier = Modifier.testTag("night_checkbox_$night")
                             )
-                            Text(text = night)
+                            Text(
+                                text = if (isConflicting) "$night (unavailable)" else night,
+                                color = if (isConflicting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
 
@@ -248,15 +491,13 @@ fun LotteryFormScreen(
                     HorizontalDivider()
 
                     // 2. Optional Nights Offered Description
-                    Text("Nights Description (Optional)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    OutlinedTextField(
+                    Lottery46dpInputField(
+                        label = "Nights Description (Optional)",
                         value = controller.nightsOfferedText,
                         onValueChange = { controller.onNightsOfferedTextChange(it) },
-                        label = { Text("Nights description") },
-                        placeholder = { Text("e.g. May 2027 weekends") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("tag_nights_offered")
+                        placeholder = "e.g. May 2027 weekends",
+                        enabled = !isReadOnly,
+                        testTag = "tag_nights_offered"
                     )
 
                     HorizontalDivider()
@@ -273,6 +514,7 @@ fun LotteryFormScreen(
                                     controller.setRegistrationStart(it)
                                 }
                             },
+                            enabled = !isReadOnly && !isRegistrationOpen,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("button_reg_start")
@@ -286,6 +528,7 @@ fun LotteryFormScreen(
                                     controller.setRegistrationEnd(it)
                                 }
                             },
+                            enabled = !isReadOnly,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("button_reg_end")
@@ -308,6 +551,7 @@ fun LotteryFormScreen(
                                     controller.setBookingStart(it)
                                 }
                             },
+                            enabled = !isReadOnly,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("button_book_start")
@@ -321,6 +565,7 @@ fun LotteryFormScreen(
                                     controller.setBookingEnd(it)
                                 }
                             },
+                            enabled = !isReadOnly,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("button_book_end")
@@ -332,30 +577,27 @@ fun LotteryFormScreen(
                     HorizontalDivider()
 
                     // 5. Winners
-                    Text("Winners", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    OutlinedTextField(
+                    Lottery46dpInputField(
+                        label = "Winners",
                         value = controller.winnersCountText,
                         onValueChange = { controller.onWinnersCountChange(it) },
-                        label = { Text("Number of winners") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("tag_winners_count")
+                        placeholder = "Number of winners",
+                        keyboardType = KeyboardType.Number,
+                        enabled = !isReadOnly,
+                        testTag = "tag_winners_count"
                     )
 
                     // 6. List Limit (optional)
-                    Text("Waiting List Capacity (Optional)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    OutlinedTextField(
+                    Lottery46dpInputField(
+                        label = "Waiting List Capacity (Optional)",
                         value = controller.waitlistCapacityText,
                         onValueChange = { controller.onWaitlistCapacityChange(it) },
-                        label = { Text("Max entrants") },
-                        placeholder = { Text("No limit") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        placeholder = "No limit",
+                        keyboardType = KeyboardType.Number,
+                        enabled = !isReadOnly,
                         isError = controller.waitlistCapacityError != null,
-                        supportingText = controller.waitlistCapacityError?.let { { Text(it) } },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("tag_waitlist_limit")
+                        supportingText = controller.waitlistCapacityError,
+                        testTag = "tag_waitlist_limit"
                     )
 
                     if (controller.error != null) {
@@ -366,22 +608,107 @@ fun LotteryFormScreen(
                         )
                     }
 
-                    // 7. Create Lottery Primary Button at Bottom
+                    // 7. Save / Publish Button at Bottom
+                    val saveButtonLabel = when {
+                        controller.saving -> "Saving..."
+                        editing -> "Save changes"
+                        else -> "Create Lottery"
+                    }
+
                     Button(
                         onClick = {
                             controller.clearError()
                             controller.saveLottery()
                         },
-                        enabled = !controller.saving,
+                        enabled = !controller.saving &&
+                            !isReadOnly &&
+                            !controller.loadingCampsiteCalendars &&
+                            !controller.hasMissingSelectedCalendars,
+                        shape = ButtonShape,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
                             .testTag("button_save_lottery")
                     ) {
-                        Text(if (controller.saving) "Saving..." else "Create Lottery")
+                        Text(saveButtonLabel)
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 46dp outlined text input field matching the team's [InputHeight] convention
+ * from [HomeScreen.kt] using [BasicTextField] and [OutlinedTextFieldDefaults.DecorationBox].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Lottery46dpInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    enabled: Boolean = true,
+    isError: Boolean = false,
+    supportingText: String? = null,
+    testTag: String = "",
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val textColor = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = textColor),
+            cursorBrush = SolidColor(if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),
+            interactionSource = interactionSource,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(InputHeight)
+                .testTag(testTag),
+        ) { innerTextField ->
+            OutlinedTextFieldDefaults.DecorationBox(
+                value = value,
+                innerTextField = innerTextField,
+                enabled = enabled,
+                singleLine = true,
+                visualTransformation = VisualTransformation.None,
+                interactionSource = interactionSource,
+                placeholder = { Text(placeholder) },
+                isError = isError,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                container = {
+                    OutlinedTextFieldDefaults.Container(
+                        enabled = enabled,
+                        isError = isError,
+                        interactionSource = interactionSource,
+                        shape = InputShape,
+                    )
+                },
+            )
+        }
+
+        if (supportingText != null) {
+            Text(
+                text = supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+            )
         }
     }
 }

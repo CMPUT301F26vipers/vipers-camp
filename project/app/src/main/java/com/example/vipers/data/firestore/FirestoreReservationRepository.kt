@@ -2,8 +2,9 @@
  * FirestoreReservationRepository.kt
  * The real ReservationRepository: saves and loads reservations in the Firestore "reservations"
  * collection (Repository pattern).
- * Supports atomic reservation transactions with conflict checks (T-03) and saves confirmation
- * notifications (US 01.05.01). Cancelling or rejecting is one transaction too (US 01.07.01).
+ * Supports atomic reservation transactions with conflict checks (T-03), saves confirmation
+ * notifications (US 01.05.01), and records rules acceptance time (US 02.11.01). Cancelling or
+ * rejecting is one transaction too (US 01.07.01).
  * Known issues: fields are mapped by hand because Firestore can't fill in Kotlin `val` properties.
  */
 package com.example.vipers.data.firestore
@@ -63,9 +64,13 @@ class FirestoreReservationRepository(
         userId: String,
         nights: List<String>,
         groupSize: Int,
+        rulesAcceptedAt: Long,
         now: Long,
     ): ReserveResult {
         if (nights.isEmpty()) return ReserveResult.Error("No nights selected")
+        if (rulesAcceptedAt <= 0L) {
+            return ReserveResult.Error("Rules must be accepted before reserving")
+        }
         val sortedNights = nights.distinct().sorted()
 
         val campsiteDoc = campsites.document(campsiteId)
@@ -166,7 +171,7 @@ class FirestoreReservationRepository(
                     checkOut = checkOut,
                     groupSize = groupSize,
                     totalPriceCents = totalPriceCents,
-                    rulesAcceptedAt = now,
+                    rulesAcceptedAt = rulesAcceptedAt,
                     status = ReservationStatus.CONFIRMED,
                     statusChangedAt = now,
                 )
@@ -276,7 +281,8 @@ fun DocumentSnapshot.toReservation(): Reservation = Reservation(
     groupSize = getInt("groupSize") ?: 1,
     totalPriceCents = getLong("totalPriceCents") ?: 0,
     rulesAcceptedAt = getLong("rulesAcceptedAt") ?: 0,
-    status = getString("status")?.let { ReservationStatus.valueOf(it) } ?: ReservationStatus.CONFIRMED,
+    status = getString("status")?.let { ReservationStatus.valueOf(it) }
+        ?: ReservationStatus.CONFIRMED,
     statusChangedAt = getLong("statusChangedAt") ?: 0,
     rejectionReason = getString("rejectionReason"),
 )

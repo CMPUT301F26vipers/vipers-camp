@@ -46,11 +46,12 @@ class CampsiteMappingTest {
     @Test
     fun toEditableFields_always_holdsOnlyTheFieldsAnOwnerEdits() {
         // updateCampsite writes exactly these, so nothing else can be overwritten (US 02.01.03);
-        // lat and lng are the map location from Find location (US 02.01.02c)
+        // lat and lng are the map location from Find location (US 02.01.02c), imageId the photo
+        // (US 02.01.02b)
         assertEquals(
             setOf(
                 "name", "address", "region", "description", "maxOccupancy", "tags",
-                "pricePerNightCents", "rules", "cancellationPolicy", "lat", "lng",
+                "pricePerNightCents", "rules", "cancellationPolicy", "lat", "lng", "imageId",
             ),
             campsite.toEditableFields().keys,
         )
@@ -81,5 +82,18 @@ class CampsiteMappingTest {
 
         assertTrue(fields.containsKey("lat") && fields["lat"] == null)
         assertTrue(fields.containsKey("lng") && fields["lng"] == null)
+    }
+
+    @Test
+    fun toEditableFields_photo_isSaved() {
+        assertEquals("photo-1", campsite.copy(imageId = "photo-1").toEditableFields()["imageId"])
+    }
+
+    @Test
+    fun toEditableFields_noPhoto_clearsIt() {
+        // null, so an edit that removes the photo also removes it from Firestore
+        val fields = campsite.toEditableFields()
+
+        assertTrue(fields.containsKey("imageId") && fields["imageId"] == null)
     }
 }

@@ -1,16 +1,51 @@
 /*
  * CampsiteTest.kt
- * Unit tests for the Campsite model's methods.
+ * Unit tests for the Campsite model's methods, including the QR code link (US 02.02.01).
  * Known issues: none.
  */
 package com.example.vipers.domain.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CampsiteTest {
+
+    @Test
+    fun matchScore_weightsPartialAvailabilityProximityTagsAndRating() {
+        val site = Campsite(tags = listOf("Cookhouse"), ratingSum = 9, ratingCount = 2)
+        // 40 * (2/4) + 10 * proximity + 30 * (1/2) + 20 * (4.5/5) = 53 + 10 * proximity
+        assertEquals(53, site.matchScore(2, 4, setOf("cookhouse", "Showers"), dateProximity = 0.0))
+        assertEquals(58, site.matchScore(2, 4, setOf("cookhouse", "Showers"), dateProximity = 0.5))
+        assertEquals(63, site.matchScore(2, 4, setOf("cookhouse", "Showers"), dateProximity = 1.0))
+    }
+
+    @Test
+    fun matchScore_givesFullCreditForUnspecifiedPreferences() {
+        assertEquals(80, Campsite().matchScore(0, 0, emptySet()))
+        assertEquals(70, Campsite().matchScore(0, 0, emptySet(), dateProximity = 0.0))
+    }
+
+    @Test
+    fun matchScore_canReachZero() {
+        assertEquals(0, Campsite().matchScore(0, 2, setOf("Showers"), dateProximity = 1.0))
+    }
+
+    @Test
+    fun matchScore_canReachOneHundredWithEquivalentTags() {
+        val site = Campsite(tags = listOf(" cookhouse "), ratingSum = 10, ratingCount = 2)
+        assertEquals(100, site.matchScore(2, 2, setOf("Cookhouse", "COOKHOUSE"), dateProximity = 1.0))
+    }
+
+    @Test
+    fun matchScore_clampsOutOfRangeDateProximity() {
+        val site = Campsite(tags = listOf("Cookhouse"), ratingSum = 10, ratingCount = 2)
+        assertEquals(100, site.matchScore(2, 2, setOf("Cookhouse"), dateProximity = 2.0))
+        assertEquals(90, site.matchScore(2, 2, setOf("Cookhouse"), dateProximity = -1.0))
+    }
 
     @Test
     fun averageRating_isZeroWithNoRatings() {
@@ -272,5 +307,68 @@ class CampsiteTest {
         assertEquals(setOf("mapLocation"), mappedHinton.copy(lng = -180.5).validate().keys)
         // the edges are real coordinates
         assertTrue(mappedHinton.copy(lat = -90.0, lng = 180.0).validate().isEmpty())
+    }
+
+    @Test
+    fun qrLink_holdsTheCampsiteId() {
+        assertEquals("vipers-camp://campsite/hinton", Campsite(id = "hinton").qrLink())
+    }
+
+    @Test
+    fun qrLink_isDifferentForEachCampsite() {
+        assertNotEquals(Campsite(id = "hinton").qrLink(), Campsite(id = "jasper").qrLink())
+    }
+
+    @Test
+    fun qrLink_staysTheSameAfterTheCampsiteIsEdited() {
+        val before = Campsite(id = "hinton", name = "Hinton Ridge", pricePerNightCents = 5000)
+        val after = before.copy(name = "Hinton Ridge Campground", pricePerNightCents = 6500)
+
+        assertEquals(before.qrLink(), after.qrLink())
+    }
+
+    @Test
+    fun idFromQrLink_readsBackTheIdFromQrLink() {
+        val campsite = Campsite(id = "aB3xK9pQ")
+
+        assertEquals("aB3xK9pQ", Campsite.idFromQrLink(campsite.qrLink()))
+    }
+
+    @Test
+    fun idFromQrLink_ignoresSpacesAroundTheLink() {
+        assertEquals("hinton", Campsite.idFromQrLink("  vipers-camp://campsite/hinton\n"))
+    }
+
+    @Test
+    fun idFromQrLink_withAnotherAppsCode_isNull() {
+        assertNull(Campsite.idFromQrLink("https://example.com/campsite/hinton"))
+        assertNull(Campsite.idFromQrLink("Hinton Ridge Campground"))
+        assertNull(Campsite.idFromQrLink(""))
+    }
+
+    @Test
+    fun idFromQrLink_withNoId_isNull() {
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/   "))
+    }
+
+    @Test
+    fun idFromQrLink_withExtraPartsAfterTheId_isNull() {
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hinton/edit"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hin ton"))
+    }
+
+    @Test
+    fun idFromQrLink_withQueryOrFragment_isNull() {
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/?"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/#"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hinton?foo=1"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hinton#top"))
+        assertNull(Campsite.idFromQrLink("vipers-camp://campsite/hin%20ton"))
+    }
+
+    @Test
+    fun idFromQrLink_allowsDashesAndUnderscores() {
+        assertEquals("camp-1_b", Campsite.idFromQrLink("vipers-camp://campsite/camp-1_b"))
     }
 }

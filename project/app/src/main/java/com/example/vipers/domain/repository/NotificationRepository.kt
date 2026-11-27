@@ -41,4 +41,19 @@ interface NotificationRepository {
      * change, until the returned [Subscription] is cancelled (T-13).
      */
     fun listenToInbox(recipientId: String, listener: InboxListener): Subscription
+
+    /**
+     * Returns [recipientId]'s notifications that haven't been shown as a phone notification yet
+     * ([Notification.shownOnDevice] is false), oldest first by [Notification.createdAt] (T-14).
+     */
+    suspend fun listUnshownOnDevice(recipientId: String): List<Notification>
+
+    /**
+     * Sets [Notification.shownOnDevice] to true on the notification with this [notificationId],
+     * only if it is still false, and changes no other field (T-14). Returns true if it changed
+     * the notification, or false if there is no such notification or it was already shown, so
+     * two checks running at once post it only once. Firestore does this in a transaction, which
+     * needs a connection.
+     */
+    suspend fun markShownOnDevice(notificationId: String): Boolean
 }

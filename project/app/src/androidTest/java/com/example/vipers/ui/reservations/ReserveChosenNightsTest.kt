@@ -25,6 +25,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.example.vipers.data.fake.FakeCampsiteRepository
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeNotificationRepository
+import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
 import com.example.vipers.domain.model.AvailabilityCalendar
 import com.example.vipers.domain.model.Campsite
@@ -32,6 +34,7 @@ import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.domain.model.Region
+import com.example.vipers.ui.lottery.LotteryDrawer
 import com.example.vipers.ui.theme.VipersTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -104,6 +107,7 @@ class ReserveChosenNightsTest {
         lotteryRepo: FakeLotteryRepository? = null,
         reservationRepo: FakeReservationRepository? = null,
         userId: String = "test-device",
+        acceptRules: Boolean = true,
     ): TestHarness {
         val camps = campsiteRepo ?: FakeCampsiteRepository(listOf(hinton)).also {
             runBlocking { it.saveAvailability(theCalendar) }
@@ -123,7 +127,16 @@ class ReserveChosenNightsTest {
             lotteryId = "lot-summer",
             campsiteId = "hinton",
             reservationRepository = res,
+            lotteryDrawer = LotteryDrawer(
+                lots,
+                FakeNotificationRepository(),
+                camps,
+                FakeProfileRepository(),
+            ),
         )
+        if (acceptRules) {
+            controller.onRulesAcceptedChange(true)
+        }
         composeRule.setContent {
             VipersTheme {
                 ReserveScreen("lot-summer", "hinton", onBack = {}, controller = controller)

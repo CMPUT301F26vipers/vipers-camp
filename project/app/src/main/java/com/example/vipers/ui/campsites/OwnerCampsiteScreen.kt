@@ -2,14 +2,17 @@
  * OwnerCampsiteScreen.kt
  * The owner's view of one of their campsites (mockup O04, US 02.01.04): all its saved details,
  * buttons to manage it, and its lotteries with a Create Lottery button (US 02.04.01).
- * OwnerCampsiteController loads the data.
- * Known issues: the photo is a placeholder until 02.01.02b. The map box shows the map location's
- * coordinates (US 02.01.02c), and is hidden when there is none, until T-04 draws a map there.
- * The QR Code button stays off until 02.02.01.
+ * OwnerCampsiteController loads the data; the whole promo photo shows at the top (US 02.01.02b).
+ * QR Code opens the campsite's QR code in a dialog (mockup O06, US 02.02.01), where Save stores
+ * it as an image wherever the owner picks.
+ * Known issues: none.
  */
 package com.example.vipers.ui.campsites
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,10 +27,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,8 +43,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,10 +65,13 @@ import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Lottery
 import com.example.vipers.domain.model.LotteryStatus
+import com.example.vipers.ui.common.FullPhoto
+import com.example.vipers.ui.common.SavedPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.ButtonHeight
 import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
+import com.example.vipers.ui.theme.Error
 import com.example.vipers.ui.theme.GreenFill
 import com.example.vipers.ui.theme.Primary
 import com.example.vipers.ui.theme.TextMuted
@@ -64,7 +80,8 @@ import java.util.Date
 
 /**
  * The My Campsite screen (mockup O04): the owner's campsite with all its saved details, the Edit,
- * QR Code, Availability and Reservations buttons, and its lotteries. Tests pass their own
+ * QR Code, Availability and Reservations buttons, and its lotteries. QR Code opens the QR code
+ * dialog (mockup O06, US 02.02.01), which can be opened again any time from here. Tests pass their own
  * [controller] with fake repositories. Edit only shows for the campsite's owner (US 02.01.03).
  *
  * @param campsiteId ID of the campsite being viewed.
@@ -103,6 +120,14 @@ fun OwnerCampsiteScreen(
     }
 
     val campsite = controller.campsite
+    var showQrCode by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    // the phone's own "save as" screen, so no storage permission is needed on any Android version
+    val saveQrCode = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("image/png"),
+    ) { uri ->
+        if (uri != null) controller.saveQrCode { context.contentResolver.openOutputStream(uri) }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar(title = "My Campsite", onBack = onBack)
@@ -136,8 +161,15 @@ fun OwnerCampsiteScreen(
                         } else {
                             Spacer(Modifier.weight(1f))
                         }
-                        // turned on by 02.02.01
-                        OwnerButton("QR Code", "button_qr_code", {}, Modifier.weight(1f), enabled = false)
+                        OwnerButton(
+                            "QR Code",
+                            "button_qr_code",
+                            {
+                                controller.clearQrMessage()
+                                showQrCode = true
+                            },
+                            Modifier.weight(1f),
+                        )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OwnerButton("Availability", "button_availability", onOpenAvailability, Modifier.weight(1f))
@@ -176,47 +208,127 @@ fun OwnerCampsiteScreen(
                 ) {
                     Text("Create Lottery", fontWeight = FontWeight.SemiBold)
                 }
+
+                if (showQrCode) {
+                    QrCodeDialog(
+                        campsite = campsite,
+                        message = controller.qrMessage,
+                        saveFailed = controller.qrSaveFailed,
+                        onSave = {
+                            // so an old "QR code saved" goes away if the owner cancels this time
+                            controller.clearQrMessage()
+                            saveQrCode.launch(qrFileName(campsite.name))
+                        },
+                        onClose = { showQrCode = false },
+                    )
+                }
             }
         }
     }
 }
 
 /**
- * The photo and map boxes at the top. The photo is a placeholder until 02.01.02b. The map box shows
- * [campsite]'s map coordinates (US 02.01.02c) until T-04 puts a map there, and isn't shown at all
- * when the campsite has no map location.
+ * The Campsite QR Code dialog (mockup O06, US 02.02.01): the QR code for [campsite], drawn here
+ * from its link each time so it never has to be stored. Save lets the owner keep it as an image
+ * for posters; [message] says whether that worked, in red when [saveFailed].
+ */
+@Composable
+private fun QrCodeDialog(
+    campsite: Campsite,
+    message: String?,
+    saveFailed: Boolean,
+    onSave: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val link = campsite.qrLink()
+    val qrImage = remember(link) { qrCodeBitmap(link, QR_SHOWN_SIZE).asImageBitmap() }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Campsite QR Code") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Image(
+                    bitmap = qrImage,
+                    contentDescription = "QR code for ${campsite.name}",
+                    // keeps the squares sharp instead of blurring their edges when scaled
+                    filterQuality = FilterQuality.None,
+                    modifier = Modifier.size(220.dp).testTag("qr_code_image"),
+                )
+                Text(
+                    campsite.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (message != null) {
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (saveFailed) Error else Primary,
+                        modifier = Modifier.testTag("qr_code_message"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onSave,
+                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                modifier = Modifier.testTag("button_qr_save"),
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onClose,
+                border = BorderStroke(1.dp, Primary),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary),
+                modifier = Modifier.testTag("button_qr_close"),
+            ) {
+                Text("Close")
+            }
+        },
+    )
+}
+
+/**
+ * The photo and map boxes at the top. A campsite with a promo photo shows the whole photo across
+ * the screen, with Open in Maps underneath. Without a photo the two share a row (O04).
  */
 @Composable
 private fun PhotoAndMap(campsite: Campsite) {
+    if (campsite.imageId != null) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            FullPhoto(
+                campsite.imageId,
+                contentDescription = "Campsite photo",
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().testTag("owner_photo"),
+                placeholderHeight = 96.dp,
+            )
+            CampsiteMapButton(
+                campsite,
+                Modifier.fillMaxWidth().height(72.dp).testTag("owner_map_location"),
+            )
+        }
+        return
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(
-            Modifier.weight(1f).height(96.dp).background(GreenFill, RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(painterResource(R.drawable.ic_image), contentDescription = null, tint = Primary)
-        }
-        if (campsite.hasLocation()) {
-            Column(
-                Modifier
-                    .weight(1f)
-                    .height(96.dp)
-                    .background(GreenFill, RoundedCornerShape(12.dp))
-                    .testTag("owner_map_location"),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    painterResource(R.drawable.ic_campsite),
-                    contentDescription = null,
-                    tint = Primary,
-                )
-                Text(
-                    campsite.coordinatesText().orEmpty(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-            }
-        }
+        SavedPhoto(
+            null,
+            contentDescription = "Campsite photo",
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.weight(1f).height(96.dp).testTag("owner_photo"),
+        )
+        CampsiteMapButton(
+            campsite,
+            Modifier.weight(1f).height(96.dp).testTag("owner_map_location"),
+        )
     }
 }
 

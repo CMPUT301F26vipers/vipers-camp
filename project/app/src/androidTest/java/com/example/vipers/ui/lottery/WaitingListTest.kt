@@ -76,7 +76,7 @@ class WaitingListTest {
     private fun openWaitingList(repo: FakeLotteryRepository) {
         val controller = WaitingListController(repo, profiles, "hinton-may")
         composeRule.setContent {
-            VipersTheme { WaitingListScreen("hinton-may", onBack = {}, controller = controller) }
+            VipersTheme { WaitingListScreen("hinton-may", onBack = {}, onSendNotification = {}, controller = controller) }
         }
     }
 

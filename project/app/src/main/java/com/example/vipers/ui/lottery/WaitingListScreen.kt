@@ -3,8 +3,7 @@
  * The owner's Waiting List screen (mockup O11, US 02.09.01), opened from Lottery Details (O09).
  * Shows who joined (name, group size, join date), the total against the limit, and each
  * entrant's status. WaitingListController keeps it live.
- * Known issues: the Send Notification button (02.10.01) and the All / Won / Lost filter tabs on
- * the mockup are not added yet.
+ * Known issues: the All / Won / Lost filter tabs on the mockup are not added yet.
  */
 package com.example.vipers.ui.lottery
 
@@ -14,10 +13,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +32,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.domain.model.EntryStatus
 import com.example.vipers.domain.model.LotteryEntry
 import com.example.vipers.ui.common.TopBar
+import com.example.vipers.ui.theme.ButtonHeight
+import com.example.vipers.ui.theme.ButtonShape
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.Error
 import com.example.vipers.ui.theme.GreenFill
@@ -45,18 +49,20 @@ import java.util.Locale
  *
  * @param lotteryId The lottery whose waiting list is shown.
  * @param onBack Goes back to Lottery Details.
+ * @param onSendNotification Opens Send Notification (O12, US 02.10.01) for this lottery.
  * @param controller ViewModel that loads the lottery and listens to its entries.
  */
 @Composable
 fun WaitingListScreen(
     lotteryId: String,
     onBack: () -> Unit,
+    onSendNotification: () -> Unit,
     controller: WaitingListController = viewModel(factory = WaitingListController.factory(lotteryId)),
 ) {
     Column(Modifier.fillMaxSize()) {
         TopBar(title = "Waiting List", onBack = onBack)
 
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.weight(1f).padding(16.dp)) {
             when {
                 controller.loading -> CircularProgressIndicator()
                 controller.error != null -> Text(controller.error!!, color = Error)
@@ -83,6 +89,21 @@ fun WaitingListScreen(
                         }
                     }
                 }
+            }
+        }
+
+        if (!controller.loading && controller.error == null) {
+            Button(
+                onClick = onSendNotification,
+                shape = ButtonShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(16.dp)
+                    .height(ButtonHeight)
+                    .testTag("button_send_notification"),
+            ) {
+                Text("Send Notification", fontWeight = FontWeight.SemiBold)
             }
         }
     }

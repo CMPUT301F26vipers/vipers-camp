@@ -97,6 +97,7 @@ class CancelReservationTest {
                 ReservationDetailsScreen(
                     reservationId = reservation.id,
                     onBack = {},
+                    onMessage = {},
                     controller = controller,
                 )
             }

@@ -4,10 +4,10 @@
  * name here (US 01.01.01) and filters them by region, date range, and guests (US 01.01.02). Each
  * result shows a summary card (US 01.01.04), and tapping a card opens its Campsite Details
  * (US 01.01.05); CampsiteSearchController does the searching and filtering. The number of results
- * and a loading indicator are shown (US 01.01.03).
- * Known issues: Scan QR (01.12.01) is added by that story. The picture on each card is a
- * placeholder until campsites have promo images (02.01.02b), and preferred tags / "% match" on
- * the mockup are the WOW factor (W-01).
+ * and a loading indicator are shown (US 01.01.03). Filtered results show match percentages and
+ * can be ranked by best match (W-01). The QR button in the top bar scans a campsite poster and
+ * opens that campsite (US 01.12.01); MainActivity runs the scanner (mockup E04).
+ * Known issues: none.
  */
 package com.example.vipers.ui.home
 
@@ -33,7 +33,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -44,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,7 +58,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
@@ -63,6 +69,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.R
 import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Region
+import com.example.vipers.ui.common.SavedPhoto
 import com.example.vipers.ui.common.TopBar
 import com.example.vipers.ui.theme.Divider
 import com.example.vipers.ui.theme.GreenFill
@@ -70,25 +77,56 @@ import com.example.vipers.ui.theme.InputHeight
 import com.example.vipers.ui.theme.InputShape
 import com.example.vipers.ui.theme.Primary
 import com.example.vipers.ui.theme.TextMuted
+import kotlinx.coroutines.launch
 
 /**
  * The Home screen. The mockup titles it "Campsites" because it's where you search for them.
- * Tapping a result calls [onOpenCampsite] with its ID. Tests pass their own [controller] with a
- * fake repository.
+ * Tapping a result, or scanning its QR code, calls [onOpenCampsite] with its ID. [onScanQr] opens
+ * the scanner and waits for its result. Tests pass their own [controller] with a fake repository,
+ * and their own [onScanQr] instead of the camera.
  */
 @Composable
 fun HomeScreen(
     controller: CampsiteSearchController = viewModel(factory = CampsiteSearchController.Factory),
     onOpenCampsite: (String) -> Unit = {},
+    onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
 ) {
     var showFilterDialog by remember { mutableStateOf(false) }
+    // stops a second scanner opening while one is already up
+    var scanning by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // load each time Home opens, so newly added campsites show up
     LaunchedEffect(Unit) { controller.loadCampsites() }
-    val results = controller.results
+    val results = controller.rankedResults
 
     Column {
-        TopBar(title = "Campsites")
+        TopBar(
+            title = "Campsites",
+            actions = {
+                IconButton(
+                    onClick = {
+                        // enabled only changes on the next frame, so a fast double tap
+                        // could get here twice
+                        if (scanning) return@IconButton
+                        scanning = true
+                        controller.clearScanMessage()
+                        scope.launch {
+                            try {
+                                val campsiteId = controller.onQrScanned(onScanQr())
+                                if (campsiteId != null) onOpenCampsite(campsiteId)
+                            } finally {
+                                scanning = false
+                            }
+                        }
+                    },
+                    enabled = !scanning,
+                    modifier = Modifier.testTag("button_scan_qr"),
+                ) {
+                    Icon(painterResource(R.drawable.ic_qr_scan), contentDescription = "Scan QR")
+                }
+            },
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -137,12 +175,26 @@ fun HomeScreen(
             }
         }
 
+        controller.scanMessage?.let { message ->
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    // so TalkBack reads it out
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .testTag("scan_message"),
+            )
+        }
+
         if (controller.hasActiveFilters && !showFilterDialog) {
             ActiveFiltersBar(
                 selectedRegion = controller.selectedRegion,
                 startDate = controller.filterStartDate,
                 endDate = controller.filterEndDate,
                 minGuests = controller.filterMinGuests,
+                tags = controller.preferredTags,
                 onClearFilters = controller::clearFilters,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -167,14 +219,21 @@ fun HomeScreen(
             controller.loadFailed && results.isEmpty() ->
                 EmptyResults("Couldn't load campsites", "Check your connection and open Home again.")
             else -> {
-                Text(
-                    text = controller.resultCountText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .testTag("text_result_count"),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = controller.resultCountText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp).testTag("text_result_count"),
+                    )
+                    if (controller.hasActiveFilters) {
+                        SortMenu(controller.sortByBestMatch, controller::changeSort)
+                    }
+                }
                 if (results.isEmpty()) {
                     EmptyResults(
                         "No campsites found",
@@ -187,11 +246,16 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.testTag("campsite_list"),
                     ) {
-                        items(results, key = { it.id }) { campsite ->
+                        items(results, key = { it.campsite.id }) { result ->
+                            val campsite = result.campsite
                             CampsiteResultRow(
                                 campsite,
+                                score = result.score,
                                 hasOpenLottery = controller.hasOpenLottery(campsite),
-                                onClick = { onOpenCampsite(campsite.id) },
+                                onClick = {
+                                    controller.clearScanMessage()
+                                    onOpenCampsite(campsite.id)
+                                },
                             )
                         }
                     }
@@ -206,8 +270,10 @@ fun HomeScreen(
             currentStartDate = controller.filterStartDate,
             currentEndDate = controller.filterEndDate,
             currentMinGuests = controller.filterMinGuests,
-            onApply = { region, start, end, guests ->
-                controller.applyFilters(region, start, end, guests)
+            availableTags = controller.availableTags,
+            currentTags = controller.preferredTags,
+            onApply = { region, start, end, guests, tags ->
+                controller.applyFilters(region, start, end, guests, tags)
                 showFilterDialog = false
             },
             onClear = {
@@ -229,6 +295,7 @@ private fun ActiveFiltersBar(
     startDate: String?,
     endDate: String?,
     minGuests: Int?,
+    tags: Set<String>,
     onClearFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -245,6 +312,7 @@ private fun ActiveFiltersBar(
         if (minGuests != null && minGuests > 0) {
             filterSummaries.add("$minGuests+ guests")
         }
+        filterSummaries.addAll(tags)
         Text(
             text = "Active: " + filterSummaries.joinToString(", "),
             style = MaterialTheme.typography.bodySmall,
@@ -306,7 +374,12 @@ private fun SearchField(text: String, onTextChange: (String) -> Unit, modifier: 
  * are cut short with "…" so the card keeps its size.
  */
 @Composable
-private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean, onClick: () -> Unit) {
+private fun CampsiteResultRow(
+    campsite: Campsite,
+    score: Int?,
+    hasOpenLottery: Boolean,
+    onClick: () -> Unit,
+) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().testTag("campsite_result"),
@@ -318,13 +391,14 @@ private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean, onCli
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // placeholder until campsites have promo images
-            Box(
-                Modifier.size(48.dp).background(GreenFill, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(painterResource(R.drawable.ic_campsite), contentDescription = null, tint = Primary)
-            }
+            // the promo photo, or the campsite icon if there's none (US 02.01.02b)
+            SavedPhoto(
+                campsite.imageId,
+                contentDescription = "Photo of ${campsite.name}",
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(48.dp),
+                placeholderIcon = R.drawable.ic_campsite,
+            )
             Column(Modifier.weight(1f)) {
                 Text(
                     campsite.name,
@@ -346,6 +420,9 @@ private fun CampsiteResultRow(campsite: Campsite, hasOpenLottery: Boolean, onCli
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (score != null) {
+                    Text("$score% match", style = MaterialTheme.typography.bodySmall, color = Primary)
+                }
             }
             LotteryBadge(hasOpenLottery)
         }
@@ -388,5 +465,26 @@ private fun EmptyResults(title: String, message: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+/** Sort options for filtered results in the result-count row (E02). */
+@Composable
+private fun SortMenu(bestMatch: Boolean, onSelect: (Boolean) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(if (bestMatch) "Sort: Best match" else "Sort: Name")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("Best match") }, onClick = {
+                onSelect(true)
+                expanded = false
+            })
+            DropdownMenuItem(text = { Text("Name") }, onClick = {
+                onSelect(false)
+                expanded = false
+            })
+        }
     }
 }

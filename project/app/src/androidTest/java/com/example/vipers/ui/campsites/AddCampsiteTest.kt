@@ -19,8 +19,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
+import com.example.vipers.data.fake.FakeImageRepository
 import com.example.vipers.data.fake.FakePlaceFinder
+import com.example.vipers.data.fake.FakePhotoReader
 import com.example.vipers.data.fake.FakeLotteryRepository
+import com.example.vipers.data.fake.FakeMessageRepository
 import com.example.vipers.data.fake.FakeNotificationRepository
 import com.example.vipers.data.fake.FakeProfileRepository
 import com.example.vipers.data.fake.FakeReservationRepository
@@ -47,6 +50,8 @@ class AddCampsiteTest {
     private fun openForm() {
         val controller = CampsiteController(
             repo, ownerId = "my-phone", placeFinder = FakePlaceFinder(),
+            imageRepository = FakeImageRepository(),
+            photoReader = FakePhotoReader(),
         )
         composeRule.setContent {
             VipersTheme {
@@ -154,7 +159,9 @@ class AddCampsiteTest {
             campsiteRepository = repo,
             lotteryRepository = FakeLotteryRepository(),
             reservationRepository = FakeReservationRepository(),
+            messageRepository = FakeMessageRepository(),
             notificationRepository = FakeNotificationRepository(),
+            imageRepository = FakeImageRepository(),
         )
         composeRule.setContent { VipersTheme { AppNavigation(isAdmin = false, onLoadDemoData = {}) } }
 
