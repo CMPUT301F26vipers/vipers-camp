@@ -1,8 +1,8 @@
 /*
  * ReservationTest.kt
- * Unit tests for the Active / Past rule on reservations, for the completed-stay rule the owner's
- * Past tab uses (US 02.07.02), for which ones can be cancelled (US 01.07.01), and for which ones
- * can be rejected and with what reason (US 02.08.01).
+ * Unit tests for the Active / Past rule on reservations (US 01.06.01, US 01.06.02), for the
+ * completed-stay rule the owner's Past tab uses (US 02.07.02), for which ones can be cancelled
+ * (US 01.07.01), and for which ones can be rejected and with what reason (US 02.08.01).
  * Known issues: none.
  */
 package com.example.vipers.domain.model
@@ -88,6 +88,25 @@ class ReservationTest {
     }
 
     @Test
+    fun isPast_whenCompletedAfterCheckOut() {
+        val afterCheckOut = LocalDate.parse("2027-05-11")
+        assertTrue(mayEightToTen.isPast(afterCheckOut))
+    }
+
+    @Test
+    fun isPast_whenCancelledOrRejectedRegardlessOfDates() {
+        val beforeCheckIn = LocalDate.parse("2027-05-01")
+        assertTrue(mayEightToTen.copy(status = ReservationStatus.CANCELLED).isPast(beforeCheckIn))
+        assertTrue(mayEightToTen.copy(status = ReservationStatus.REJECTED).isPast(beforeCheckIn))
+    }
+
+    @Test
+    fun isNotPast_whenConfirmedAndNotCompleted() {
+        assertFalse(mayEightToTen.isPast(today))
+        assertFalse(mayEightToTen.isPast(LocalDate.parse("2027-05-10")))
+    }
+
+    @Test
     fun isNotCompleted_onCheckOutDay() {
         assertFalse(mayEightToTen.isCompleted(LocalDate.parse("2027-05-10")))
     }
@@ -101,8 +120,12 @@ class ReservationTest {
     @Test
     fun isNotCompleted_whenCancelledOrRejected() {
         val afterCheckOut = LocalDate.parse("2027-05-11")
-        assertFalse(mayEightToTen.copy(status = ReservationStatus.CANCELLED).isCompleted(afterCheckOut))
-        assertFalse(mayEightToTen.copy(status = ReservationStatus.REJECTED).isCompleted(afterCheckOut))
+        assertFalse(
+            mayEightToTen.copy(status = ReservationStatus.CANCELLED).isCompleted(afterCheckOut)
+        )
+        assertFalse(
+            mayEightToTen.copy(status = ReservationStatus.REJECTED).isCompleted(afterCheckOut)
+        )
     }
 
     @Test
