@@ -6,6 +6,7 @@
 package com.example.vipers.data.fake
 
 import com.example.vipers.domain.model.Notification
+import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.repository.InboxListener
 import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.Subscription
@@ -50,6 +51,11 @@ class FakeNotificationRepository(initial: List<Notification> = emptyList()) : No
     }
 
     override suspend fun getNotificationsFor(recipientId: String): List<Notification> = inboxOf(recipientId)
+
+    override suspend fun getOwnerBroadcasts(senderId: String): List<Notification> =
+        notifications.values
+            .filter { it.senderId == senderId && it.type == NotificationType.OWNER_BROADCAST }
+            .sortedByDescending { it.createdAt }
 
     override suspend fun markRead(id: String) {
         val notification = notifications[id] ?: return

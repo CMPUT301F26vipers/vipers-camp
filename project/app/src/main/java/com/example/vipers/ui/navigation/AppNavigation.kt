@@ -2,7 +2,8 @@
  * AppNavigation.kt
  * Puts the bottom bar and the screens together, and decides which screen each route shows (T-02).
  * The app always opens on Home, and Back returns to the previous screen. A scanned campsite QR
- * code opens that campsite's details, like tapping it on Home (US 01.12.01).
+ * code opens that campsite's details, like tapping it on Home (US 01.12.01). Sent Notifications
+ * on My Campsites opens the owner's sent list (US 02.10.02).
  * Known issues: none.
  */
 package com.example.vipers.ui.navigation
@@ -43,7 +44,7 @@ import com.example.vipers.ui.home.QrScanResult
 import com.example.vipers.ui.messages.MessagesScreen
 import com.example.vipers.ui.notifications.NotificationsScreen
 import com.example.vipers.ui.notifications.SendNotificationScreen
-import com.example.vipers.ui.notifications.SentScreen
+import com.example.vipers.ui.notifications.SentNotificationsScreen
 import com.example.vipers.ui.profile.PolicyScreen
 import com.example.vipers.ui.profile.ProfileScreen
 import com.example.vipers.ui.profile.SettingsScreen
@@ -211,7 +212,7 @@ fun AppNavigation(
                 )
             }
             composable(Routes.OWNER_SENT) {
-                SentScreen(onBack = { navController.popBackStack() })
+                SentNotificationsScreen(onBack = { navController.popBackStack() })
             }
             composable(
                 route = Routes.OWNER_CAMPSITE,

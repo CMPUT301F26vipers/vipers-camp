@@ -1668,6 +1668,86 @@ class FakeRepositoryTest {
         assertEquals(listOf("lottery-2_sam", "lottery-1_sam", "win"), listener.calls.last().map { it.id })
     }
 
+    private fun broadcast(id: String, senderId: String, batchId: String, lotteryId: String, createdAt: Long) =
+        Notification(
+            id = id,
+            recipientId = id.substringAfterLast("_"),
+            senderId = senderId,
+            lotteryId = lotteryId,
+            type = NotificationType.OWNER_BROADCAST,
+            title = "Message from owner",
+            message = "The cookhouse reopens next week.",
+            batchId = batchId,
+            createdAt = createdAt,
+        )
+
+    @Test
+    fun getOwnerBroadcasts_severalBatchesAndLotteries_returnsThemAllNewestFirst() = runBlocking {
+        val repo = FakeNotificationRepository(
+            listOf(
+                broadcast("broadcast_b1_sam", "priya", "b1", "hinton-may", 100),
+                broadcast("broadcast_b1_jo", "priya", "b1", "hinton-may", 100),
+                broadcast("broadcast_b2_sam", "priya", "b2", "banff-june", 300),
+                broadcast("broadcast_b3_alex", "priya", "b3", "hinton-may", 200),
+            ),
+        )
+
+        val broadcasts = repo.getOwnerBroadcasts("priya")
+
+        assertEquals(
+            listOf("broadcast_b2_sam", "broadcast_b3_alex"),
+            broadcasts.take(2).map { it.id },
+        )
+        assertEquals(
+            setOf("broadcast_b1_sam", "broadcast_b1_jo"),
+            broadcasts.drop(2).map { it.id }.toSet(),
+        )
+    }
+
+    @Test
+    fun getOwnerBroadcasts_anotherOwnersBroadcasts_areLeftOut() = runBlocking {
+        val repo = FakeNotificationRepository(
+            listOf(
+                broadcast("broadcast_b1_sam", "priya", "b1", "hinton-may", 100),
+                broadcast("broadcast_b2_sam", "daniel", "b2", "banff-june", 200),
+            ),
+        )
+
+        assertEquals(listOf("broadcast_b1_sam"), repo.getOwnerBroadcasts("priya").map { it.id })
+        assertEquals(listOf("broadcast_b2_sam"), repo.getOwnerBroadcasts("daniel").map { it.id })
+    }
+
+    @Test
+    fun getOwnerBroadcasts_otherTypesFromTheSameSenderAndSystemNotices_areLeftOut() = runBlocking {
+        val repo = FakeNotificationRepository(
+            listOf(
+                broadcast("broadcast_b1_sam", "priya", "b1", "hinton-may", 100),
+                Notification(
+                    id = "rejected_r1", recipientId = "sam", senderId = "priya",
+                    type = NotificationType.RESERVATION_REJECTED, createdAt = 200,
+                ),
+                Notification(
+                    id = "message_m1", recipientId = "sam", senderId = "priya",
+                    type = NotificationType.NEW_MESSAGE, createdAt = 300,
+                ),
+                Notification(
+                    id = "draw_hinton-may_sam", recipientId = "sam", senderId = "system",
+                    type = NotificationType.WON, createdAt = 400,
+                ),
+            ),
+        )
+
+        assertEquals(listOf("broadcast_b1_sam"), repo.getOwnerBroadcasts("priya").map { it.id })
+        assertTrue(repo.getOwnerBroadcasts("system").isEmpty())
+    }
+
+    @Test
+    fun getOwnerBroadcasts_ownerWhoSentNothing_isEmpty() = runBlocking {
+        val repo = FakeNotificationRepository(listOf(broadcast("broadcast_b1_sam", "priya", "b1", "hinton-may", 100)))
+
+        assertTrue(repo.getOwnerBroadcasts("daniel").isEmpty())
+    }
+
     @Test
     fun createReservation_successful_holdsNightsUpdatesEntryAndCreatesReservation() = runBlocking {
         val campsite = Campsite(id = "site-1", ownerId = "owner-1", name = "Pine Lake", maxOccupancy = 4, pricePerNightCents = 5000)

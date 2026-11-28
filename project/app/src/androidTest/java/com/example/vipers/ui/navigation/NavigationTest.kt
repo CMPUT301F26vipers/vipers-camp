@@ -1,6 +1,6 @@
 /*
  * NavigationTest.kt
- * Intent tests for T-02: the app opens on Home, every tab opens its screen, Settings and Policy
+ * Intent tests for T-02 (and US 02.10.02's Sent Notifications button): the app opens on Home, every tab opens its screen, Settings and Policy
  * open from Profile, Back returns to the previous screen, and the Admin tab is for admins only.
  * Known issues: tests the navigation on its own. The app's repositories are swapped for empty
  * fakes so Home's campsite search doesn't touch Firestore.
@@ -279,8 +279,8 @@ class NavigationTest {
         assertShown("My Campsites")
 
         // Test Sent navigation
-        composeRule.onNodeWithText("Sent").performClick()
-        assertShown("Sent notifications is added in US 02.10.02.")
+        composeRule.onNodeWithText("Sent Notifications").performClick()
+        assertShown("You haven't sent any notifications yet.")
 
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertShown("My Campsites")
