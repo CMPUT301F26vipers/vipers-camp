@@ -1774,6 +1774,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01", "2027-06-02"),
             groupSize = 3,
+            rulesAcceptedAt = 1900,
             now = 2000,
         )
 
@@ -1786,6 +1787,7 @@ class FakeRepositoryTest {
         assertEquals(10000L, reservation.totalPriceCents)
         assertEquals("$100", reservation.totalPriceText)
         assertEquals(3, reservation.groupSize)
+        assertEquals(1900L, reservation.rulesAcceptedAt)
         assertEquals(ReservationStatus.CONFIRMED, reservation.status)
 
         // Campsite calendar now holds those nights
@@ -1831,6 +1833,7 @@ class FakeRepositoryTest {
             userId = "user-2",
             nights = listOf("2027-06-01", "2027-06-02"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -1861,6 +1864,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 6,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -1890,6 +1894,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 6000,
             now = 6000,
         )
         assertEquals(ReserveResult.NotEligible, resultExpired)
@@ -1902,6 +1907,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
         assertEquals(ReserveResult.NotEligible, resultNotWon)
@@ -1936,6 +1942,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -1975,6 +1982,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-05"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -2028,6 +2036,7 @@ class FakeRepositoryTest {
             userId = "user-1",
             nights = listOf("2027-06-01"),
             groupSize = 2,
+            rulesAcceptedAt = 2000,
             now = 2000,
         )
 
@@ -2044,6 +2053,96 @@ class FakeRepositoryTest {
         assertEquals("site-1", notice.campsiteId)
         assertEquals("lot-1", notice.lotteryId)
         assertEquals(NotificationTarget.OpenReservation(reservation.id), notice.target)
+    }
+
+    @Test
+    fun createReservation_savesRulesAcceptedAtTimestamp() = runBlocking {
+        val campsite = Campsite(id = "site-1", ownerId = "owner-1", maxOccupancy = 4)
+        val calendar = AvailabilityCalendar(
+            campsiteId = "site-1",
+            openNights = listOf("2027-06-01"),
+        )
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        campsiteRepo.saveAvailability(calendar)
+
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
+        val entry = LotteryEntry(
+            id = "lot-1_user-1",
+            lotteryId = "lot-1",
+            userId = "user-1",
+            status = EntryStatus.WON,
+        )
+        val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
+        val reservationRepo = FakeReservationRepository(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+        )
+
+        val result = reservationRepo.createReservation(
+            lotteryId = "lot-1",
+            campsiteId = "site-1",
+            userId = "user-1",
+            nights = listOf("2027-06-01"),
+            groupSize = 2,
+            rulesAcceptedAt = 1850,
+            now = 2000,
+        )
+
+        assertTrue(result is ReserveResult.Success)
+        val reservation = (result as ReserveResult.Success).reservation
+        assertEquals(1850L, reservation.rulesAcceptedAt)
+    }
+
+    @Test
+    fun createReservation_unacceptedRules_returnsError() = runBlocking {
+        val campsite = Campsite(id = "site-1", ownerId = "owner-1", maxOccupancy = 4)
+        val calendar = AvailabilityCalendar(
+            campsiteId = "site-1",
+            openNights = listOf("2027-06-01"),
+        )
+        val campsiteRepo = FakeCampsiteRepository(listOf(campsite))
+        campsiteRepo.saveAvailability(calendar)
+
+        val lottery = Lottery(
+            id = "lot-1",
+            campsiteIds = listOf("site-1"),
+            nightsOffered = listOf("2027-06-01"),
+            bookingStart = 1000,
+            bookingEnd = 5000,
+        )
+        val entry = LotteryEntry(
+            id = "lot-1_user-1",
+            lotteryId = "lot-1",
+            userId = "user-1",
+            status = EntryStatus.WON,
+        )
+        val lotteryRepo = FakeLotteryRepository(listOf(lottery), listOf(entry))
+        val reservationRepo = FakeReservationRepository(
+            campsiteRepository = campsiteRepo,
+            lotteryRepository = lotteryRepo,
+        )
+
+        val result = reservationRepo.createReservation(
+            lotteryId = "lot-1",
+            campsiteId = "site-1",
+            userId = "user-1",
+            nights = listOf("2027-06-01"),
+            groupSize = 2,
+            rulesAcceptedAt = 0L,
+            now = 2000,
+        )
+
+        assertTrue(result is ReserveResult.Error)
+        assertEquals(
+            "Rules must be accepted before reserving",
+            (result as ReserveResult.Error).message,
+        )
     }
 
     // one confirmed stay at Pine Lake for June 1 and 2; June 3 is held by someone else
@@ -2150,5 +2249,79 @@ class FakeRepositoryTest {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { reservationRepo.changeStatus("res-1", ReservationStatus.CONFIRMED) }
         }
+    }
+
+    @Test
+    fun rejectTransaction_confirmed_savesRejectedWithTheTrimmedReasonAndTime() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        assertTrue(reservationRepo.rejectTransaction("res-1", "  Forest fire warning  ", 3000))
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals(ReservationStatus.REJECTED, saved.status)
+        assertEquals("Forest fire warning", saved.rejectionReason)
+        assertEquals(3000L, saved.statusChangedAt)
+    }
+
+    @Test
+    fun rejectTransaction_releasesOnlyItsNightsAndKeepsOpenNights() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        reservationRepo.rejectTransaction("res-1", "Forest fire warning", 3000)
+
+        val calendar = pineLake.getAvailability("site-1")
+        assertEquals(listOf("2027-06-03"), calendar.heldNights)
+        assertEquals(listOf("2027-06-01", "2027-06-02", "2027-06-03"), calendar.openNights)
+    }
+
+    @Test
+    fun rejectTransaction_cancelledReservation_returnsFalseAndChangesNothing() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        reservationRepo.changeStatus("res-1", ReservationStatus.CANCELLED, now = 3000)
+        val heldBefore = pineLake.getAvailability("site-1").heldNights
+
+        assertFalse(reservationRepo.rejectTransaction("res-1", "Forest fire warning", 4000))
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals(ReservationStatus.CANCELLED, saved.status)
+        assertEquals(3000L, saved.statusChangedAt)
+        assertNull(saved.rejectionReason)
+        assertEquals(heldBefore, pineLake.getAvailability("site-1").heldNights)
+    }
+
+    @Test
+    fun rejectTransaction_alreadyRejected_returnsFalseAndKeepsTheFirstReason() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        reservationRepo.rejectTransaction("res-1", "Forest fire warning", 3000)
+
+        assertFalse(reservationRepo.rejectTransaction("res-1", "Flooding", 4000))
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals("Forest fire warning", saved.rejectionReason)
+        assertEquals(3000L, saved.statusChangedAt)
+    }
+
+    @Test
+    fun rejectTransaction_unknownReservation_returnsFalse() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+        assertFalse(reservationRepo.rejectTransaction("nope", "Forest fire warning", 3000))
+    }
+
+    @Test
+    fun rejectTransaction_blankReason_throwsAndChangesNothing() = runBlocking {
+        val reservationRepo = pineLakeReservations()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { reservationRepo.rejectTransaction("res-1", "   ", 3000) }
+        }
+
+        val saved = reservationRepo.getReservation("res-1")!!
+        assertEquals(ReservationStatus.CONFIRMED, saved.status)
+        assertNull(saved.rejectionReason)
+        assertEquals(
+            listOf("2027-06-01", "2027-06-02", "2027-06-03"),
+            pineLake.getAvailability("site-1").heldNights,
+        )
+        assertTrue(pineLakeInbox.getNotificationsFor("user-1").isEmpty())
     }
 }

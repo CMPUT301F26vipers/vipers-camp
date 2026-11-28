@@ -639,6 +639,7 @@ class LotteryDrawerTest {
             userId = "loser-1",
             nights = listOf("2027-06-01", "2027-06-02"),
             groupSize = 1,
+            rulesAcceptedAt = now,
             now = now + 100L,
         )
         assertTrue("Expected Success but got $reserveResult", reserveResult is ReserveResult.Success)

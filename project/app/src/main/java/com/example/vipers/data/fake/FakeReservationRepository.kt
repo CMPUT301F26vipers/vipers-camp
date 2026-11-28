@@ -1,9 +1,10 @@
 /*
  * FakeReservationRepository.kt
  * An in-memory ReservationRepository for unit and intent tests (test double for Repository).
- * Supports atomic reservation transactions with conflict checks (T-03) and sends confirmation
- * notifications to the entrant's inbox (US 01.05.01). Cancelling or rejecting gives the nights
- * back to the campsite's calendar if a campsite repository is attached (US 01.07.01).
+ * Supports atomic reservation transactions with conflict checks (T-03), sends confirmation
+ * notifications to the entrant's inbox (US 01.05.01), and records rules acceptance time
+ * (US 02.11.01). Cancelling or rejecting gives the nights back to the campsite's calendar
+ * if a campsite repository is attached (US 01.07.01, 02.08.01).
  * Known issues: none.
  */
 package com.example.vipers.data.fake
@@ -84,9 +85,13 @@ class FakeReservationRepository(
         userId: String,
         nights: List<String>,
         groupSize: Int,
+        rulesAcceptedAt: Long,
         now: Long,
     ): ReserveResult = mutex.withLock {
         if (nights.isEmpty()) return ReserveResult.Error("No nights selected")
+        if (rulesAcceptedAt <= 0L) {
+            return ReserveResult.Error("Rules must be accepted before reserving")
+        }
         val sortedNights = nights.distinct().sorted()
 
         val campsiteRepo = campsiteRepository
@@ -155,7 +160,7 @@ class FakeReservationRepository(
             checkOut = checkOut,
             groupSize = groupSize,
             totalPriceCents = totalPriceCents,
-            rulesAcceptedAt = now,
+            rulesAcceptedAt = rulesAcceptedAt,
             status = ReservationStatus.CONFIRMED,
             statusChangedAt = now,
         )
@@ -208,5 +213,15 @@ class FakeReservationRepository(
 
         if (sendNotice) notificationRepository?.saveNotification(changed.statusNotice(now))
         true
+    }
+
+    override suspend fun rejectTransaction(
+        reservationId: String,
+        reason: String,
+        now: Long,
+        sendNotice: Boolean,
+    ): Boolean {
+        require(Reservation.isValidRejectionReason(reason)) { "A rejection needs a reason" }
+        return changeStatus(reservationId, ReservationStatus.REJECTED, reason.trim(), now, sendNotice)
     }
 }

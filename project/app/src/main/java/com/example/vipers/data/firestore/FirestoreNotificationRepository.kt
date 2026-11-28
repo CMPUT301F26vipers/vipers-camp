@@ -92,6 +92,26 @@ class FirestoreNotificationRepository(
             }
         return Subscription { registration.remove() }
     }
+
+    override suspend fun listUnshownOnDevice(recipientId: String): List<Notification> =
+        collection
+            .whereEqualTo("recipientId", recipientId)
+            .whereEqualTo("shownOnDevice", false)
+            .get().await()
+            .documents.map { it.toNotification() }
+            .sortedBy { it.createdAt }
+
+    override suspend fun markShownOnDevice(notificationId: String): Boolean {
+        val doc = collection.document(notificationId)
+        return db.runTransaction { tx ->
+            val snapshot = tx.get(doc)
+            if (!snapshot.exists() || snapshot.getBoolean("shownOnDevice") == true) {
+                return@runTransaction false
+            }
+            tx.update(doc, "shownOnDevice", true)
+            true
+        }.await()
+    }
 }
 
 /**

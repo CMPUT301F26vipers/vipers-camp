@@ -8,6 +8,8 @@
  */
 package com.example.vipers.ui.home
 
+import android.Manifest
+import android.os.Build
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -19,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.rule.GrantPermissionRule
 import com.example.vipers.AppContainer
 import com.example.vipers.CampApp
 import com.example.vipers.data.fake.FakeCampsiteRepository
@@ -40,6 +43,14 @@ class ScanCampsiteQrCodeTest {
 
     @get:Rule
     val composeRule = createComposeRule()
+
+    @get:Rule
+    val notificationPermission: GrantPermissionRule =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            GrantPermissionRule.grant()
+        }
 
     private val hinton = Campsite(
         id = "hinton", ownerId = "owner-priya", name = "Hinton Ridge Campground",

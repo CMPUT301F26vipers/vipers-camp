@@ -10,6 +10,11 @@
  */
 package com.example.vipers.ui.navigation
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +36,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -39,6 +46,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vipers.data.device.DeviceIdentityManager
+import com.example.vipers.domain.model.NotificationTarget
 import com.example.vipers.ui.home.QrScanResult
 import com.example.vipers.ui.profile.ProfileController
 import com.example.vipers.ui.profile.WelcomeScreen
@@ -48,7 +56,12 @@ import kotlinx.coroutines.launch
 /**
  * Shows Welcome or the app's navigation, depending on [DeviceIdentityManager.hasProfile].
  * Also hides the Admin tab unless the profile is an admin. Runs [onAppOpened] each time the app
- * comes to the front, and passes [onScanQr] on to Home.
+ * comes to the front, and passes [onScanQr] on to Home. Once the app's navigation is shown, on
+ * Android 13 and later it asks for permission to show phone notifications and calls
+ * [onNotificationPermissionGranted] if the user allows it (T-14). [pendingTarget] is the screen a
+ * tapped phone notification opens (T-14): it is opened once the app's navigation is shown, and
+ * dropped if this device has no profile yet (Welcome); either way [onPendingTargetHandled] is then
+ * called.
  */
 @Composable
 fun AppRoot(
@@ -56,6 +69,9 @@ fun AppRoot(
     onLoadDemoData: () -> Unit,
     onAppOpened: suspend () -> Unit = {},
     onScanQr: suspend () -> QrScanResult = { QrScanResult.Failed },
+    onNotificationPermissionGranted: () -> Unit = {},
+    pendingTarget: NotificationTarget? = null,
+    onPendingTargetHandled: () -> Unit = {},
 ) {
     // null while we check for a profile
     var hasProfile by remember { mutableStateOf<Boolean?>(null) }
@@ -73,6 +89,7 @@ fun AppRoot(
     val lifecycleOwner = LocalLifecycleOwner.current
     // the observer stays the same, so keep it calling the newest onAppOpened
     val latestOnAppOpened by rememberUpdatedState(onAppOpened)
+    val latestOnPendingTargetHandled by rememberUpdatedState(onPendingTargetHandled)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) scope.launch { latestOnAppOpened() }
@@ -101,23 +118,52 @@ fun AppRoot(
         hasProfile == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-        hasProfile == false -> WelcomeScreen(
-            onProfileCreated = { hasProfile = true },
-            controller = viewModel(
-                key = "welcome-$welcomeRound",
-                factory = ProfileController.Factory,
-            ),
-        )
-        else -> AppNavigation(
-            isAdmin = isAdmin,
-            onLoadDemoData = onLoadDemoData,
-            onScanQr = onScanQr,
-            onProfileDeleted = {
-                isAdmin = false
-                welcomeRound++
-                hasProfile = false
-            },
-        )
+        hasProfile == false -> {
+            LaunchedEffect(pendingTarget) {
+                if (pendingTarget != null) latestOnPendingTargetHandled()
+            }
+            WelcomeScreen(
+                onProfileCreated = { hasProfile = true },
+                controller = viewModel(
+                    key = "welcome-$welcomeRound",
+                    factory = ProfileController.Factory,
+                ),
+            )
+        }
+        else -> {
+            AskForNotificationPermission(onGranted = onNotificationPermissionGranted)
+            AppNavigation(
+                isAdmin = isAdmin,
+                onLoadDemoData = onLoadDemoData,
+                onScanQr = onScanQr,
+                onProfileDeleted = {
+                    isAdmin = false
+                    welcomeRound++
+                    hasProfile = false
+                },
+                pendingTarget = pendingTarget,
+                onPendingTargetOpened = onPendingTargetHandled,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AskForNotificationPermission(onGranted: () -> Unit) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val context = LocalContext.current
+    var asked by rememberSaveable { mutableStateOf(false) }
+    val latestOnGranted by rememberUpdatedState(onGranted)
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) latestOnGranted()
+    }
+    LaunchedEffect(Unit) {
+        if (asked) return@LaunchedEffect
+        asked = true
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
+            launcher.launch(permission)
+        }
     }
 }
 

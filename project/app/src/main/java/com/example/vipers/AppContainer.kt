@@ -7,6 +7,7 @@
 package com.example.vipers
 
 import com.example.vipers.data.device.DeviceIdentityManager
+import com.example.vipers.data.fake.FakeDeviceNotifier
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.ImageRepository
 import com.example.vipers.domain.repository.LotteryRepository
@@ -15,6 +16,7 @@ import com.example.vipers.domain.repository.NotificationRepository
 import com.example.vipers.domain.repository.ProfileRepository
 import com.example.vipers.domain.repository.ReservationRepository
 import com.example.vipers.domain.service.DeletionService
+import com.example.vipers.domain.service.DeviceNotifier
 import com.example.vipers.domain.service.NotificationService
 import com.example.vipers.ui.lottery.DrawAndNotifyWorker
 import com.example.vipers.ui.lottery.LotteryDrawer
@@ -22,6 +24,8 @@ import com.example.vipers.ui.lottery.LotteryDrawer
 /**
  * Holds everything the screens need. CampApp makes one with the Firestore repositories;
  * tests make one with the fake repositories.
+ *
+ * @property deviceNotifier Shows inbox items as phone notifications (T-14).
  */
 class AppContainer(
     val deviceId: String,
@@ -32,6 +36,7 @@ class AppContainer(
     val messageRepository: MessageRepository,
     val notificationRepository: NotificationRepository,
     val imageRepository: ImageRepository,
+    val deviceNotifier: DeviceNotifier = FakeDeviceNotifier(),
 ) {
     /** Who the current user is. */
     val deviceIdentityManager = DeviceIdentityManager(deviceId, profileRepository)
@@ -49,5 +54,5 @@ class AppContainer(
     )
 
     /** Starts the draws that are due whenever the app is opened (US 02.05.01b). */
-    val drawAndNotifyWorker = DrawAndNotifyWorker(lotteryRepository, lotteryDrawer)
+    val dueDraws = DrawAndNotifyWorker.DueDraws(lotteryRepository, lotteryDrawer)
 }

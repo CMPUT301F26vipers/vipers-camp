@@ -1,8 +1,9 @@
 /*
  * ReservationDetailsScreenTest.kt
- * UI tests for ReservationDetailsScreen (US 01.05.01).
+ * UI tests for ReservationDetailsScreen (US 01.05.01, US 01.05.02).
  * Verifies that the reservation details screen displays the reservation number, campsite name,
- * dates, group size, total price, and status, and handles missing reservations.
+ * dates, group size, total price, status, rules, and download CSV button. Also checks that a
+ * rejected reservation shows its status and the owner's reason (US 02.08.01, mockup E15c).
  * Known issues: none.
  */
 package com.example.vipers.ui.reservations
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import com.example.vipers.data.fake.FakeCampsiteRepository
@@ -22,6 +24,7 @@ import com.example.vipers.domain.model.Campsite
 import com.example.vipers.domain.model.Reservation
 import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.ui.theme.VipersTheme
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -96,6 +99,10 @@ class ReservationDetailsScreenTest {
             .assertTextEquals("Confirmed")
         composeRule.onNodeWithTag("detail_campsite_rules")
             .assertTextEquals("Quiet hours after 10 PM")
+        composeRule.onNodeWithTag("button_download_csv")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertTextEquals("Download CSV")
     }
 
     @Test
@@ -138,6 +145,51 @@ class ReservationDetailsScreenTest {
         openForMessaging(ReservationStatus.REJECTED)
         composeRule.onNodeWithTag("button_message_owner").performScrollTo().performClick()
         assertEquals(reservation.id, openedId)
+    }
+
+    @Test
+    fun rejectedReservationShowsTheReasonAndNoCancelButton() {
+        val rejected = reservation.copy(
+            checkIn = LocalDate.now().plusDays(30).toString(),
+            checkOut = LocalDate.now().plusDays(32).toString(),
+            status = ReservationStatus.REJECTED,
+            rejectionReason = "Forest fire warning",
+        )
+        val controller = controllerFor(rejected.id, "sam", rejected)
+        composeRule.setContent {
+            VipersTheme {
+                ReservationDetailsScreen(
+                    reservationId = rejected.id,
+                    onBack = {},
+                    onMessage = {},
+                    controller = controller,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("detail_header").assertTextEquals("Rejected Reservation")
+        composeRule.onNodeWithTag("detail_status").assertTextEquals("Rejected")
+        composeRule.onNodeWithTag("detail_rejection_reason").assertTextEquals("Forest fire warning")
+        composeRule.onNodeWithText("Cancel Reservation").assertDoesNotExist()
+        composeRule.onNodeWithTag("button_cancel_reservation").assertDoesNotExist()
+    }
+
+    @Test
+    fun confirmedReservationHasNoReasonRow() {
+        val controller = controllerFor("res-1", "sam", reservation)
+        composeRule.setContent {
+            VipersTheme {
+                ReservationDetailsScreen(
+                    reservationId = "res-1",
+                    onBack = {},
+                    onMessage = {},
+                    controller = controller,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("detail_status").assertTextEquals("Confirmed")
+        composeRule.onNodeWithTag("detail_rejection_reason").assertDoesNotExist()
     }
 
     @Test

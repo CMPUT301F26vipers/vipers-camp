@@ -2,10 +2,13 @@
  * NotificationService.kt
  * The app's notification logic, between the screens and NotificationRepository. It passes the
  * inbox and marking read through to the repository (T-13), builds and saves a draw's "You won"
- * (US 01.03.01), "Not selected" (US 01.03.02), and replacement win (US 01.04.03, T-12) notices
- * and the "New message" notice (US 02.12.01), lists an owner's sent notifications (US 02.10.02),
- * and skips users who turned notifications off in Settings (US 01.10.01).
- * Known issues: showing notifications on the phone is left to T-14.
+ * (US 01.03.01), "Not selected" (US 01.03.02), and replacement win (US 01.04.03, T-12) notices,
+ * the "New message" notice (US 02.12.01) and the "Reservation rejected" notice with the owner's
+ * reason (US 02.08.01), lists an owner's sent notifications (US 02.10.02), and skips users who
+ * turned notifications off in Settings (US 01.10.01).
+ * It also picks which new inbox items to show as phone notifications, at most once each, through
+ * a DeviceNotifier (T-14).
+ * Known issues: none.
  */
 package com.example.vipers.domain.service
 
@@ -15,6 +18,7 @@ import com.example.vipers.domain.model.Message
 import com.example.vipers.domain.model.Notification
 import com.example.vipers.domain.model.NotificationType
 import com.example.vipers.domain.model.Reservation
+import com.example.vipers.domain.model.ReservationStatus
 import com.example.vipers.domain.model.SentNotification
 import com.example.vipers.domain.repository.CampsiteRepository
 import com.example.vipers.domain.repository.InboxListener
@@ -268,6 +272,80 @@ class NotificationService(
         if (optedIn(listOf(recipientId)).isEmpty()) return
         notificationRepository.saveNotification(message.notice(reservation, recipientId))
     }
+
+    /**
+     * Tells the entrant that the owner rejected [reservation], and why (US 02.08.01). It saves the
+     * RESERVATION_REJECTED notice from [Reservation.statusNotice], dated [now]: ID
+     * `rejected_<reservationId>`, so sending again replaces it instead of adding a copy, from the
+     * owner, with the reason in the message, and it opens the reservation. Nothing is sent if
+     * [reservation] isn't REJECTED, has no reason ([Reservation.isValidRejectionReason]), or its
+     * entrant turned notifications off ([optedIn], US 01.10.01).
+     *
+     * @return true if the notice was saved.
+     */
+    suspend fun sendReservationRejected(
+        reservation: Reservation,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean {
+        if (reservation.status != ReservationStatus.REJECTED) return false
+        if (!Reservation.isValidRejectionReason(reservation.rejectionReason)) return false
+        if (optedIn(listOf(reservation.userId)).isEmpty()) return false
+        notificationRepository.saveNotification(reservation.statusNotice(now))
+        return true
+    }
+
+    /**
+     * Shows [userId]'s new inbox items as phone notifications through [notifier] and returns how
+     * many it showed (T-14). Does nothing if the user has no profile or it can't be read. If the
+     * user turned notifications off (US 01.10.01), shows nothing and marks every unshown item
+     * shown, so turning them back on doesn't bring back old items. If [DeviceNotifier.canPost] is
+     * false, shows and marks nothing, so the items can still be shown once permission is granted.
+     * Otherwise it goes through [NotificationRepository.listUnshownOnDevice], oldest first, and
+     * shows each item only if [NotificationRepository.markShownOnDevice] returns true, so each
+     * item is shown at most once even when two checks run together. An item that fails is skipped
+     * and the rest are still handled; this method doesn't throw for them.
+     */
+    suspend fun showNewOnDevice(userId: String, notifier: DeviceNotifier): Int {
+        val profile = try {
+            profileRepository.getProfile(userId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        } ?: return 0
+        if (!profile.notificationsEnabled) {
+            for (item in unshownFor(userId)) {
+                attempt { notificationRepository.markShownOnDevice(item.id) }
+            }
+            return 0
+        }
+        if (!notifier.canPost()) return 0
+        var shown = 0
+        for (item in unshownFor(userId)) {
+            val posted = attempt {
+                if (notificationRepository.markShownOnDevice(item.id)) {
+                    notifier.show(item)
+                    true
+                } else {
+                    false
+                }
+            }
+            if (posted == true) shown++
+        }
+        return shown
+    }
+
+    private suspend fun unshownFor(userId: String): List<Notification> =
+        attempt { notificationRepository.listUnshownOnDevice(userId) } ?: emptyList()
+
+    private suspend fun <T> attempt(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
 
     private suspend fun campsiteNamesFor(lottery: Lottery): String {
         val names = lottery.campsiteIds.mapNotNull { campsiteRepository.getCampsite(it)?.name }
